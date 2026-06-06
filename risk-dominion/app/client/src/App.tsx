@@ -231,14 +231,16 @@ export default function App() {
             >
               {intelOpen ? "Hide Intel" : "Show Intel"}
             </button>
+          </div>
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setChatOpen((v) => !v)}
               className="rounded border border-[#334455] px-2 py-1 font-ui text-[10px] text-text-secondary hover:text-text-primary"
             >
               {chatOpen ? "Hide Chat" : "Show Chat"}
             </button>
+            <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
           </div>
-          <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
         </div>
 
         {queryResult && (
