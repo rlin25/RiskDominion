@@ -1,14 +1,16 @@
-You are in the project root directory (risk-dominion/). Generate these files here, alongside AESTHETIC.md and SETUP.md, not inside any slice folder.
+You are in the project root directory (risk-dominion/). These files live here, alongside AESTHETIC.md and SETUP.md, not inside any slice folder.
 
-You are generating four documentation files for Risk: Dominion. These files are static reference documents for judges, teammates, and visitors to the project repository. They do not affect any code.
+You are maintaining four documentation files for Risk: Dominion. These files are static reference documents for judges, teammates, and visitors to the project repository. They do not affect any code.
 
-Before generating, read these existing documents for context:
+For each file: check whether it already exists. If it does, read it in full before making any changes, then update only what is outdated or missing -- do not rewrite sections that are still accurate. If it does not exist, create it from scratch using the spec below.
+
+Before updating or creating any file, read these source documents for context:
 - slice-1/DECISIONS_SLICE_1.md through slice-5/DECISIONS_SLICE_5.md (design philosophy across all slices)
 - AESTHETIC.md (visual design system)
 - SETUP.md (environment setup)
 - slice-5/MASTERPLAN_SLICE_5.md (full feature list)
 
-Generate the following four files:
+Maintain the following four files:
 
 ---
 
@@ -16,7 +18,9 @@ Generate the following four files:
 
 A polished, impressive project README. This is the first thing judges see on GitHub.
 
-Structure:
+If the file already exists: preserve the Mermaid diagram exactly as written -- it has been manually tuned for GitHub's renderer and must not be regenerated. Update any sections where the feature list, slice descriptions, or documentation links are incomplete or inaccurate relative to the source documents.
+
+If creating from scratch, use this structure:
 - **Project title:** "Risk: Dominion"
 - **Tagline:** "A real-time strategy game where the battlefield is a live multidimensional database, powered by SpacetimeDB and Claude."
 - **Mermaid architecture diagram:** A high-level diagram showing three layers:
@@ -24,6 +28,7 @@ Structure:
   - **Server:** SpacetimeDB. Tables (military, economic, cultural, covert, players, game_state, event_feed, ai_state, ai_reasoning_log, strategist_log), reducers (game actions, queries, intel), scheduled reducers (action regen, cultural spread, AI cycles, Strategist cycle).
   - **AI:** Claude (Anthropic API). Commander + 4 specialist subordinates per AI opponent. Human Strategist advisor. Natural language query translation. Tab autocomplete.
   - Arrows: Client → Reducers → Tables → Subscriptions → Client (real-time loop). Scheduled Reducers → Claude → AI Actions → Reducers. Query Bar → Claude → Results → Client. Strategist Cycle → Claude → Alerts → Client.
+  - Use `%%{init: {"theme": "dark"}}%%`, `flowchart LR`, `classDef` with the game's color palette, and `:::className` inline notation. Do not use the `class` statement or `&` grouping in arrows -- GitHub's Mermaid parser rejects both. Use rounded nodes `("text")` throughout.
 - **Quick start:** 3-4 lines. "Clone the repo. Run bash setup.sh. Open prompts/generate_slice_1.txt in Claude Code. Start the server. Open localhost:5173."
 - **Features:** Bullet list covering all five slices. Four dimensions, AI opponents with orchestration, cultural spread with cross-dimension bonuses, natural language query system, live event ticker, keyboard controls, Strategist advisor, Tab autocomplete.
 - **Tech stack table:** SpacetimeDB, Rust, React 18, TypeScript, Vite, dnd-kit, Tailwind CSS, Claude (Anthropic API).
@@ -31,15 +36,15 @@ Structure:
 - **Documentation links:** Bullet list linking to GLOSSARY.md, ARCHITECTURE.md, DEMO_SCRIPT.md, AESTHETIC.md, SETUP.md, and all slice decision documents.
 - **Team:** Placeholder for team member names and roles.
 
-The Mermaid diagram should use ```mermaid syntax and be renderable on GitHub. Keep it high-level — three boxes with arrows, not every component.
-
 ---
 
 ## 2. GLOSSARY.md
 
 An alphabetical glossary of every game term, written in plain English for judges and new players.
 
-Structure:
+If the file already exists: add any terms that are missing from the list below. Do not rewrite entries that are already accurate. Maintain alphabetical order within each category.
+
+If creating from scratch, use this structure:
 - **Category index** at the top: Game Concepts, Dimensions, AI Systems, Actions, Technical Terms.
 - **Alphabetical entries.** Each entry: bold term, one-paragraph definition, "See also" cross-references where applicable.
 - **20-30 terms** minimum, including:
@@ -62,7 +67,9 @@ Definitions should be accessible to someone with no prior knowledge of the game.
 
 A technical deep-dive for judges who want to understand how the system works. More detailed than the README, less abstract than the code.
 
-Structure:
+If the file already exists: update any sections where the table schema, reducer list, or orchestration description is inconsistent with the source documents. Preserve the Mermaid sequence diagram unless a specific fact in it is wrong -- do not regenerate it from scratch. Do not rewrite sections that are still accurate.
+
+If creating from scratch, use this structure:
 - **Overview:** One paragraph. "Risk: Dominion is a single-page React application connected to a SpacetimeDB server. All game state lives in SpacetimeDB tables. The client subscribes to live table updates. AI opponents reason through a multi-agent orchestration pipeline powered by Claude. A natural language query system translates player questions into live database queries."
 - **SpacetimeDB Layer:** Explain the table architecture (4 dimension tables, player state, game state, event feed, AI state, reasoning log, strategist log). Explain reducers (client-callable for actions and queries, internal for AI submission, scheduled for ticks and cycles). Explain subscriptions (one per table, full rows, client merges updates).
 - **AI Orchestration:** Explain the Slice 5 threading model. Commander + 4 specialists per AI. Specialists receive domain-specific game state snapshots and narrow prompts. Parallel execution via std::thread::spawn with JoinHandle synchronization. 15s specialist timeout, 30s commander timeout. Commander synthesizes recommendations according to persona priorities. Full deliberation chain logged to ai_reasoning_log and queryable via intel.
@@ -79,7 +86,9 @@ A timed 5-minute walkthrough script for presenting Risk: Dominion to judges.
 
 Features marked with [Slice 5] depend on the final slice. If Slice 5 is not yet stable, skip those sections and adjust timing.
 
-Structure:
+If the file already exists: update only the segments that reference features or mechanics that have changed. Preserve timing, phrasing, and flow for segments that are still accurate. Do not rewrite the whole script.
+
+If creating from scratch, use this structure:
 - **Setup (before demo):** Have the game pre-loaded and running. Have at least one AI cycle completed so intel is queryable. Have the query bar visible. Close any unnecessary panels.
 - **0:00-0:30 — First Impression.** "This is Risk: Dominion. It looks like a strategy game. But under the hood, the map is a live database running on SpacetimeDB. Every territory, every color, every number you see is a row in a table, updating in real time." Point out the hex map, the X-split quadrant colors, the four home territories. Point out the ticker at the bottom showing "Game started."
 - **0:30-1:30 — Core Gameplay.** Execute a military attack. "I drag this red card onto an adjacent territory. That's a reducer call — a database transaction. The territory changes color. The ticker narrates it." Execute an economic invest. Execute a covert deploy. "Three dimensions, three card types. The fourth dimension — Cultural — spreads passively. Let me show you." Wait for or trigger a cultural spread tick. Point out influence percentages changing. "Culture creeps across borders based on economic strength. I don't control it directly. I influence it by where I invest."
@@ -91,15 +100,16 @@ Structure:
 
 ---
 
-## Generation Rules
+## Rules
 
-1. Generate all four files in the project root directory.
-2. Use Markdown formatting throughout. Mermaid diagrams use ```mermaid code blocks.
-3. README.md should be impressive and polished — it's the public face of the project.
-4. GLOSSARY.md should be accessible — definitions in plain English, not technical jargon.
-5. ARCHITECTURE.md should be technical but readable — a judge with engineering background should understand the system.
-6. DEMO_SCRIPT.md should be practical — talking points the presenter can actually say, with timing that can be rehearsed.
-7. Cross-reference between files where appropriate (README links to GLOSSARY and ARCHITECTURE, GLOSSARY links to ARCHITECTURE for deep dives).
-8. No emojis. No em dashes. Clean, professional documentation.
+1. All four files live in the project root directory (risk-dominion/), not inside any slice folder.
+2. Read each file before editing it. Update, do not replace.
+3. Use Markdown formatting throughout. Mermaid diagrams use ```mermaid code blocks.
+4. README.md should be impressive and polished -- it's the public face of the project.
+5. GLOSSARY.md should be accessible -- definitions in plain English, not technical jargon.
+6. ARCHITECTURE.md should be technical but readable -- a judge with an engineering background should understand the system.
+7. DEMO_SCRIPT.md should be practical -- talking points the presenter can actually say, with timing that can be rehearsed.
+8. Cross-reference between files where appropriate (README links to GLOSSARY and ARCHITECTURE, GLOSSARY links to ARCHITECTURE for deep dives).
+9. No emojis. No em dashes. Clean, professional documentation.
 
-Generate now. Output all four files.
+Read each existing file, compare it against the source documents, then apply the minimum edits needed to bring it up to date. Output each file only if it changed.
