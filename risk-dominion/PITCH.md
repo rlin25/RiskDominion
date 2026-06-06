@@ -16,11 +16,15 @@ Risk: Dominion is a four-dimensional strategy game. Each territory has four laye
 
 ## Technical Achievements
 
-**Multi-agent AI orchestration.** Each AI opponent runs five Claude agents — four specialist subordinates and a commander — spawned as parallel threads from a scheduled reducer. Their full deliberation chain is logged to a table and queryable by the player.
+**Multi-agent AI orchestration.** Each AI opponent runs five Claude agents -- four specialist subordinates and a commander -- spawned as parallel threads from a scheduled reducer. Their full deliberation chain is logged to a table and queryable by the player.
 
 **Natural language to live table queries.** Type "Where am I weakest?" The game sends your question to Claude with a live game state snapshot. Claude returns a structured response with highlighted territories and a data table. You're querying the battlefield in plain English.
 
-**Decoupled narrative layer.** Every action writes to an `event_feed` table. A scrolling ticker subscribes to it. Events are fire-and-forget — if a write fails, the game state change persists. The narrative cannot break the game.
+**AI deception and trust scoring.** Every AI opponent sends chat messages to the shared channel. They lie. Claims are cross-referenced against each AI's own agent network; if caught, their trust score drops and remains penalized for the rest of the game. A player who builds a reputation for honesty can cash it in later with a single devastating lie. The chat channel is a fifth dimension of conflict.
+
+**Decoupled narrative layer.** Every action writes to an `event_feed` table. A scrolling ticker subscribes to it. Events are fire-and-forget -- if a write fails, the game state change persists. The narrative cannot break the game.
+
+**Spectator mode and replay system.** Any observer can open `?spectator=true` and see the live game with hidden state exposed: trust scores, dimension dominance percentages, active AI cycles. After the game ends, `?replay=true` opens a scrubbable timeline reconstructed from `event_feed` and `ai_reasoning_log`. Every AI deliberation, every chat message, every trust score change is reviewable at any point in history.
 
 ## What Judges Should Notice
 
@@ -29,6 +33,8 @@ Risk: Dominion is a four-dimensional strategy game. Each territory has four laye
 - Cultural spread is a scheduled reducer running pure database logic.
 - The query system runs against live tables, not cached summaries.
 - We spawn parallel threads from scheduled reducers for AI orchestration.
+- The AIs lie in chat. The lie is chosen by the model in the same reasoning cycle that picks their actions -- not scripted.
+- The replay is not a recording. It reconstructs state from logged database events, proving the database recorded everything.
 
 ## The Close
 

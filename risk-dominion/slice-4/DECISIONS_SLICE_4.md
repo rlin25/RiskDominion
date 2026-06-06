@@ -2,7 +2,7 @@
 
 ## Version 1.0
 ## Scope: Query System, Event Ticker, Complete Game
-## Relationship: Extends DECISIONS_SLICE_3.md — Final Slice
+## Relationship: Extends DECISIONS_SLICE_3.md
 
 ---
 

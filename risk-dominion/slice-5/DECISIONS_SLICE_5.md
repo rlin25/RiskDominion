@@ -167,4 +167,4 @@ This is the technical wow factor. This is what makes judges stop and say "wait, 
 
 ## End of Slice 5 Decisions Document
 
-This document, combined with DECISIONS_SLICE_1.md through DECISIONS_SLICE_4.md, contains the complete design philosophy for Risk: Dominion. All principles from prior slices not explicitly modified here remain in full effect. The next document is the Slice 5 Interface Contract.
+This document, combined with DECISIONS_SLICE_1.md through DECISIONS_SLICE_4.md, covers the core design philosophy through Slice 5. DECISIONS_SLICE_6.md extends this with global chat and AI deception mechanics. DECISIONS_SLICE_7.md adds spectator mode and the replay system. All principles from prior slices not explicitly modified here remain in full effect. The next document is the Slice 5 Interface Contract.

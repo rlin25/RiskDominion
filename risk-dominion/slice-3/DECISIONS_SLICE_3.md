@@ -51,7 +51,7 @@ The four dimensions are not isolated lanes. They form a cycle. Owning one dimens
 
 The cycle works like this:
 
-**Military protects Economic.** If you control the Military dimension in a territory, your economic investments there are 10% more effective. Soldiers guard the markets. Trade flourishes under the protection of your troops. In game terms: when you invest economically in a territory where you own Military, you get a bonus to the amount invested.
+**Military protects Economic.** If you control the Military dimension in a territory, your economic investments there receive a flat bonus. Soldiers guard the markets. Trade flourishes under the protection of your troops. In game terms: when you invest economically in a territory where you own Military, the investment amount is increased by 1 (from 5 to 6 capital per action).
 
 **Economic funds Cultural.** If you control the Economic dimension in a territory, the cultural pressure it exerts on neighboring territories is 15% stronger. Wealth radiates influence. A rich territory exports not just goods but ideas, language, and social power. In game terms: the capital value used to calculate cultural pressure gets a multiplier if you own both Economic and Cultural in the source territory.
 
@@ -133,7 +133,7 @@ This creates the strategic tension that defines Slice 3.
 | Cultural mechanic | Spreads every 30s based on adjacent economic strength |
 | Cultural flip threshold | influence_pct > 50 |
 | Cultural card | None (Cultural is passive, no direct action) |
-| Cross-dimension bonuses | Military→Economic (+10%), Economic→Cultural (+15%), Cultural→Covert (+10%), Covert→Military (+agent_count) |
+| Cross-dimension bonuses | Military→Economic (+1 flat capital per invest), Economic→Cultural (+15% pressure), Cultural→Covert (+10% effective agents), Covert→Military (+agent_count to attack) |
 | Bonus philosophy | Small multipliers, not gates. Tailwinds, not engines. |
 | Victory condition | 5 unified territories (all 4 dimensions) |
 | AI personas | Expanded to 4-dimension priority orders |

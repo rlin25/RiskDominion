@@ -81,22 +81,32 @@ risk-dominion
 ├── setup.sh
 ├── .env
 ├── .env.example
+├── prompts
+│   ├── generate_slice_1.txt
+│   ├── generate_slice_2.txt
+│   ├── generate_slice_3.txt
+│   ├── generate_slice_4.txt
+│   ├── generate_slice_5.txt
+│   ├── generate_slice_6.txt
+│   ├── generate_slice_7.txt
+│   └── generate_docs.txt
 ├── slice-1
 │   ├── DECISIONS_SLICE_1.md
 │   ├── INTERFACE_CONTRACT_SLICE_1.md
 │   ├── IMPLEMENTATION_STRATEGY_SLICE_1.md
-│   ├── MASTERPLAN_SLICE_1.md
-│   └── prompts
-│       └── generate.txt
+│   └── MASTERPLAN_SLICE_1.md
 ├── slice-2
-│   └── prompts
-│       └── generate.txt
+│   └── (DECISIONS, INTERFACE_CONTRACT, IMPLEMENTATION_STRATEGY, MASTERPLAN)
 ├── slice-3
-│   └── prompts
-│       └── generate.txt
-└── slice-4
-    └── prompts
-        └── generate.txt
+│   └── (DECISIONS, INTERFACE_CONTRACT, IMPLEMENTATION_STRATEGY, MASTERPLAN)
+├── slice-4
+│   └── (DECISIONS, INTERFACE_CONTRACT, IMPLEMENTATION_STRATEGY, MASTERPLAN)
+├── slice-5
+│   └── (DECISIONS, INTERFACE_CONTRACT, IMPLEMENTATION_STRATEGY, MASTERPLAN)
+├── slice-6
+│   └── (DECISIONS, INTERFACE_CONTRACT, IMPLEMENTATION_STRATEGY, MASTERPLAN)
+└── slice-7
+    └── (DECISIONS, INTERFACE_CONTRACT, IMPLEMENTATION_STRATEGY, MASTERPLAN)
 ```
 
 ---
@@ -121,6 +131,7 @@ You should see:
   [PASS] Project folders
   [PASS] .env file
   [PASS] Anthropic API key format
+  [PASS] Prompt files (generate_slice_1.txt through generate_slice_7.txt)
   [PASS] SpacetimeDB starts successfully
 ```
 
@@ -130,15 +141,14 @@ All checks show "[PASS]"? You're ready.
 
 ## 5. NEXT STEPS
 
-1. Open `slice-1/prompts/generate.txt`
-2. Copy its entire contents
-3. Open Claude Code in your terminal
-4. Paste and press Enter
-5. Claude Code generates the complete Slice 1 application
+1. Open `prompts/generate_slice_1.txt` in Claude Code
+2. Claude Code will generate the complete Slice 1 application into `slice-1/`
+3. Start the SpacetimeDB server: `spacetime start`
+4. Open `http://localhost:5173`
 
 Slice 1 is a two-player game with no AI. The Anthropic key is not used yet. It will be needed for Slice 2 onward.
 
-After Slice 1 is generated and validated, move to `slice-2/prompts/generate.txt` and repeat.
+After Slice 1 is generated and validated, open `prompts/generate_slice_2.txt` and repeat. Continue through `generate_slice_7.txt` in order.
 
 ---
 

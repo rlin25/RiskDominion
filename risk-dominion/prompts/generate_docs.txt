@@ -25,7 +25,7 @@ If creating from scratch, use this structure:
 - **Tagline:** "A real-time strategy game where the battlefield is a live multidimensional database, powered by SpacetimeDB and Claude."
 - **Mermaid architecture diagram:** A high-level diagram showing three layers:
   - **Client:** React + TypeScript + dnd-kit + Tailwind CSS. Hex map, drag-and-drop cards, query bar, event ticker, hotkeys.
-  - **Server:** SpacetimeDB. Tables (military, economic, cultural, covert, players, game_state, event_feed, ai_state, ai_reasoning_log, strategist_log), reducers (game actions, queries, intel), scheduled reducers (action regen, cultural spread, AI cycles, Strategist cycle).
+  - **Server:** SpacetimeDB. Tables (military, economic, cultural, covert, players, game_state, event_feed, ai_state, ai_reasoning_log, strategist_log, chat_log, ai_trust), reducers (game actions, queries, chat, intel), scheduled reducers (action regen, cultural spread, AI cycles, Strategist cycle).
   - **AI:** Claude (Anthropic API). Commander + 4 specialist subordinates per AI opponent. Human Strategist advisor. Natural language query translation. Tab autocomplete.
   - Arrows: Client → Reducers → Tables → Subscriptions → Client (real-time loop). Scheduled Reducers → Claude → AI Actions → Reducers. Query Bar → Claude → Results → Client. Strategist Cycle → Claude → Alerts → Client.
   - Use `%%{init: {"theme": "dark"}}%%`, `flowchart LR`, `classDef` with the game's color palette, and `:::className` inline notation. Do not use the `class` statement or `&` grouping in arrows -- GitHub's Mermaid parser rejects both. Use rounded nodes `("text")` throughout.
