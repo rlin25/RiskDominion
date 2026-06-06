@@ -189,7 +189,7 @@ netstat -ano | findstr :3000   # Windows
 
 If something is there, stop it or edit `.env`:
 ```
-SPACETIMEDB_URI=ws://localhost:3001
+SPACETIMEDB_URI=ws://127.0.0.1:3000
 ```
 
 ### "Insufficient credits" from Anthropic

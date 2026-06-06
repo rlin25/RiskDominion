@@ -11,10 +11,7 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  playerId: __t.i32().primaryKey().name("player_id"),
-  playerName: __t.string().name("player_name"),
-  color: __t.string(),
-  actionPoints: __t.i32().name("action_points"),
-  lastRegenAt: __t.i64().name("last_regen_at"),
-  isAi: __t.bool().name("is_ai"),
+  territoryId: __t.i32().primaryKey().name("territory_id"),
+  ownerId: __t.i32().name("owner_id"),
+  agentCount: __t.i32().name("agent_count"),
 });

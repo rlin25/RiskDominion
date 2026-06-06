@@ -2,12 +2,15 @@
 //!
 //! Single-file module organized by section. Reducers are deterministic and
 //! return `Result<(), String>` (clients observe outcomes via subscriptions, not
-//! return values). External/LLM work is added in later slices via *procedures*
-//! (the only function type allowed to make HTTP calls); reducers never do.
+//! return values). All external/LLM work happens in *procedures* — the only
+//! function type allowed to make HTTP calls (`ctx.http`); reducers never do.
 //!
-//! Slice 1: two players, two dimensions (Military, Economic), core gameplay.
+//! Slice 2: adds 3 AI opponents, the Covert dimension, the intel system, and the
+//! AI reasoning cycle (a scheduled procedure that calls Claude via `ctx.http`).
 
-use spacetimedb::{ReducerContext, ScheduleAt, Table};
+use spacetimedb::{
+    ProcedureContext, ReducerContext, ScheduleAt, SpacetimeType, Table, TimeDuration,
+};
 
 // ---- CONSTANTS ----
 
@@ -17,7 +20,18 @@ const STARTING_ACTION_POINTS: i32 = 5;
 const ECONOMIC_INVEST_AMOUNT: i32 = 5;
 const WIN_UNIFIED_TERRITORIES: i32 = 3;
 const TOTAL_TERRITORIES: i32 = 12;
+const TOTAL_PLAYERS: i32 = 4;
 const MIN_TROOPS: i32 = 1;
+
+const AI_CYCLE_SECONDS: u64 = 60;
+const AI_STAGGER_SECONDS: u64 = 20;
+const AI_LLM_TIMEOUT_SECONDS: u64 = 30;
+const AI_MAX_TOKENS: u32 = 1500;
+const INTEL_THRESHOLD: i32 = 3;
+
+const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 
 // ---- TABLES ----
 
@@ -37,6 +51,15 @@ pub struct Economic {
     pub capital: i32,
 }
 
+#[spacetimedb::table(accessor = covert, public)]
+pub struct Covert {
+    #[primary_key]
+    pub territory_id: i32,
+    /// 0 means no agents present (no Covert owner).
+    pub owner_id: i32,
+    pub agent_count: i32,
+}
+
 #[spacetimedb::table(accessor = players, public)]
 pub struct Player {
     #[primary_key]
@@ -45,6 +68,7 @@ pub struct Player {
     pub color: String,
     pub action_points: i32,
     pub last_regen_at: i64,
+    pub is_ai: bool,
 }
 
 #[spacetimedb::table(accessor = game_state, public)]
@@ -54,10 +78,39 @@ pub struct GameState {
     pub value: String,
 }
 
+#[spacetimedb::table(accessor = ai_state, public)]
+pub struct AiState {
+    #[primary_key]
+    pub ai_player_id: i32,
+    pub cycle_status: String, // "idle" | "pending"
+    pub last_cycle_at: i64,   // 0 if never
+    pub next_cycle_at: i64,
+}
+
+#[spacetimedb::table(accessor = ai_reasoning_log, public)]
+pub struct AiReasoningLog {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub ai_player_id: i32,
+    pub cycle_at: i64,
+    pub reasoning_text: String,
+    pub actions_taken: String, // JSON array
+}
+
+/// Private module configuration (e.g. the Anthropic API key). Never `public`, so
+/// clients cannot read it via subscription. Seed it after publish with:
+/// `spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'`
+#[spacetimedb::table(accessor = module_config)]
+pub struct ModuleConfig {
+    #[primary_key]
+    pub key: String,
+    pub value: String,
+}
+
 // ---- SCHEDULED TABLES ----
 
-/// Drives `regenerate_action_points` on a fixed interval. One row, armed in
-/// `start_game`. The scheduled reducer receives the row each tick.
+/// Drives `regenerate_action_points` on a fixed interval (deterministic reducer).
 #[spacetimedb::table(accessor = regen_timer, scheduled(regenerate_action_points))]
 pub struct RegenTimer {
     #[primary_key]
@@ -66,7 +119,30 @@ pub struct RegenTimer {
     pub scheduled_at: ScheduleAt,
 }
 
-// ---- ADJACENCY ----
+/// Drives the `ai_reasoning_cycle` *procedure*. One in-flight row per AI; each
+/// cycle re-schedules the next via a one-shot `ScheduleAt::Time` (self-pacing,
+/// allowing staggered starts).
+#[spacetimedb::table(accessor = ai_cycle_schedule, scheduled(ai_reasoning_cycle))]
+pub struct AiCycleSchedule {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub ai_player_id: i32,
+    pub scheduled_at: ScheduleAt,
+}
+
+// ---- PROCEDURE RETURN TYPES ----
+
+#[derive(SpacetimeType)]
+pub struct IntelResult {
+    pub status: String, // "success" | "insufficient_intel" | "no_recent_reasoning"
+    pub intel_text: String,
+    pub ai_player_name: String,
+    pub cycle_timestamp: i64,
+    pub territories_referenced: Vec<i32>,
+}
+
+// ---- ADJACENCY / NAMES ----
 
 fn get_adjacent(territory_id: i32) -> Vec<i32> {
     match territory_id {
@@ -86,11 +162,59 @@ fn get_adjacent(territory_id: i32) -> Vec<i32> {
     }
 }
 
-// ---- HELPERS ----
+fn territory_name(id: i32) -> &'static str {
+    match id {
+        1 => "North America",
+        2 => "Central America",
+        3 => "Caribbean",
+        4 => "South America",
+        5 => "Western Europe",
+        6 => "North Africa",
+        7 => "Southern Africa",
+        8 => "Eastern Europe",
+        9 => "Middle East",
+        10 => "South Asia",
+        11 => "East Asia",
+        12 => "Oceania",
+        _ => "Unknown",
+    }
+}
 
-/// Current server time in milliseconds since the Unix epoch (deterministic).
+fn ai_persona(ai_id: i32) -> (&'static str, &'static str) {
+    match ai_id {
+        2 => (
+            "Zhao",
+            "You are an aggressive military commander. Prioritize military attacks on adjacent territories where you have troop advantage. Invest economically only when no attack targets are available. Deploy agents sparingly, mainly in territories you plan to attack.",
+        ),
+        3 => (
+            "Consortium",
+            "You are a calculating economic power. Prioritize economic investments in territories where you already have military presence. Build capital, then unify. Attack only to defend critical positions. Deploy agents for intel on the human player's economic moves.",
+        ),
+        4 => (
+            "Prophet",
+            "You are an enigmatic strategist who values information above all. Prioritize deploying agents in territories controlled by other players to gather intelligence. Attack and invest opportunistically based on where opponents are weakest. You are unpredictable.",
+        ),
+        _ => ("Unknown", ""),
+    }
+}
+
+fn player_display_name(ctx: &ReducerContext, id: i32) -> String {
+    ctx.db
+        .players()
+        .player_id()
+        .find(id)
+        .map(|p| p.player_name)
+        .unwrap_or_else(|| if id == 0 { "none".to_string() } else { format!("Player {id}") })
+}
+
+// ---- TIME / GAME-STATE HELPERS ----
+
+fn now_millis_ts(ts: spacetimedb::Timestamp) -> i64 {
+    ts.to_micros_since_unix_epoch() / 1000
+}
+
 fn now_millis(ctx: &ReducerContext) -> i64 {
-    ctx.timestamp.to_micros_since_unix_epoch() / 1000
+    now_millis_ts(ctx.timestamp)
 }
 
 fn game_value(ctx: &ReducerContext, key: &str) -> Option<String> {
@@ -113,10 +237,27 @@ fn game_is_active(ctx: &ReducerContext) -> bool {
     game_value(ctx, "status").as_deref() == Some("active")
 }
 
+fn config_value(ctx: &ReducerContext, key: &str) -> Option<String> {
+    ctx.db.module_config().key().find(key.to_string()).map(|r| r.value)
+}
+
+// ---- REDUCERS: CONFIG ----
+
+/// Set a private config value (e.g. the Anthropic API key). Operator-only in
+/// practice; values live in the non-public `module_config` table.
+#[spacetimedb::reducer]
+pub fn set_config(ctx: &ReducerContext, key: String, value: String) {
+    if let Some(mut row) = ctx.db.module_config().key().find(key.clone()) {
+        row.value = value;
+        ctx.db.module_config().key().update(row);
+    } else {
+        ctx.db.module_config().insert(ModuleConfig { key, value });
+    }
+}
+
 // ---- REDUCERS: START GAME ----
 
 /// Seed the board. Idempotent: if a game already exists, returns immediately.
-/// Called by the client on load (whichever player connects first).
 #[spacetimedb::reducer]
 pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
     if game_value(ctx, "status").is_some() {
@@ -125,56 +266,68 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
 
     let ts = now_millis(ctx);
 
-    // Players (1 human blue, 1 human red).
-    ctx.db.players().insert(Player {
-        player_id: 1,
-        player_name: "Player 1".to_string(),
-        color: "#4488FF".to_string(),
-        action_points: STARTING_ACTION_POINTS,
-        last_regen_at: ts,
-    });
-    ctx.db.players().insert(Player {
-        player_id: 2,
-        player_name: "Player 2".to_string(),
-        color: "#FF4444".to_string(),
-        action_points: STARTING_ACTION_POINTS,
-        last_regen_at: ts,
-    });
+    // Players: 1 human + 3 AI.
+    let roster = [
+        (1, "Player", "#4488FF", false),
+        (2, "Zhao", "#FF4444", true),
+        (3, "Consortium", "#FFAA00", true),
+        (4, "Prophet", "#AA44FF", true),
+    ];
+    for (player_id, name, color, is_ai) in roster {
+        ctx.db.players().insert(Player {
+            player_id,
+            player_name: name.to_string(),
+            color: color.to_string(),
+            action_points: STARTING_ACTION_POINTS,
+            last_regen_at: ts,
+            is_ai,
+        });
+    }
 
-    // Game state.
     set_game_value(ctx, "status", "active");
     set_game_value(ctx, "winner", "");
     set_game_value(ctx, "started_at", &ts.to_string());
 
-    // Seed territories: (territory_id, mil_owner, mil_troops, eco_owner, eco_capital).
-    let seed: [(i32, i32, i32, i32, i32); 12] = [
-        (1, 1, 10, 1, 20),
-        (2, 1, 5, 2, 8),
-        (3, 1, 4, 1, 6),
-        (4, 2, 6, 1, 10),
-        (5, 2, 10, 2, 20),
-        (6, 2, 5, 1, 8),
-        (7, 2, 4, 2, 7),
-        (8, 1, 5, 2, 9),
-        (9, 2, 6, 1, 8),
-        (10, 1, 5, 2, 10),
-        (11, 2, 8, 2, 15),
-        (12, 1, 4, 1, 7),
+    // Territory seed: (id, mil_owner, mil_troops, eco_owner, eco_capital, cov_owner, cov_agents).
+    let seed: [(i32, i32, i32, i32, i32, i32, i32); 12] = [
+        (1, 1, 10, 1, 20, 1, 1),
+        (2, 1, 5, 3, 8, 0, 0),
+        (3, 1, 4, 1, 6, 0, 0),
+        (4, 2, 6, 1, 10, 0, 0),
+        (5, 3, 10, 3, 20, 3, 1),
+        (6, 3, 5, 1, 8, 0, 0),
+        (7, 3, 4, 3, 7, 0, 0),
+        (8, 2, 5, 3, 9, 0, 0),
+        (9, 4, 10, 4, 20, 4, 1),
+        (10, 2, 5, 4, 8, 0, 0),
+        (11, 2, 10, 2, 20, 2, 1),
+        (12, 4, 4, 4, 7, 0, 0),
     ];
-    for (territory_id, mil_owner, mil_troops, eco_owner, eco_capital) in seed {
-        ctx.db.military().insert(Military {
-            territory_id,
-            owner_id: mil_owner,
-            troop_count: mil_troops,
+    for (territory_id, mo, mt, eo, ec, co, ca) in seed {
+        ctx.db.military().insert(Military { territory_id, owner_id: mo, troop_count: mt });
+        ctx.db.economic().insert(Economic { territory_id, owner_id: eo, capital: ec });
+        ctx.db.covert().insert(Covert { territory_id, owner_id: co, agent_count: ca });
+    }
+
+    // AI state + staggered reasoning cycles (one-shot Time rows; each cycle
+    // re-schedules itself).
+    for ai_id in [2, 3, 4] {
+        let offset = AI_STAGGER_SECONDS * (ai_id - 2) as u64;
+        let next_at = ctx.timestamp + std::time::Duration::from_secs(offset);
+        ctx.db.ai_state().insert(AiState {
+            ai_player_id: ai_id,
+            cycle_status: "idle".to_string(),
+            last_cycle_at: 0,
+            next_cycle_at: now_millis_ts(next_at),
         });
-        ctx.db.economic().insert(Economic {
-            territory_id,
-            owner_id: eco_owner,
-            capital: eco_capital,
+        ctx.db.ai_cycle_schedule().insert(AiCycleSchedule {
+            scheduled_id: 0,
+            ai_player_id: ai_id,
+            scheduled_at: ScheduleAt::Time(next_at),
         });
     }
 
-    // Arm the action-point regeneration timer.
+    // Action-point regeneration timer.
     ctx.db.regen_timer().insert(RegenTimer {
         scheduled_id: 0,
         scheduled_at: ScheduleAt::Interval(
@@ -182,19 +335,21 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
         ),
     });
 
-    log::info!("Game started: {TOTAL_TERRITORIES} territories seeded.");
+    log::info!("Game started: {TOTAL_PLAYERS} players, {TOTAL_TERRITORIES} territories seeded.");
     Ok(())
 }
 
-// ---- REDUCERS: PLAYER ACTIONS ----
+// ---- ACTION LOGIC (shared by reducers and the AI cycle) ----
 
-/// Drag a Military card onto an adjacent enemy/neutral territory.
-#[spacetimedb::reducer]
-pub fn military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String> {
+fn valid_player(player_id: i32) -> bool {
+    player_id >= 1 && player_id <= TOTAL_PLAYERS
+}
+
+fn do_military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String> {
     if !game_is_active(ctx) {
         return Err("Game has ended.".to_string());
     }
-    if player_id != 1 && player_id != 2 {
+    if !valid_player(player_id) {
         return Err("Invalid player.".to_string());
     }
     if territory_id < 1 || territory_id > TOTAL_TERRITORIES {
@@ -210,17 +365,13 @@ pub fn military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) 
         return Err("Insufficient action points.".to_string());
     }
 
-    // Highest troop count among the player's military in territories adjacent to the target.
     let attacker_troops = get_adjacent(territory_id)
         .into_iter()
         .filter_map(|adj| ctx.db.military().territory_id().find(adj))
         .filter(|m| m.owner_id == player_id)
         .map(|m| m.troop_count)
         .max();
-    let attacker_troops = match attacker_troops {
-        Some(t) => t,
-        None => return Err("No adjacent territory controlled.".to_string()),
-    };
+    let attacker_troops = attacker_troops.ok_or("No adjacent territory controlled.".to_string())?;
 
     let mut target = ctx
         .db
@@ -230,7 +381,6 @@ pub fn military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) 
         .ok_or("Invalid territory.".to_string())?;
     let defender_troops = target.troop_count;
 
-    // Spend the action point.
     player.action_points -= 1;
     ctx.db.players().player_id().update(player);
 
@@ -238,22 +388,19 @@ pub fn military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) 
         target.owner_id = player_id;
         target.troop_count = (attacker_troops - defender_troops).max(MIN_TROOPS);
         ctx.db.military().territory_id().update(target);
-        dimension_owner_change(ctx, territory_id, player_id);
+        dimension_owner_change(ctx, player_id);
     } else {
         target.troop_count = (defender_troops - (attacker_troops / 2)).max(MIN_TROOPS);
         ctx.db.military().territory_id().update(target);
     }
-
     Ok(())
 }
 
-/// Drag an Economic card onto any territory to invest capital.
-#[spacetimedb::reducer]
-pub fn economic_invest(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String> {
+fn do_economic_invest(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String> {
     if !game_is_active(ctx) {
         return Err("Game has ended.".to_string());
     }
-    if player_id != 1 && player_id != 2 {
+    if !valid_player(player_id) {
         return Err("Invalid player.".to_string());
     }
     if territory_id < 1 || territory_id > TOTAL_TERRITORIES {
@@ -276,7 +423,6 @@ pub fn economic_invest(ctx: &ReducerContext, territory_id: i32, player_id: i32) 
         .find(territory_id)
         .ok_or("Invalid territory.".to_string())?;
 
-    // Spend the action point.
     player.action_points -= 1;
     ctx.db.players().player_id().update(player);
 
@@ -284,25 +430,81 @@ pub fn economic_invest(ctx: &ReducerContext, territory_id: i32, player_id: i32) 
     target.capital += ECONOMIC_INVEST_AMOUNT;
     let flipped = player_id != current_owner;
     if flipped {
-        // Investing in a territory you do not own makes your contribution exceed
-        // the prior owner's standing capital, so ownership flips.
         target.owner_id = player_id;
     }
     ctx.db.economic().territory_id().update(target);
 
     if flipped {
-        dimension_owner_change(ctx, territory_id, player_id);
+        dimension_owner_change(ctx, player_id);
     }
-
     Ok(())
 }
 
-// ---- INTERNAL FUNCTIONS ----
+fn do_deploy_agent(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String> {
+    if !game_is_active(ctx) {
+        return Err("Game has ended.".to_string());
+    }
+    if !valid_player(player_id) {
+        return Err("Invalid player.".to_string());
+    }
+    if territory_id < 1 || territory_id > TOTAL_TERRITORIES {
+        return Err("Invalid territory.".to_string());
+    }
+    let mut player = ctx
+        .db
+        .players()
+        .player_id()
+        .find(player_id)
+        .ok_or("Invalid player.".to_string())?;
+    if player.action_points < 1 {
+        return Err("Insufficient action points.".to_string());
+    }
 
-/// Re-evaluate the win condition after an ownership flip. Not a reducer; runs in
-/// the caller's transaction. A player wins by unifying `WIN_UNIFIED_TERRITORIES`
-/// territories (owning both dimensions on the same territory).
-fn dimension_owner_change(ctx: &ReducerContext, _territory_id: i32, new_owner: i32) {
+    let mut target = ctx
+        .db
+        .covert()
+        .territory_id()
+        .find(territory_id)
+        .ok_or("Invalid territory.".to_string())?;
+
+    player.action_points -= 1;
+    ctx.db.players().player_id().update(player);
+
+    let flipped = target.owner_id != player_id;
+    target.agent_count += 1;
+    if flipped {
+        target.owner_id = player_id;
+    }
+    ctx.db.covert().territory_id().update(target);
+
+    if flipped {
+        dimension_owner_change(ctx, player_id);
+    }
+    Ok(())
+}
+
+// ---- REDUCERS: PLAYER ACTIONS (thin wrappers over the shared logic) ----
+
+#[spacetimedb::reducer]
+pub fn military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String> {
+    do_military_attack(ctx, territory_id, player_id)
+}
+
+#[spacetimedb::reducer]
+pub fn economic_invest(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String> {
+    do_economic_invest(ctx, territory_id, player_id)
+}
+
+#[spacetimedb::reducer]
+pub fn deploy_agent(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String> {
+    do_deploy_agent(ctx, territory_id, player_id)
+}
+
+// ---- INTERNAL: WIN CHECK ----
+
+/// Re-evaluate the win condition after an ownership flip. Covert does NOT count
+/// toward unification (only Military + Economic). Runs in the caller's tx.
+fn dimension_owner_change(ctx: &ReducerContext, new_owner: i32) {
     let unified = ctx
         .db
         .military()
@@ -319,13 +521,7 @@ fn dimension_owner_change(ctx: &ReducerContext, _territory_id: i32, new_owner: i
         .count() as i32;
 
     if unified >= WIN_UNIFIED_TERRITORIES {
-        let winner_name = ctx
-            .db
-            .players()
-            .player_id()
-            .find(new_owner)
-            .map(|p| p.player_name)
-            .unwrap_or_else(|| format!("Player {new_owner}"));
+        let winner_name = player_display_name(ctx, new_owner);
         set_game_value(ctx, "status", "ended");
         set_game_value(ctx, "winner", &winner_name);
         log::info!("Game over: {winner_name} unified {unified} territories.");
@@ -334,8 +530,6 @@ fn dimension_owner_change(ctx: &ReducerContext, _territory_id: i32, new_owner: i
 
 // ---- SCHEDULED REDUCERS ----
 
-/// Regenerate one action point per player every `ACTION_REGEN_SECONDS`, capped at
-/// `MAX_ACTION_POINTS`. Deterministic, no external work — a scheduled *reducer*.
 #[spacetimedb::reducer]
 pub fn regenerate_action_points(ctx: &ReducerContext, _timer: RegenTimer) {
     let ts = now_millis(ctx);
@@ -347,4 +541,387 @@ pub fn regenerate_action_points(ctx: &ReducerContext, _timer: RegenTimer) {
             ctx.db.players().player_id().update(player);
         }
     }
+}
+
+// ---- PROCEDURES: AI REASONING CYCLE (Claude via ctx.http) ----
+
+/// Scheduled procedure: one AI plans a turn by calling Claude over HTTP, then
+/// applies the validated actions. Reducers cannot make HTTP calls, so the AI
+/// cycle must be a procedure. Pattern: tx1 (reschedule next + snapshot under a
+/// pending guard) -> HTTP (no tx held open) -> tx2 (apply actions + log + idle).
+#[spacetimedb::procedure]
+pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
+    let ai_id = row.ai_player_id;
+    let now = ctx.timestamp;
+    let next_at = now + std::time::Duration::from_secs(AI_CYCLE_SECONDS);
+
+    // tx1: always re-arm the next cycle (keeps the chain alive), then decide
+    // whether to run. Returns the system prompt + API config when we should run.
+    let plan: Option<(String, String, String)> = ctx.with_tx(|tx| {
+        // Re-schedule the next cycle for this AI.
+        tx.db.ai_cycle_schedule().insert(AiCycleSchedule {
+            scheduled_id: 0,
+            ai_player_id: ai_id,
+            scheduled_at: ScheduleAt::Time(next_at),
+        });
+
+        if !game_is_active(tx) {
+            return None;
+        }
+        let state = tx.db.ai_state().ai_player_id().find(ai_id)?;
+        if state.cycle_status == "pending" {
+            return None; // previous cycle still in flight
+        }
+
+        let api_key = config_value(tx, "anthropic_api_key")?;
+        let model = config_value(tx, "anthropic_model").unwrap_or_else(|| DEFAULT_MODEL.to_string());
+
+        // Mark pending + record schedule.
+        let mut st = state;
+        st.cycle_status = "pending".to_string();
+        st.next_cycle_at = now_millis_ts(next_at);
+        tx.db.ai_state().ai_player_id().update(st);
+
+        Some((build_system_prompt(tx, ai_id), api_key, model))
+    });
+
+    let (system_prompt, api_key, model) = match plan {
+        Some(p) => p,
+        None => return,
+    };
+
+    let result = anthropic_call(
+        ctx,
+        &api_key,
+        &model,
+        &system_prompt,
+        "Decide your moves for this turn. End with the JSON action array.",
+        AI_MAX_TOKENS,
+        AI_LLM_TIMEOUT_SECONDS,
+    );
+
+    // tx2: apply actions + log + return to idle.
+    ctx.with_tx(|tx| {
+        match &result {
+            Ok(text) => {
+                let actions = parse_actions(text);
+                apply_ai_actions(tx, ai_id, &actions, text);
+            }
+            Err(err) => {
+                log::error!("AI {ai_id} Claude call failed: {err}");
+                if let Some(mut st) = tx.db.ai_state().ai_player_id().find(ai_id) {
+                    st.cycle_status = "idle".to_string();
+                    tx.db.ai_state().ai_player_id().update(st);
+                }
+            }
+        }
+    });
+}
+
+/// Build the per-AI system prompt from a live snapshot of the board.
+fn build_system_prompt(ctx: &ReducerContext, ai_id: i32) -> String {
+    let (name, persona) = ai_persona(ai_id);
+    let action_points = ctx
+        .db
+        .players()
+        .player_id()
+        .find(ai_id)
+        .map(|p| p.action_points)
+        .unwrap_or(0);
+
+    let mut territory_list = String::new();
+    let mut controlled = Vec::new();
+    for id in 1..=TOTAL_TERRITORIES {
+        let m = ctx.db.military().territory_id().find(id);
+        let e = ctx.db.economic().territory_id().find(id);
+        let c = ctx.db.covert().territory_id().find(id);
+        let (mo, mt) = m.map(|m| (m.owner_id, m.troop_count)).unwrap_or((0, 0));
+        let (eo, ec) = e.map(|e| (e.owner_id, e.capital)).unwrap_or((0, 0));
+        let (co, ca) = c.map(|c| (c.owner_id, c.agent_count)).unwrap_or((0, 0));
+        territory_list.push_str(&format!(
+            "Territory {id} ({}): Military owner={}({mt}), Economic owner={}({ec}), Covert owner={}({ca})\n",
+            territory_name(id),
+            player_display_name(ctx, mo),
+            player_display_name(ctx, eo),
+            player_display_name(ctx, co),
+        ));
+        if mo == ai_id {
+            controlled.push(id);
+        }
+    }
+
+    let mut adjacency_map = String::new();
+    for id in 1..=TOTAL_TERRITORIES {
+        adjacency_map.push_str(&format!(
+            "{id} ({}): adjacent to {:?}\n",
+            territory_name(id),
+            get_adjacent(id)
+        ));
+    }
+
+    let unified = |pid: i32| -> i32 {
+        ctx.db
+            .military()
+            .iter()
+            .filter(|m| m.owner_id == pid)
+            .filter(|m| {
+                ctx.db
+                    .economic()
+                    .territory_id()
+                    .find(m.territory_id)
+                    .map(|e| e.owner_id == pid)
+                    .unwrap_or(false)
+            })
+            .count() as i32
+    };
+
+    format!(
+        "You are {name}, an AI opponent in the game Risk: Dominion.\n\
+         Your persona: {persona}\n\n\
+         Current game state:\n\
+         - Your action points: {action_points}\n\
+         - Territories:\n{territory_list}\
+         - Your controlled territories: {controlled:?}\n\
+         - Adjacency map:\n{adjacency_map}\
+         - Unified territory counts: Player: {}, Zhao: {}, Consortium: {}, Prophet: {}\n\
+         - Win condition: First to unify {WIN_UNIFIED_TERRITORIES} territories (control both Military and Economic in the same territory)\n\n\
+         Available actions:\n\
+         - military_attack: Attack a territory adjacent to one you control militarily. Requires 1 action point. Attacker troops must exceed defender troops to succeed.\n\
+         - economic_invest: Add 5 capital to a territory. Flips economic ownership if your capital exceeds the current owner. Requires 1 action point.\n\
+         - deploy_agent: Deploy an agent in a territory. Agents gather intel on opponents' plans. Requires 1 action point.\n\n\
+         Explain your strategy in at most 3 short sentences. Do NOT use markdown headers, bullet lists, or numbered plans. Then end your reply with a JSON array of actions as the LAST thing in your response (nothing after it). Each action must have \"action_type\" and \"territory_id\". Example ending:\n\
+         [{{\"action_type\": \"military_attack\", \"territory_id\": 3}}, {{\"action_type\": \"economic_invest\", \"territory_id\": 7}}]\n\n\
+         Do not exceed your available action points ({action_points}).\n\
+         Prioritize actions consistent with your persona.",
+        unified(1), unified(2), unified(3), unified(4),
+    )
+}
+
+/// Apply the AI's chosen actions (within tx2), log reasoning, return to idle.
+fn apply_ai_actions(ctx: &ReducerContext, ai_id: i32, actions: &[(String, i32)], reasoning: &str) {
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    for (action_type, territory_id) in actions {
+        let outcome = match action_type.as_str() {
+            "military_attack" => do_military_attack(ctx, *territory_id, ai_id),
+            "economic_invest" => do_economic_invest(ctx, *territory_id, ai_id),
+            "deploy_agent" => do_deploy_agent(ctx, *territory_id, ai_id),
+            other => Err(format!("Unknown action type: {other}")),
+        };
+        match outcome {
+            Ok(()) => results.push(serde_json::json!({
+                "action_type": action_type, "territory_id": territory_id, "accepted": true
+            })),
+            Err(reason) => results.push(serde_json::json!({
+                "action_type": action_type, "territory_id": territory_id, "accepted": false, "reason": reason
+            })),
+        }
+    }
+
+    let ts = now_millis(ctx);
+    if let Some(mut st) = ctx.db.ai_state().ai_player_id().find(ai_id) {
+        st.cycle_status = "idle".to_string();
+        st.last_cycle_at = ts;
+        ctx.db.ai_state().ai_player_id().update(st);
+    }
+    ctx.db.ai_reasoning_log().insert(AiReasoningLog {
+        id: 0,
+        ai_player_id: ai_id,
+        cycle_at: ts,
+        reasoning_text: reasoning.to_string(),
+        actions_taken: serde_json::Value::Array(results).to_string(),
+    });
+}
+
+/// Tolerant parse of Claude's reply into (action_type, territory_id) pairs.
+/// Claude returns reasoning prose followed by the JSON action array, so we
+/// extract the LAST balanced `[ ... ]` block and parse that.
+fn parse_actions(text: &str) -> Vec<(String, i32)> {
+    let Some(slice) = last_balanced_array(text) else {
+        return Vec::new();
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(slice) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    if let Some(arr) = parsed.as_array() {
+        for item in arr {
+            let at = item.get("action_type").and_then(|v| v.as_str());
+            let tid = item.get("territory_id").and_then(|v| v.as_i64());
+            if let (Some(at), Some(tid)) = (at, tid) {
+                out.push((at.to_string(), tid as i32));
+            }
+        }
+    }
+    out
+}
+
+/// Return the last top-level `[ ... ]` substring (matched by bracket depth from
+/// the final `]` backwards), or `None` if there is no balanced array.
+fn last_balanced_array(text: &str) -> Option<&str> {
+    let end = text.rfind(']')?;
+    let mut depth = 0i32;
+    let mut start = None;
+    for (i, ch) in text[..=end].char_indices().rev() {
+        match ch {
+            ']' => depth += 1,
+            '[' => {
+                depth -= 1;
+                if depth == 0 {
+                    start = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    start.map(|s| &text[s..=end])
+}
+
+/// The single place that builds + sends an Anthropic Messages request and
+/// extracts `content[0].text`. Every Claude-using procedure goes through here.
+fn anthropic_call(
+    ctx: &mut ProcedureContext,
+    api_key: &str,
+    model: &str,
+    system: &str,
+    user: &str,
+    max_tokens: u32,
+    timeout_secs: u64,
+) -> Result<String, String> {
+    let body = serde_json::json!({
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": [{ "role": "user", "content": user }],
+    })
+    .to_string();
+
+    let request = spacetimedb::http::Request::builder()
+        .method("POST")
+        .uri(ANTHROPIC_URL)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", ANTHROPIC_VERSION)
+        .header("content-type", "application/json")
+        .extension(spacetimedb::http::Timeout(TimeDuration::from_micros(
+            (timeout_secs * 1_000_000) as i64,
+        )))
+        .body(body)
+        .map_err(|e| format!("build request: {e}"))?;
+
+    let response = ctx.http.send(request).map_err(|e| format!("http: {e}"))?;
+    let (parts, body) = response.into_parts();
+    let text = body.into_string_lossy();
+    if !parts.status.is_success() {
+        return Err(format!("anthropic status {}: {text}", parts.status));
+    }
+    let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("parse: {e}"))?;
+    value
+        .get("content")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("text"))
+        .and_then(|t| t.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "no content in response".to_string())
+}
+
+// ---- PROCEDURES: INTEL (returns data; no HTTP) ----
+
+/// Returns the latest reasoning for an AI, gated by the human player's agent
+/// presence. A procedure (not a reducer) because it returns structured data.
+#[spacetimedb::procedure]
+pub fn get_intel(ctx: &mut ProcedureContext, ai_player_id: i32) -> IntelResult {
+    ctx.with_tx(|tx| {
+        let (name, _) = ai_persona(ai_player_id);
+        let name = name.to_string();
+
+        if ai_player_id < 2 || ai_player_id > TOTAL_PLAYERS {
+            return IntelResult {
+                status: "insufficient_intel".to_string(),
+                intel_text: "Unknown AI.".to_string(),
+                ai_player_name: name,
+                cycle_timestamp: 0,
+                territories_referenced: Vec::new(),
+            };
+        }
+
+        // Latest reasoning row for this AI.
+        let latest = tx
+            .db
+            .ai_reasoning_log()
+            .iter()
+            .filter(|r| r.ai_player_id == ai_player_id)
+            .max_by_key(|r| r.cycle_at);
+
+        let Some(latest) = latest else {
+            return IntelResult {
+                status: "no_recent_reasoning".to_string(),
+                intel_text: format!(
+                    "No intelligence available yet. {name} has not completed its first planning cycle."
+                ),
+                ai_player_name: name,
+                cycle_timestamp: 0,
+                territories_referenced: Vec::new(),
+            };
+        };
+
+        // Human player's max agent count across territories this AI holds.
+        let mut max_agents = 0;
+        for id in 1..=TOTAL_TERRITORIES {
+            let ai_holds = tx
+                .db
+                .military()
+                .territory_id()
+                .find(id)
+                .map(|m| m.owner_id == ai_player_id)
+                .unwrap_or(false)
+                || tx
+                    .db
+                    .economic()
+                    .territory_id()
+                    .find(id)
+                    .map(|e| e.owner_id == ai_player_id)
+                    .unwrap_or(false);
+            if !ai_holds {
+                continue;
+            }
+            if let Some(c) = tx.db.covert().territory_id().find(id) {
+                if c.owner_id == 1 {
+                    max_agents = max_agents.max(c.agent_count);
+                }
+            }
+        }
+
+        if max_agents < INTEL_THRESHOLD {
+            return IntelResult {
+                status: "insufficient_intel".to_string(),
+                intel_text: format!(
+                    "Insufficient intel. Deploy agents in territories where {name} is active."
+                ),
+                ai_player_name: name,
+                cycle_timestamp: 0,
+                territories_referenced: Vec::new(),
+            };
+        }
+
+        // Collect referenced territory ids from the logged actions.
+        let mut refs = Vec::new();
+        if let Ok(serde_json::Value::Array(arr)) =
+            serde_json::from_str::<serde_json::Value>(&latest.actions_taken)
+        {
+            for item in arr {
+                if let Some(tid) = item.get("territory_id").and_then(|v| v.as_i64()) {
+                    refs.push(tid as i32);
+                }
+            }
+        }
+
+        IntelResult {
+            status: "success".to_string(),
+            intel_text: latest.reasoning_text.clone(),
+            ai_player_name: name,
+            cycle_timestamp: latest.cycle_at,
+            territories_referenced: refs,
+        }
+    })
 }

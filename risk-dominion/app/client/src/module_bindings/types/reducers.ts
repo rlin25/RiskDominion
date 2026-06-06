@@ -6,11 +6,15 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import DeployAgentReducer from "../deploy_agent_reducer";
 import EconomicInvestReducer from "../economic_invest_reducer";
 import MilitaryAttackReducer from "../military_attack_reducer";
+import SetConfigReducer from "../set_config_reducer";
 import StartGameReducer from "../start_game_reducer";
 
+export type DeployAgentParams = __Infer<typeof DeployAgentReducer>;
 export type EconomicInvestParams = __Infer<typeof EconomicInvestReducer>;
 export type MilitaryAttackParams = __Infer<typeof MilitaryAttackReducer>;
+export type SetConfigParams = __Infer<typeof SetConfigReducer>;
 export type StartGameParams = __Infer<typeof StartGameReducer>;
 

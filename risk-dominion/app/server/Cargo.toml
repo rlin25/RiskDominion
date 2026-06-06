@@ -7,5 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-spacetimedb = { version = "2.4.1" }
+# `unstable` enables procedures + ctx.http (Slice 2+: the only way to call Claude).
+spacetimedb = { version = "2.4.1", features = ["unstable"] }
 log = "0.4"
+serde_json = "1"

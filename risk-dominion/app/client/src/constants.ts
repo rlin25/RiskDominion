@@ -40,7 +40,19 @@ export const ADJACENCY: Record<number, number[]> = {
 export const PLAYER_COLORS: Record<number, string> = {
   1: "#4488FF",
   2: "#FF4444",
+  3: "#FFAA00",
+  4: "#AA44FF",
 };
+
+export const TOTAL_PLAYERS = 4;
+export const INTEL_THRESHOLD = 3;
+export const HUMAN_PLAYER_ID = 1;
+
+export const AI_PLAYERS: { id: number; name: string; color: string }[] = [
+  { id: 2, name: "Zhao", color: "#FF4444" },
+  { id: 3, name: "Consortium", color: "#FFAA00" },
+  { id: 4, name: "Prophet", color: "#AA44FF" },
+];
 
 // Three continent groups for map layout (Americas, Europe-Africa, Asia-Oceania).
 export const CONTINENTS: { name: string; territories: number[] }[] = [

@@ -19,17 +19,23 @@ docs); each completed slice is tagged `slice-N-complete`.
 ## Run locally
 
 ```bash
-# 1. Start a local SpacetimeDB (port 3001 to match .env)
-spacetime start --listen-addr 127.0.0.1:3001
+# 1. Start a local SpacetimeDB (default port 3000, matches .env)
+spacetime start
 
-# 2. Publish the module + generate client bindings (from app/)
-spacetime publish risk-dominion-2 --server local3001 -y
+# 2. Build + publish the module (from app/server)
+cd server && spacetime publish risk-dominion --server local -y && cd ..
+
+# 3. Generate client bindings (from app/)
 spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server
 
-# 3. Run the client
+# 4. Run the client (from app/client)
 cd client && npm install && npm run dev
 # Open http://localhost:5173/?player=1 and (second tab) ?player=2
 ```
+
+> Port 3000 must be free. If another dev server (e.g. Next.js) is using it,
+> stop that first, or start SpacetimeDB elsewhere with
+> `spacetime start --listen-addr 127.0.0.1:<port>` and update `.env` to match.
 
 `spacetime dev --client-lang typescript --module-bindings-path ./client/src/module_bindings`
 (run in `server/`) auto-rebuilds, republishes, and regenerates bindings on change.

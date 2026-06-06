@@ -11,10 +11,8 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  playerId: __t.i32().primaryKey().name("player_id"),
-  playerName: __t.string().name("player_name"),
-  color: __t.string(),
-  actionPoints: __t.i32().name("action_points"),
-  lastRegenAt: __t.i64().name("last_regen_at"),
-  isAi: __t.bool().name("is_ai"),
+  aiPlayerId: __t.i32().primaryKey().name("ai_player_id"),
+  cycleStatus: __t.string().name("cycle_status"),
+  lastCycleAt: __t.i64().name("last_cycle_at"),
+  nextCycleAt: __t.i64().name("next_cycle_at"),
 });

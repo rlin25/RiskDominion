@@ -3,36 +3,28 @@ import { DndContext, type DragEndEvent, type DragStartEvent } from "@dnd-kit/cor
 import { useReducer } from "spacetimedb/react";
 import { reducers } from "./module_bindings";
 import { useSubscriptions } from "./hooks/useSubscriptions";
-import {
-  buildTerritoryStates,
-  getValidMilitaryTargets,
-} from "./utils/territoryHelpers";
-import { PLAYER_COLORS, TOTAL_TERRITORIES } from "./constants";
+import { buildTerritoryStates, getValidMilitaryTargets } from "./utils/territoryHelpers";
+import { PLAYER_COLORS, TOTAL_TERRITORIES, HUMAN_PLAYER_ID } from "./constants";
 import type { CardType } from "./types";
 import { Map } from "./components/Map";
 import { CardHand } from "./components/CardHand";
 import { ActionBar } from "./components/ActionBar";
-import { PlayerIndicator } from "./components/PlayerIndicator";
+import { IntelPanel } from "./components/IntelPanel";
 import { VictoryScreen } from "./components/VictoryScreen";
 
-function readPlayerId(): number {
-  const raw = new URLSearchParams(window.location.search).get("player");
-  const id = parseInt(raw ?? "1", 10);
-  return id === 2 ? 2 : 1;
-}
+const PLAYER_ID = HUMAN_PLAYER_ID;
 
 export default function App() {
-  const playerId = useMemo(readPlayerId, []);
-  const { military, economic, players, gameState, isReady } = useSubscriptions();
+  const { military, economic, covert, players, gameState, isReady } = useSubscriptions();
 
   const startGame = useReducer(reducers.startGame);
   const militaryAttack = useReducer(reducers.militaryAttack);
   const economicInvest = useReducer(reducers.economicInvest);
+  const deployAgent = useReducer(reducers.deployAgent);
 
   const [highlighted, setHighlighted] = useState<Set<number>>(new Set());
   const seedAttempted = useRef(false);
 
-  // Seed the game once if no game exists yet (idempotent server-side).
   useEffect(() => {
     if (!isReady || seedAttempted.current) return;
     const hasStatus = gameState.some((row) => row.key === "status");
@@ -43,26 +35,27 @@ export default function App() {
   }, [isReady, gameState, startGame]);
 
   const territories = useMemo(
-    () => buildTerritoryStates(military, economic),
-    [military, economic],
+    () => buildTerritoryStates(military, economic, covert),
+    [military, economic, covert],
   );
 
-  const me = players.find((p) => p.playerId === playerId);
+  const me = players.find((p) => p.playerId === PLAYER_ID);
   const actionPoints = me?.actionPoints ?? 0;
-  const playerColor = PLAYER_COLORS[playerId] ?? "#4488FF";
+  const playerColor = PLAYER_COLORS[PLAYER_ID] ?? "#4488FF";
 
   const status = gameState.find((r) => r.key === "status")?.value ?? "active";
   const winner = gameState.find((r) => r.key === "winner")?.value ?? "";
   const gameEnded = status === "ended";
   const winnerPlayer = players.find((p) => p.playerName === winner);
-  const didWin = winnerPlayer?.playerId === playerId;
+  const didWin = winnerPlayer?.playerId === PLAYER_ID;
 
   function handleDragStart(event: DragStartEvent) {
     const cardType = event.active.data.current?.cardType as CardType | undefined;
     if (!cardType) return;
     if (cardType === "military") {
-      setHighlighted(new Set(getValidMilitaryTargets(military, playerId)));
+      setHighlighted(new Set(getValidMilitaryTargets(military, PLAYER_ID)));
     } else {
+      // Economic and Covert may target any territory.
       setHighlighted(new Set(Array.from({ length: TOTAL_TERRITORIES }, (_, i) => i + 1)));
     }
   }
@@ -74,14 +67,12 @@ export default function App() {
     if (!cardType || territoryId === undefined) return;
 
     if (cardType === "military") {
-      if (!getValidMilitaryTargets(military, playerId).includes(territoryId)) return;
-      militaryAttack({ territoryId, playerId }).catch((e) =>
-        console.warn("military_attack:", e),
-      );
+      if (!getValidMilitaryTargets(military, PLAYER_ID).includes(territoryId)) return;
+      militaryAttack({ territoryId, playerId: PLAYER_ID }).catch((e) => console.warn("military_attack:", e));
+    } else if (cardType === "economic") {
+      economicInvest({ territoryId, playerId: PLAYER_ID }).catch((e) => console.warn("economic_invest:", e));
     } else {
-      economicInvest({ territoryId, playerId }).catch((e) =>
-        console.warn("economic_invest:", e),
-      );
+      deployAgent({ territoryId, playerId: PLAYER_ID }).catch((e) => console.warn("deploy_agent:", e));
     }
   }
 
@@ -97,14 +88,14 @@ export default function App() {
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="relative flex h-full flex-col">
         <div className="flex items-center justify-between px-4 py-3">
-          <PlayerIndicator
-            playerName={me?.playerName ?? `Player ${playerId}`}
-            playerColor={playerColor}
-          />
+          <span className="font-ui text-[12px] text-text-secondary">Risk: Dominion</span>
           <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
         </div>
 
-        <Map territories={territories} highlighted={highlighted} currentPlayerId={playerId} />
+        <div className="flex flex-1 overflow-hidden">
+          <IntelPanel onHighlight={(ids) => setHighlighted(new Set(ids))} />
+          <Map territories={territories} highlighted={highlighted} currentPlayerId={PLAYER_ID} />
+        </div>
 
         <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />
 

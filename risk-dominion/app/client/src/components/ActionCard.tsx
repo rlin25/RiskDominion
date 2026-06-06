@@ -1,11 +1,19 @@
 import { useDraggable } from "@dnd-kit/core";
 import type { CardType } from "../types";
 
-const MILITARY_ACCENT = "#FF6666";
-const ECONOMIC_ACCENT = "#FFCC44";
+const ACCENT: Record<CardType, string> = {
+  military: "#FF6666",
+  economic: "#FFCC44",
+  covert: "#AA44FF",
+};
+const LABEL: Record<CardType, string> = {
+  military: "ATTACK",
+  economic: "INVEST",
+  covert: "DEPLOY",
+};
 
 function CardIcon({ cardType }: { cardType: CardType }) {
-  const color = cardType === "military" ? MILITARY_ACCENT : ECONOMIC_ACCENT;
+  const color = ACCENT[cardType];
   if (cardType === "military") {
     return (
       <svg width="20" height="20" viewBox="0 0 20 20" style={{ color }}>
@@ -19,10 +27,18 @@ function CardIcon({ cardType }: { cardType: CardType }) {
       </svg>
     );
   }
+  if (cardType === "economic") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 20 20" style={{ color }}>
+        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth={2} />
+        <line x1="10" y1="2" x2="10" y2="18" stroke="currentColor" strokeWidth={2} />
+      </svg>
+    );
+  }
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" style={{ color }}>
-      <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth={2} />
-      <line x1="10" y1="2" x2="10" y2="18" stroke="currentColor" strokeWidth={2} />
+      <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth={2} />
+      <circle cx="10" cy="10" r="3" fill="currentColor" />
     </svg>
   );
 }
@@ -40,8 +56,8 @@ export function ActionCard({ id, cardType, disabled }: Props) {
     disabled,
   });
 
-  const accent = cardType === "military" ? MILITARY_ACCENT : ECONOMIC_ACCENT;
-  const label = cardType === "military" ? "ATTACK" : "INVEST";
+  const accent = ACCENT[cardType];
+  const label = LABEL[cardType];
 
   const style: React.CSSProperties = {
     borderLeft: `3px solid ${accent}`,

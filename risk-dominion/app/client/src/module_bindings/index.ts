@@ -34,13 +34,19 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import DeployAgentReducer from "./deploy_agent_reducer";
 import EconomicInvestReducer from "./economic_invest_reducer";
 import MilitaryAttackReducer from "./military_attack_reducer";
+import SetConfigReducer from "./set_config_reducer";
 import StartGameReducer from "./start_game_reducer";
 
 // Import all procedure arg schemas
+import * as GetIntelProcedure from "./get_intel_procedure";
 
 // Import all table schema definitions
+import AiReasoningLogRow from "./ai_reasoning_log_table";
+import AiStateRow from "./ai_state_table";
+import CovertRow from "./covert_table";
 import EconomicRow from "./economic_table";
 import GameStateRow from "./game_state_table";
 import MilitaryRow from "./military_table";
@@ -50,6 +56,39 @@ import PlayersRow from "./players_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  ai_reasoning_log: __table({
+    name: 'ai_reasoning_log',
+    indexes: [
+      { accessor: 'id', name: 'ai_reasoning_log_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'ai_reasoning_log_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, AiReasoningLogRow),
+  ai_state: __table({
+    name: 'ai_state',
+    indexes: [
+      { accessor: 'ai_player_id', name: 'ai_state_ai_player_id_idx_btree', algorithm: 'btree', columns: [
+        'aiPlayerId',
+      ] },
+    ],
+    constraints: [
+      { name: 'ai_state_ai_player_id_key', constraint: 'unique', columns: ['aiPlayerId'] },
+    ],
+  }, AiStateRow),
+  covert: __table({
+    name: 'covert',
+    indexes: [
+      { accessor: 'territory_id', name: 'covert_territory_id_idx_btree', algorithm: 'btree', columns: [
+        'territoryId',
+      ] },
+    ],
+    constraints: [
+      { name: 'covert_territory_id_key', constraint: 'unique', columns: ['territoryId'] },
+    ],
+  }, CovertRow),
   economic: __table({
     name: 'economic',
     indexes: [
@@ -98,13 +137,16 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("deploy_agent", DeployAgentReducer),
   __reducerSchema("economic_invest", EconomicInvestReducer),
   __reducerSchema("military_attack", MilitaryAttackReducer),
+  __reducerSchema("set_config", SetConfigReducer),
   __reducerSchema("start_game", StartGameReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
 const proceduresSchema = __procedures(
+  __procedureSchema("get_intel", GetIntelProcedure.params, GetIntelProcedure.returnType),
 );
 
 /** The remote SpacetimeDB module schema, both runtime and type information. */

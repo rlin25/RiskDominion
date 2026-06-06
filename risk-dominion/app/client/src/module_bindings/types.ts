@@ -10,6 +10,37 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const AiCycleSchedule = __t.object("AiCycleSchedule", {
+  scheduledId: __t.u64(),
+  aiPlayerId: __t.i32(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type AiCycleSchedule = __Infer<typeof AiCycleSchedule>;
+
+export const AiReasoningLog = __t.object("AiReasoningLog", {
+  id: __t.u64(),
+  aiPlayerId: __t.i32(),
+  cycleAt: __t.i64(),
+  reasoningText: __t.string(),
+  actionsTaken: __t.string(),
+});
+export type AiReasoningLog = __Infer<typeof AiReasoningLog>;
+
+export const AiState = __t.object("AiState", {
+  aiPlayerId: __t.i32(),
+  cycleStatus: __t.string(),
+  lastCycleAt: __t.i64(),
+  nextCycleAt: __t.i64(),
+});
+export type AiState = __Infer<typeof AiState>;
+
+export const Covert = __t.object("Covert", {
+  territoryId: __t.i32(),
+  ownerId: __t.i32(),
+  agentCount: __t.i32(),
+});
+export type Covert = __Infer<typeof Covert>;
+
 export const Economic = __t.object("Economic", {
   territoryId: __t.i32(),
   ownerId: __t.i32(),
@@ -23,6 +54,15 @@ export const GameState = __t.object("GameState", {
 });
 export type GameState = __Infer<typeof GameState>;
 
+export const IntelResult = __t.object("IntelResult", {
+  status: __t.string(),
+  intelText: __t.string(),
+  aiPlayerName: __t.string(),
+  cycleTimestamp: __t.i64(),
+  territoriesReferenced: __t.array(__t.i32()),
+});
+export type IntelResult = __Infer<typeof IntelResult>;
+
 export const Military = __t.object("Military", {
   territoryId: __t.i32(),
   ownerId: __t.i32(),
@@ -30,12 +70,19 @@ export const Military = __t.object("Military", {
 });
 export type Military = __Infer<typeof Military>;
 
+export const ModuleConfig = __t.object("ModuleConfig", {
+  key: __t.string(),
+  value: __t.string(),
+});
+export type ModuleConfig = __Infer<typeof ModuleConfig>;
+
 export const Player = __t.object("Player", {
   playerId: __t.i32(),
   playerName: __t.string(),
   color: __t.string(),
   actionPoints: __t.i32(),
   lastRegenAt: __t.i64(),
+  isAi: __t.bool(),
 });
 export type Player = __Infer<typeof Player>;
 

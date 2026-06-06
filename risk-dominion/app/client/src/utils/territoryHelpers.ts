@@ -1,5 +1,5 @@
 import { ADJACENCY, TERRITORY_NAMES } from "../constants";
-import type { MilitaryRow, EconomicRow, TerritoryState } from "../types";
+import type { MilitaryRow, EconomicRow, CovertRow, TerritoryState } from "../types";
 
 export function getAdjacentTerritories(territoryId: number): number[] {
   return ADJACENCY[territoryId] ?? [];
@@ -17,15 +17,19 @@ export function getTerritoryName(territoryId: number): string {
 export function buildTerritoryStates(
   military: readonly MilitaryRow[],
   economic: readonly EconomicRow[],
+  covert: readonly CovertRow[],
 ): TerritoryState[] {
   return military.map((m) => {
     const e = economic.find((row) => row.territoryId === m.territoryId);
+    const c = covert.find((row) => row.territoryId === m.territoryId);
     return {
       territoryId: m.territoryId,
       militaryOwner: m.ownerId,
       troopCount: m.troopCount,
       economicOwner: e?.ownerId ?? 0,
       capital: e?.capital ?? 0,
+      covertOwner: c?.ownerId ?? 0,
+      agentCount: c?.agentCount ?? 0,
     };
   });
 }

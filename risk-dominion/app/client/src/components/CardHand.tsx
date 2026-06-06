@@ -10,9 +10,8 @@ interface Props {
 // with Military. Cards are disabled (and the hand empty) when out of points.
 export function CardHand({ actionPoints, gameEnded }: Props) {
   const count = gameEnded ? 0 : Math.max(0, actionPoints);
-  const cards: CardType[] = Array.from({ length: count }, (_, i) =>
-    i % 2 === 0 ? "military" : "economic",
-  );
+  const cycle: CardType[] = ["military", "economic", "covert"];
+  const cards: CardType[] = Array.from({ length: count }, (_, i) => cycle[i % 3]);
 
   return (
     <div className="flex h-[80px] w-full items-center justify-center gap-3 border-t border-[#334455] bg-bg-surface/90">
