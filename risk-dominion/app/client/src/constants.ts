@@ -56,6 +56,30 @@ export const AI_PLAYERS: { id: number; name: string; color: string }[] = [
   { id: 4, name: "Prophet", color: "#AA44FF" },
 ];
 
+export const EVENT_FEED_MAX_DISPLAY = 50;
+
+export const CANNED_QUERIES: { id: number; label: string }[] = [
+  { id: 0, label: "Weaknesses" },
+  { id: 1, label: "Contested" },
+  { id: 2, label: "Zhao's Targets" },
+  { id: 3, label: "Near Unification" },
+  { id: 4, label: "My Economy" },
+  { id: 5, label: "Thin Covert" },
+  { id: 6, label: "Consortium" },
+  { id: 7, label: "Culture Spread" },
+  { id: 8, label: "My Bonuses" },
+  { id: 9, label: "Winning" },
+];
+
+export const EVENT_TYPE_COLORS: Record<string, string> = {
+  military: "#FF6666",
+  economic: "#FFCC44",
+  cultural: "#44DDAA",
+  covert: "#AA44FF",
+  victory: "#FFD700",
+  system: "#8899AA",
+};
+
 // Three continent groups for map layout (Americas, Europe-Africa, Asia-Oceania).
 export const CONTINENTS: { name: string; territories: number[] }[] = [
   { name: "Americas", territories: [1, 2, 3, 4] },

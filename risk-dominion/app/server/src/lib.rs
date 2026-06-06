@@ -73,6 +73,22 @@ pub struct Cultural {
     pub influence_pct: i32,
 }
 
+/// Narrative event log. Reducers append a row as the last operation of a
+/// state-changing transaction (atomic with the action); the client renders a
+/// scrolling ticker. Never written by clients, never read for game logic.
+#[spacetimedb::table(accessor = event_feed, public)]
+pub struct EventFeed {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub event_at: i64,
+    pub event_text: String,
+    pub territory_id: Option<i32>,
+    pub player_id: Option<i32>,
+    /// One of: military, economic, cultural, covert, victory, system.
+    pub event_type: String,
+}
+
 #[spacetimedb::table(accessor = players, public)]
 pub struct Player {
     #[primary_key]
@@ -263,6 +279,24 @@ fn config_value(ctx: &ReducerContext, key: &str) -> Option<String> {
     ctx.db.module_config().key().find(key.to_string()).map(|r| r.value)
 }
 
+/// Append a narrative event. Shares the caller's transaction.
+fn log_event(
+    ctx: &ReducerContext,
+    event_type: &str,
+    text: String,
+    territory_id: Option<i32>,
+    player_id: Option<i32>,
+) {
+    ctx.db.event_feed().insert(EventFeed {
+        id: 0,
+        event_at: now_millis(ctx),
+        event_text: text,
+        territory_id,
+        player_id,
+        event_type: event_type.to_string(),
+    });
+}
+
 // ---- REDUCERS: CONFIG ----
 
 /// Set a private config value (e.g. the Anthropic API key). Operator-only in
@@ -367,6 +401,13 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
         ),
     });
 
+    log_event(
+        ctx,
+        "system",
+        "Game started. Four factions vie for control.".to_string(),
+        None,
+        None,
+    );
     log::info!("Game started: {TOTAL_PLAYERS} players, {TOTAL_TERRITORIES} territories seeded.");
     Ok(())
 }
@@ -423,18 +464,42 @@ fn do_military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) -
         .find(territory_id)
         .ok_or("Invalid territory.".to_string())?;
     let defender_troops = target.troop_count;
+    let defender_owner = target.owner_id;
 
     player.action_points -= 1;
     ctx.db.players().player_id().update(player);
 
+    let tname = territory_name(territory_id);
     if attacker_troops > defender_troops {
         target.owner_id = player_id;
         target.troop_count = (attacker_troops - defender_troops).max(MIN_TROOPS);
         ctx.db.military().territory_id().update(target);
-        dimension_owner_change(ctx, player_id);
+        log_event(
+            ctx,
+            "military",
+            format!(
+                "{} seized military control of {tname} from {}.",
+                player_display_name(ctx, player_id),
+                player_display_name(ctx, defender_owner),
+            ),
+            Some(territory_id),
+            Some(player_id),
+        );
+        dimension_owner_change(ctx, player_id, territory_id);
     } else {
         target.troop_count = (defender_troops - (attacker_troops / 2)).max(MIN_TROOPS);
         ctx.db.military().territory_id().update(target);
+        log_event(
+            ctx,
+            "military",
+            format!(
+                "{}'s attack on {tname} was repelled by {}.",
+                player_display_name(ctx, player_id),
+                player_display_name(ctx, defender_owner),
+            ),
+            Some(territory_id),
+            Some(defender_owner),
+        );
     }
     Ok(())
 }
@@ -483,14 +548,38 @@ fn do_economic_invest(ctx: &ReducerContext, territory_id: i32, player_id: i32) -
         invest += 1;
     }
     target.capital += invest;
+    let new_capital = target.capital;
     let flipped = player_id != current_owner;
     if flipped {
         target.owner_id = player_id;
     }
     ctx.db.economic().territory_id().update(target);
 
+    let tname = territory_name(territory_id);
     if flipped {
-        dimension_owner_change(ctx, player_id);
+        log_event(
+            ctx,
+            "economic",
+            format!(
+                "{} gained economic control of {tname} from {}.",
+                player_display_name(ctx, player_id),
+                player_display_name(ctx, current_owner),
+            ),
+            Some(territory_id),
+            Some(player_id),
+        );
+        dimension_owner_change(ctx, player_id, territory_id);
+    } else {
+        log_event(
+            ctx,
+            "economic",
+            format!(
+                "{} invested in {tname}. Capital now {new_capital}.",
+                player_display_name(ctx, player_id),
+            ),
+            Some(territory_id),
+            Some(player_id),
+        );
     }
     Ok(())
 }
@@ -532,8 +621,20 @@ fn do_deploy_agent(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> R
     }
     ctx.db.covert().territory_id().update(target);
 
+    log_event(
+        ctx,
+        "covert",
+        format!(
+            "{} deployed an agent in {}.",
+            player_display_name(ctx, player_id),
+            territory_name(territory_id),
+        ),
+        Some(territory_id),
+        Some(player_id),
+    );
+
     if flipped {
-        dimension_owner_change(ctx, player_id);
+        dimension_owner_change(ctx, player_id, territory_id);
     }
     Ok(())
 }
@@ -559,26 +660,44 @@ pub fn deploy_agent(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> 
 
 /// Re-evaluate the win condition after an ownership flip. Covert does NOT count
 /// toward unification (only Military + Economic). Runs in the caller's tx.
-fn dimension_owner_change(ctx: &ReducerContext, new_owner: i32) {
+fn dimension_owner_change(ctx: &ReducerContext, new_owner: i32, territory_id: i32) {
     // Unification requires the same owner across ALL FOUR dimensions (Slice 3+).
     let owns = |table_owner: Option<i32>| table_owner == Some(new_owner);
-    let unified = ctx
-        .db
-        .military()
-        .iter()
-        .filter(|m| m.owner_id == new_owner)
-        .filter(|m| {
-            let eco = owns(ctx.db.economic().territory_id().find(m.territory_id).map(|e| e.owner_id));
-            let cul = owns(ctx.db.cultural().territory_id().find(m.territory_id).map(|c| c.owner_id));
-            let cov = owns(ctx.db.covert().territory_id().find(m.territory_id).map(|c| c.owner_id));
-            eco && cul && cov
-        })
-        .count() as i32;
+    let is_unified = |tid: i32| {
+        owns(ctx.db.military().territory_id().find(tid).map(|m| m.owner_id))
+            && owns(ctx.db.economic().territory_id().find(tid).map(|e| e.owner_id))
+            && owns(ctx.db.cultural().territory_id().find(tid).map(|c| c.owner_id))
+            && owns(ctx.db.covert().territory_id().find(tid).map(|c| c.owner_id))
+    };
+    let unified = (1..=TOTAL_TERRITORIES).filter(|&t| is_unified(t)).count() as i32;
+
+    // Narrate a freshly unified territory.
+    if is_unified(territory_id) {
+        log_event(
+            ctx,
+            "victory",
+            format!(
+                "{} unified {} - {unified} of {WIN_UNIFIED_TERRITORIES} toward victory.",
+                player_display_name(ctx, new_owner),
+                territory_name(territory_id),
+            ),
+            Some(territory_id),
+            Some(new_owner),
+        );
+    }
 
     if unified >= WIN_UNIFIED_TERRITORIES {
         let winner_name = player_display_name(ctx, new_owner);
         set_game_value(ctx, "status", "ended");
         set_game_value(ctx, "winner", &winner_name);
+        set_game_value(ctx, "ended_at", &now_millis(ctx).to_string());
+        log_event(
+            ctx,
+            "victory",
+            format!("{winner_name} wins! All {WIN_UNIFIED_TERRITORIES} territories unified."),
+            None,
+            Some(new_owner),
+        );
         log::info!("Game over: {winner_name} unified {unified} territories.");
     }
 }
@@ -651,7 +770,19 @@ pub fn cultural_spread_tick(ctx: &ReducerContext, _timer: CulturalTimer) {
             row.owner_id = best_player;
             row.influence_pct = 0;
             ctx.db.cultural().territory_id().update(row);
-            dimension_owner_change(ctx, best_player);
+            log_event(
+                ctx,
+                "cultural",
+                format!(
+                    "{}'s cultural influence spread to {}, displacing {}.",
+                    player_display_name(ctx, best_player),
+                    territory_name(t),
+                    player_display_name(ctx, owner_t),
+                ),
+                Some(t),
+                Some(best_player),
+            );
+            dimension_owner_change(ctx, best_player, t);
         } else {
             ctx.db.cultural().territory_id().update(row);
         }
@@ -728,6 +859,14 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
                     st.cycle_status = "idle".to_string();
                     tx.db.ai_state().ai_player_id().update(st);
                 }
+                let (ai_name, _) = ai_persona(ai_id);
+                log_event(
+                    tx,
+                    "system",
+                    format!("{ai_name}'s command appears to be in disarray."),
+                    None,
+                    Some(ai_id),
+                );
             }
         }
     });
@@ -1061,4 +1200,222 @@ pub fn get_intel(ctx: &mut ProcedureContext, ai_player_id: i32) -> IntelResult {
             territories_referenced: refs,
         }
     })
+}
+
+// ---- PROCEDURES: QUERY (Claude HTTP; return data) ----
+
+#[derive(SpacetimeType)]
+pub struct DataTable {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+}
+
+#[derive(SpacetimeType)]
+pub struct QueryResult {
+    pub summary: String,
+    pub highlighted_territories: Vec<i32>,
+    pub data_table: DataTable,
+}
+
+#[derive(SpacetimeType)]
+pub struct AutocompleteResult {
+    pub suggestions: Vec<String>,
+}
+
+const QUERY_SYSTEM: &str =
+    "You are a database query translator for the game Risk: Dominion. Always reply with ONLY valid JSON in the requested shape - no prose, no markdown.";
+
+const CANNED_QUERIES: [&str; 10] = [
+    "The player asks: \"Where am I weakest?\" For each territory, count how many of the four dimensions (military, economic, cultural, covert) are owned by the Player (player_id 1). Return territories where the Player owns the fewest dimensions, weakest first. data_table columns: Territory, Dimensions Controlled, Dimensions Lost, Strongest Opponent.",
+    "The player asks: \"Show contested territories.\" For each territory, count how many distinct players own at least one dimension there. Return territories with 3 or more distinct owners. data_table columns: Territory, Number of Factions, Owners.",
+    "The player asks: \"Where is Zhao about to attack?\" Zhao is player_id 2. Find territories adjacent to Zhao's military-controlled territories where Zhao does NOT already own Military. data_table columns: Territory, Current Military Owner, Zhao's Adjacent Troops.",
+    "The player asks: \"Which territories are closest to unification?\" For each player, count dimensions owned per territory. Return territories where any player owns exactly 3 dimensions. data_table columns: Territory, Player, Missing Dimension, Current Owner of Missing Dimension.",
+    "The player asks: \"Show my economic dominance.\" Return all territories where the Player (player_id 1) owns Economic, sorted by capital descending. Include total capital in the summary. data_table columns: Territory, Your Capital, Runner-Up Capital, Margin.",
+    "The player asks: \"Where is my covert presence too thin?\" Find territories where the Player has no agents but AI opponents have military or economic presence. data_table columns: Territory, Dominant Opponent, Opponent Military, Opponent Economic.",
+    "The player asks: \"What is the Consortium's strongest dimension?\" The Consortium is player_id 3. Count territories the Consortium owns for each dimension and return the highest. data_table columns: Dimension, Territories Controlled, Percentage of Map.",
+    "The player asks: \"Where is cultural influence spreading fastest?\" Find territories where the Cultural owner differs from the Military or Economic owner, sorted by influence_pct descending. Highlight the top 5. data_table columns: Territory, Cultural Owner, Influence %, Territory Military Owner.",
+    "The player asks: \"Show me territories with cross-dimension bonuses.\" For the Player (player_id 1), find territories where the Player owns at least 2 dimensions, and list active bonuses (Military->Economic, Economic->Cultural, Cultural->Covert, Covert->Military). data_table columns: Territory, Dimensions Owned, Active Bonuses.",
+    "The player asks: \"Who is winning?\" Count unified territories (all 4 dimensions owned by the same player) per player. Name the leader in the summary. data_table columns: Player, Unified Territories, Territory Names, Progress (X/5).",
+];
+
+const QUERY_JSON_CONTRACT: &str = "Return ONLY valid JSON with this exact shape: {\"summary\": \"one clear sentence using player and territory names\", \"highlighted_territories\": [territory_id, ...], \"data_table\": {\"columns\": [\"...\"], \"rows\": [[\"...\"]]}}. Use names not IDs in summary and rows. Empty arrays if nothing applies.";
+
+fn query_error_fallback() -> QueryResult {
+    QueryResult {
+        summary: "Query processing failed. Try a canned query or rephrase your question.".to_string(),
+        highlighted_territories: Vec::new(),
+        data_table: DataTable { columns: Vec::new(), rows: Vec::new() },
+    }
+}
+
+/// Read-only textual snapshot of the whole board for query prompts.
+fn build_board_snapshot(ctx: &ReducerContext) -> String {
+    let mut s = String::from("Territories:\n");
+    for id in 1..=TOTAL_TERRITORIES {
+        let (mo, mt) = ctx.db.military().territory_id().find(id).map(|m| (m.owner_id, m.troop_count)).unwrap_or((0, 0));
+        let (eo, ec) = ctx.db.economic().territory_id().find(id).map(|e| (e.owner_id, e.capital)).unwrap_or((0, 0));
+        let (lo, li) = ctx.db.cultural().territory_id().find(id).map(|c| (c.owner_id, c.influence_pct)).unwrap_or((0, 0));
+        let (co, ca) = ctx.db.covert().territory_id().find(id).map(|c| (c.owner_id, c.agent_count)).unwrap_or((0, 0));
+        s.push_str(&format!(
+            "{id} {}: Military={}({mt}), Economic={}({ec}), Cultural={}({li}%), Covert={}({ca}), adjacent {:?}\n",
+            territory_name(id),
+            player_display_name(ctx, mo),
+            player_display_name(ctx, eo),
+            player_display_name(ctx, lo),
+            player_display_name(ctx, co),
+            get_adjacent(id),
+        ));
+    }
+    let unified = |pid: i32| {
+        (1..=TOTAL_TERRITORIES)
+            .filter(|&t| {
+                ctx.db.military().territory_id().find(t).map(|m| m.owner_id == pid).unwrap_or(false)
+                    && ctx.db.economic().territory_id().find(t).map(|e| e.owner_id == pid).unwrap_or(false)
+                    && ctx.db.cultural().territory_id().find(t).map(|c| c.owner_id == pid).unwrap_or(false)
+                    && ctx.db.covert().territory_id().find(t).map(|c| c.owner_id == pid).unwrap_or(false)
+            })
+            .count()
+    };
+    s.push_str(&format!(
+        "Unified counts (of {WIN_UNIFIED_TERRITORIES} to win): Player={}, Zhao={}, Consortium={}, Prophet={}\n",
+        unified(1), unified(2), unified(3), unified(4),
+    ));
+    s
+}
+
+/// Read snapshot + API config in one tx. Returns None if no API key is set.
+fn snapshot_and_config(ctx: &mut ProcedureContext) -> Option<(String, String, String)> {
+    ctx.with_tx(|tx| {
+        let key = config_value(tx, "anthropic_api_key")?;
+        let model = config_value(tx, "anthropic_model").unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        Some((build_board_snapshot(tx), key, model))
+    })
+}
+
+#[spacetimedb::procedure]
+pub fn query_database(ctx: &mut ProcedureContext, query: String) -> QueryResult {
+    let (snapshot, key, model) = match snapshot_and_config(ctx) {
+        Some(v) => v,
+        None => return query_error_fallback(),
+    };
+    let user = format!(
+        "Current game state:\n{snapshot}\nA player asks: \"{query}\"\n\n{QUERY_JSON_CONTRACT}"
+    );
+    match anthropic_call(ctx, &key, &model, QUERY_SYSTEM, &user, 500, 10) {
+        Ok(text) => parse_query_result(&text).unwrap_or_else(query_error_fallback),
+        Err(_) => query_error_fallback(),
+    }
+}
+
+#[spacetimedb::procedure]
+pub fn get_canned_query(ctx: &mut ProcedureContext, query_id: i32) -> QueryResult {
+    if query_id < 0 || query_id as usize >= CANNED_QUERIES.len() {
+        return query_error_fallback();
+    }
+    let (snapshot, key, model) = match snapshot_and_config(ctx) {
+        Some(v) => v,
+        None => return query_error_fallback(),
+    };
+    let user = format!(
+        "Current game state:\n{snapshot}\n{}\n\n{QUERY_JSON_CONTRACT}",
+        CANNED_QUERIES[query_id as usize]
+    );
+    match anthropic_call(ctx, &key, &model, QUERY_SYSTEM, &user, 500, 10) {
+        Ok(text) => parse_query_result(&text).unwrap_or_else(query_error_fallback),
+        Err(_) => query_error_fallback(),
+    }
+}
+
+#[spacetimedb::procedure]
+pub fn autocomplete_query(ctx: &mut ProcedureContext, partial: String) -> AutocompleteResult {
+    if partial.trim().len() < 3 {
+        return AutocompleteResult { suggestions: Vec::new() };
+    }
+    let (snapshot, key, model) = match snapshot_and_config(ctx) {
+        Some(v) => v,
+        None => return AutocompleteResult { suggestions: Vec::new() },
+    };
+    let user = format!(
+        "The player has typed \"{partial}\" in the query bar of Risk: Dominion. Current game state:\n{snapshot}\nSuggest up to 3 strategic questions the player might want to ask. Return ONLY a JSON array of strings, e.g. [\"Where is Zhao strongest?\"]."
+    );
+    match anthropic_call(ctx, &key, &model, QUERY_SYSTEM, &user, 150, 5) {
+        Ok(text) => AutocompleteResult { suggestions: parse_suggestions(&text) },
+        Err(_) => AutocompleteResult { suggestions: Vec::new() },
+    }
+}
+
+fn json_to_string(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+fn parse_query_result(text: &str) -> Option<QueryResult> {
+    let slice = first_balanced_object(text)?;
+    let v: serde_json::Value = serde_json::from_str(slice).ok()?;
+    let summary = v.get("summary").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let highlighted_territories = v
+        .get("highlighted_territories")
+        .and_then(|x| x.as_array())
+        .map(|a| a.iter().filter_map(|n| n.as_i64().map(|i| i as i32)).collect())
+        .unwrap_or_default();
+    let (columns, rows) = match v.get("data_table") {
+        Some(dt) => {
+            let columns = dt
+                .get("columns")
+                .and_then(|c| c.as_array())
+                .map(|a| a.iter().map(json_to_string).collect())
+                .unwrap_or_default();
+            let rows = dt
+                .get("rows")
+                .and_then(|r| r.as_array())
+                .map(|a| {
+                    a.iter()
+                        .map(|row| {
+                            row.as_array()
+                                .map(|cells| cells.iter().map(json_to_string).collect())
+                                .unwrap_or_default()
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            (columns, rows)
+        }
+        None => (Vec::new(), Vec::new()),
+    };
+    Some(QueryResult {
+        summary,
+        highlighted_territories,
+        data_table: DataTable { columns, rows },
+    })
+}
+
+fn parse_suggestions(text: &str) -> Vec<String> {
+    last_balanced_array(text)
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+        .and_then(|v| {
+            v.as_array()
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        })
+        .unwrap_or_default()
+}
+
+/// First balanced `{ ... }` block (depth-matched from the first `{`).
+fn first_balanced_object(text: &str) -> Option<&str> {
+    let start = text.find('{')?;
+    let mut depth = 0i32;
+    for (i, ch) in text[start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&text[start..=start + i]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }

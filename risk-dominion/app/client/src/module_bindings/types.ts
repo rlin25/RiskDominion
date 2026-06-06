@@ -34,6 +34,11 @@ export const AiState = __t.object("AiState", {
 });
 export type AiState = __Infer<typeof AiState>;
 
+export const AutocompleteResult = __t.object("AutocompleteResult", {
+  suggestions: __t.array(__t.string()),
+});
+export type AutocompleteResult = __Infer<typeof AutocompleteResult>;
+
 export const Covert = __t.object("Covert", {
   territoryId: __t.i32(),
   ownerId: __t.i32(),
@@ -54,12 +59,28 @@ export const CulturalTimer = __t.object("CulturalTimer", {
 });
 export type CulturalTimer = __Infer<typeof CulturalTimer>;
 
+export const DataTable = __t.object("DataTable", {
+  columns: __t.array(__t.string()),
+  rows: __t.array(__t.array(__t.string())),
+});
+export type DataTable = __Infer<typeof DataTable>;
+
 export const Economic = __t.object("Economic", {
   territoryId: __t.i32(),
   ownerId: __t.i32(),
   capital: __t.i32(),
 });
 export type Economic = __Infer<typeof Economic>;
+
+export const EventFeed = __t.object("EventFeed", {
+  id: __t.u64(),
+  eventAt: __t.i64(),
+  eventText: __t.string(),
+  territoryId: __t.option(__t.i32()),
+  playerId: __t.option(__t.i32()),
+  eventType: __t.string(),
+});
+export type EventFeed = __Infer<typeof EventFeed>;
 
 export const GameState = __t.object("GameState", {
   key: __t.string(),
@@ -98,6 +119,15 @@ export const Player = __t.object("Player", {
   isAi: __t.bool(),
 });
 export type Player = __Infer<typeof Player>;
+
+export const QueryResult = __t.object("QueryResult", {
+  summary: __t.string(),
+  highlightedTerritories: __t.array(__t.i32()),
+  get dataTable() {
+    return DataTable;
+  },
+});
+export type QueryResult = __Infer<typeof QueryResult>;
 
 export const RegenTimer = __t.object("RegenTimer", {
   scheduledId: __t.u64(),

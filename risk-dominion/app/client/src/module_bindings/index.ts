@@ -41,7 +41,10 @@ import SetConfigReducer from "./set_config_reducer";
 import StartGameReducer from "./start_game_reducer";
 
 // Import all procedure arg schemas
+import * as AutocompleteQueryProcedure from "./autocomplete_query_procedure";
+import * as GetCannedQueryProcedure from "./get_canned_query_procedure";
 import * as GetIntelProcedure from "./get_intel_procedure";
+import * as QueryDatabaseProcedure from "./query_database_procedure";
 
 // Import all table schema definitions
 import AiReasoningLogRow from "./ai_reasoning_log_table";
@@ -49,6 +52,7 @@ import AiStateRow from "./ai_state_table";
 import CovertRow from "./covert_table";
 import CulturalRow from "./cultural_table";
 import EconomicRow from "./economic_table";
+import EventFeedRow from "./event_feed_table";
 import GameStateRow from "./game_state_table";
 import MilitaryRow from "./military_table";
 import PlayersRow from "./players_table";
@@ -112,6 +116,17 @@ const tablesSchema = __schema({
       { name: 'economic_territory_id_key', constraint: 'unique', columns: ['territoryId'] },
     ],
   }, EconomicRow),
+  event_feed: __table({
+    name: 'event_feed',
+    indexes: [
+      { accessor: 'id', name: 'event_feed_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'event_feed_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, EventFeedRow),
   game_state: __table({
     name: 'game_state',
     indexes: [
@@ -158,7 +173,10 @@ const reducersSchema = __reducers(
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
 const proceduresSchema = __procedures(
+  __procedureSchema("autocomplete_query", AutocompleteQueryProcedure.params, AutocompleteQueryProcedure.returnType),
+  __procedureSchema("get_canned_query", GetCannedQueryProcedure.params, GetCannedQueryProcedure.returnType),
   __procedureSchema("get_intel", GetIntelProcedure.params, GetIntelProcedure.returnType),
+  __procedureSchema("query_database", QueryDatabaseProcedure.params, QueryDatabaseProcedure.returnType),
 );
 
 /** The remote SpacetimeDB module schema, both runtime and type information. */

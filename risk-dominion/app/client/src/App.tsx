@@ -10,12 +10,16 @@ import { Map } from "./components/Map";
 import { CardHand } from "./components/CardHand";
 import { ActionBar } from "./components/ActionBar";
 import { IntelPanel } from "./components/IntelPanel";
+import { QueryBar } from "./components/QueryBar";
+import { ResultsPanel } from "./components/ResultsPanel";
+import { EventTicker } from "./components/EventTicker";
 import { VictoryScreen } from "./components/VictoryScreen";
+import type { QueryResult } from "./types";
 
 const PLAYER_ID = HUMAN_PLAYER_ID;
 
 export default function App() {
-  const { military, economic, covert, cultural, players, gameState, isReady } =
+  const { military, economic, covert, cultural, players, gameState, eventFeed, isReady } =
     useSubscriptions();
 
   const startGame = useReducer(reducers.startGame);
@@ -24,7 +28,15 @@ export default function App() {
   const deployAgent = useReducer(reducers.deployAgent);
 
   const [highlighted, setHighlighted] = useState<Set<number>>(new Set());
+  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
+  const [queryHighlights, setQueryHighlights] = useState<number[]>([]);
+  const [tickerHighlight, setTickerHighlight] = useState<number | null>(null);
   const seedAttempted = useRef(false);
+
+  function handleEventClick(territoryId: number) {
+    setTickerHighlight(territoryId);
+    window.setTimeout(() => setTickerHighlight(null), 3000);
+  }
 
   useEffect(() => {
     if (!isReady || seedAttempted.current) return;
@@ -85,20 +97,43 @@ export default function App() {
     );
   }
 
+  const mapHighlights = new Set<number>([
+    ...highlighted,
+    ...queryHighlights,
+    ...(tickerHighlight != null ? [tickerHighlight] : []),
+  ]);
+
   return (
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="relative flex h-full flex-col">
-        <div className="flex items-center justify-between px-4 py-3">
+        <QueryBar
+          onResult={(r) => setQueryResult(r)}
+          onHighlight={(ids) => setQueryHighlights(ids)}
+        />
+
+        <div className="flex items-center justify-between px-4 py-2">
           <span className="font-ui text-[12px] text-text-secondary">Risk: Dominion</span>
           <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
         </div>
 
+        {queryResult && (
+          <ResultsPanel
+            result={queryResult}
+            onClose={() => {
+              setQueryResult(null);
+              setQueryHighlights([]);
+            }}
+          />
+        )}
+
         <div className="flex flex-1 overflow-hidden">
-          <IntelPanel onHighlight={(ids) => setHighlighted(new Set(ids))} />
-          <Map territories={territories} highlighted={highlighted} currentPlayerId={PLAYER_ID} />
+          <IntelPanel onHighlight={(ids) => setQueryHighlights(ids)} />
+          <Map territories={territories} highlighted={mapHighlights} currentPlayerId={PLAYER_ID} />
         </div>
 
         <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />
+
+        <EventTicker events={eventFeed} onEventClick={handleEventClick} />
 
         {gameEnded && (
           <VictoryScreen

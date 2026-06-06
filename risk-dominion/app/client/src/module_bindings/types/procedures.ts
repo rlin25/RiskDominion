@@ -6,8 +6,17 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all procedure arg schemas
+import * as AutocompleteQueryProcedure from "../autocomplete_query_procedure";
+import * as GetCannedQueryProcedure from "../get_canned_query_procedure";
 import * as GetIntelProcedure from "../get_intel_procedure";
+import * as QueryDatabaseProcedure from "../query_database_procedure";
 
+export type AutocompleteQueryArgs = __Infer<typeof AutocompleteQueryProcedure.params>;
+export type AutocompleteQueryResult = __Infer<typeof AutocompleteQueryProcedure.returnType>;
+export type GetCannedQueryArgs = __Infer<typeof GetCannedQueryProcedure.params>;
+export type GetCannedQueryResult = __Infer<typeof GetCannedQueryProcedure.returnType>;
 export type GetIntelArgs = __Infer<typeof GetIntelProcedure.params>;
 export type GetIntelResult = __Infer<typeof GetIntelProcedure.returnType>;
+export type QueryDatabaseArgs = __Infer<typeof QueryDatabaseProcedure.params>;
+export type QueryDatabaseResult = __Infer<typeof QueryDatabaseProcedure.returnType>;
 

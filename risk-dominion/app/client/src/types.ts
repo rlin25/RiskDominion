@@ -10,7 +10,10 @@ export type {
   GameState as GameStateRow,
   AiState as AIStateRow,
   AiReasoningLog as AIReasoningLogRow,
+  EventFeed as EventFeedRow,
   IntelResult,
+  QueryResult,
+  AutocompleteResult,
 } from "./module_bindings/types";
 
 export type CardType = "military" | "economic" | "covert";
