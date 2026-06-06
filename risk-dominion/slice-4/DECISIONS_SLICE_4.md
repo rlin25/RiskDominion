@@ -124,7 +124,6 @@ Slice 4 adds sight and story. It does not change the game.
 | Decision | Outcome |
 |----------|---------|
 | Query system | Natural language query bar at screen top |
-| Query mechanism | LLM translates natural language to structured query against live tables |
 | Canned queries | 10 pre-built buttons covering all dimensions and strategic concerns |
 | Query result format | Summary text, data table (columns + rows), highlighted territory IDs |
 | Query mechanism | All queries — freeform and canned — use Claude to translate natural language against live tables |
@@ -136,9 +135,9 @@ Slice 4 adds sight and story. It does not change the game.
 
 ---
 
-## 5. THE GAME IS COMPLETE
+## 5. AFTER SLICE 4
 
-Slice 4 is the final slice. After this, Risk: Dominion is feature-complete.
+Slice 4 completes the core feature set. After Slice 4, Risk: Dominion has all four dimensions, three AI opponents, cultural spread, natural language queries, and a live event ticker. Slice 5 subsequently adds multi-agent orchestration, keyboard controls, and the human Strategist advisor.
 
 The player can:
 - Drag cards to attack, invest, and deploy agents across four dimensions
@@ -158,4 +157,4 @@ The next document is the Slice 4 Interface Contract. It will specify every new t
 
 ## End of Slice 4 Decisions Document
 
-This document, combined with DECISIONS_SLICE_1.md through DECISIONS_SLICE_3.md, contains the complete design philosophy for Risk: Dominion. All principles from prior slices not explicitly modified here remain in full effect. This is the final decisions document. The game is designed. Now it needs to be built.
+This document, combined with DECISIONS_SLICE_1.md through DECISIONS_SLICE_3.md, contains the design philosophy for Slices 1 through 4. All principles from prior slices not explicitly modified here remain in full effect. See DECISIONS_SLICE_5.md for the advanced capabilities slice.

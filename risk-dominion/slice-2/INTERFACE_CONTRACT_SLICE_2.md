@@ -275,7 +275,7 @@ Extract `territories_referenced` by parsing the `actions_taken` JSON and collect
 **Thread implementation details:**
 - Use `reqwest::blocking::Client` with a 30-second timeout.
 - Read `ANTHROPIC_API_KEY` from environment variables.
-- Read `ANTHROPIC_MODEL` from environment variables (model: `claude-sonnet-4-20250514`).
+- Read `ANTHROPIC_MODEL` from environment variables.
 - Anthropic API endpoint: `https://api.anthropic.com/v1/messages`
 - Headers:
   - `x-api-key: {ANTHROPIC_API_KEY}`

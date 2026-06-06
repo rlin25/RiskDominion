@@ -8,7 +8,7 @@
 
 ## Principle 0: This Is the Final Gate
 
-Slice 4 is the last slice. After this, Risk: Dominion is feature-complete and will be demoed to judges. There is no Slice 5 to catch regressions. Every feature must work.
+Slice 4 completes the core feature set. Every feature added here must work. Slice 5 subsequently adds multi-agent orchestration and keyboard controls — but each slice must be independently stable before the next is applied.
 
 Slice 4 adds the query system (natural language bar, 10 canned queries, Tab autocomplete) and the event ticker (scrolling narrative feed with click-to-highlight). It modifies seven existing reducers to write events — the most widespread change in any slice.
 
@@ -365,20 +365,19 @@ If any condition is not met, fix it before the demo.
 
 ## 8. FINAL NOTE
 
-This is the last implementation strategy document. Slice 4 is the final slice. After validation, Risk: Dominion is complete.
+After Slice 4 validation, proceed to Slice 5 which adds multi-agent orchestration, the human Strategist, and keyboard controls.
 
 The game has come a long way:
 - Slice 1: Two players, two dimensions, hex map, card-driven actions.
 - Slice 2: AI opponents, Covert dimension, intel system.
 - Slice 3: Cultural dimension, cross-dimension bonuses, four-dimension victory.
 - Slice 4: Natural language queries, canned queries, autocomplete, event ticker.
+- Slice 5: Multi-agent orchestration, human Strategist, full keyboard control.
 
 What began as a two-player board game is now a full strategic experience where the database is the battlefield, AI agents are native participants, information itself is a weapon, and the world narrates its own story.
 
-Validate. Polish. Demo. Win.
+Validate. Polish. Proceed to Slice 5.
 
 ---
 
 ## End of Slice 4 Implementation Strategy
-
-This is the final validation document. There is no Slice 5. After this, the game is ready for judges.

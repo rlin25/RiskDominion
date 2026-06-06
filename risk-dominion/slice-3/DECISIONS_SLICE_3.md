@@ -57,7 +57,7 @@ The cycle works like this:
 
 **Cultural enables Covert.** If you control the Cultural dimension in a territory, your agents there operate 10% more effectively. Cultural familiarity provides cover. Agents blend in when they understand the local language and customs. In game terms: your agent count for intel threshold calculations gets a small boost in territories where you own Cultural.
 
-**Covert sharpens Military.** If you have agents in a territory, they provide tactical intelligence for your military operations there. Agents reveal weak points, troop movements, and defensive gaps. In game terms: your agent count in a territory is added directly to your attacking troop count when you launch a military attack there. This is the same bonus that existed in Slice 2 — it is now explicitly part of the cycle.
+**Covert sharpens Military.** If you have agents in a territory, they provide tactical intelligence for your military operations there. Agents reveal weak points, troop movements, and defensive gaps. In game terms: your agent count in a territory is added directly to your attacking troop count when you launch a military attack there. This bonus is new in Slice 3 — it is now explicitly part of the cycle.
 
 These bonuses are small. Ten percent here. Fifteen percent there. They are not gates. You can win a Military victory in a territory where you have no agents. You can flip an Economy without owning the Military there first. The bonuses are tailwinds, not engines. They reward coordinated play without punishing specialization.
 

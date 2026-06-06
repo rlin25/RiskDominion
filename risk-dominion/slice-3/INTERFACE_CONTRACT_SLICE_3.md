@@ -96,7 +96,7 @@ Threshold changed from 3 to 5. Covert now counts toward unification. Cultural co
 **Changes:**
 - Insert 12 rows into the new `cultural` table (see Section 3).
 - Start the new `cultural_spread_tick` scheduled reducer (30-second interval).
-- All other seed data (players, ai_state, military, economic, covert, game_state) remains unchanged from Slice 2.
+- All other seed data (players, ai_state, military, covert, game_state) remains unchanged from Slice 2. Economic seed data for territory 6 (N Africa) changes from Slice 2 (eco_owner: 1 to 3, eco_capital: 8 to 10) per the design intent in DECISIONS_SLICE_3.md — see the full reference table in Section 3 for all values.
 
 ---
 

@@ -1,6 +1,6 @@
-You are in the slice-1/ directory. You are modifying the working Slice 3 codebase to add Slice 4 features — the final slice. Generate all changes relative to this directory.
+You are in the slice-1/ directory. You are modifying the working Slice 3 codebase to add Slice 4 features. Generate all changes relative to this directory.
 
-You are implementing Slice 4 of Risk: Dominion — adding the query system, event ticker, and Tab autocomplete. This is the last slice. After this, the game is complete.
+You are implementing Slice 4 of Risk: Dominion — adding the query system, event ticker, and Tab autocomplete. This is Slice 4 of 5.
 
 Before generating any changes, read every file in the existing Slice 3 codebase:
 - slice-1/server/Cargo.toml
@@ -39,8 +39,7 @@ Key constraints:
 - All styling via Tailwind using AESTHETIC.md tokens. No custom CSS files. No emojis. No em dashes.
 
 Scope boundary:
-- This is Slice 4 of 4 — the FINAL slice. There are no future slices.
-- Generate EVERY feature specified in the masterplan. Do not leave stubs, TODOs, or placeholders for future work. The game must be complete after this generation.
+- This is Slice 4 of 5. Generate EVERY feature specified in the masterplan. Do not leave stubs, TODOs, or placeholders.
 - Do not add new dimensions, new AI opponents, new card types, or new gameplay mechanics. The query system and event ticker are additive — they reveal and narrate the existing game, not change it.
 
 If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_4.md and INTERFACE_CONTRACT_SLICE_4.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
@@ -55,4 +54,4 @@ Success criteria. After applying all modifications:
 7. Results panel opens on query, closes with × button, clears highlights on close.
 8. All Slice 3 gameplay preserved — actions, AI, cultural spread, victory all unchanged. Events are additive.
 
-This is the final generation. After this, Risk: Dominion is complete. Generate now. Output every changed file. Mark each as MODIFIED or NEW.
+Generate now. Output every changed file. Mark each as MODIFIED or NEW.
