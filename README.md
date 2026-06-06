@@ -7,28 +7,46 @@
 ## Architecture
 
 ```mermaid
-flowchart TD
-    subgraph CLIENT["CLIENT -- React + TypeScript + dnd-kit + Tailwind CSS"]
-        UI["Hex map / drag-and-drop cards / query bar / event ticker / Strategist alerts / hotkeys"]
+%%{init: {"theme": "dark"}}%%
+flowchart LR
+    classDef client fill:#0d1729,stroke:#4488FF,stroke-width:2px,color:#c8d8ff
+    classDef server fill:#0a1f12,stroke:#44CC66,stroke-width:2px,color:#c8ffcc
+    classDef ai     fill:#2a0d0d,stroke:#FF6666,stroke-width:2px,color:#ffc8c8
+
+    subgraph C["CLIENT  ·  React  ·  TypeScript  ·  dnd-kit  ·  Tailwind"]
+        MAP["Hex Map"]
+        HAND["Card Hand"]
+        QB["Query Bar"]
+        TICKER["Event Ticker"]
+        ALERTS["Strategist Alerts"]
     end
 
-    subgraph SERVER["SERVER -- SpacetimeDB (Rust)"]
-        TABLES["Tables: military, economic, cultural, covert, players, game_state, event_feed, ai_state, ai_reasoning_log, strategist_log"]
-        REDUCERS["Reducers: game actions, queries, intel"]
-        SCHED["Scheduled: action regen (8s) / cultural spread (30s) / AI cycles (60s) / Strategist (60s)"]
+    subgraph S["SPACETIMEDB  ·  Rust"]
+        RED["Reducers"]
+        TAB["10 Tables"]
+        SCH["Scheduled Reducers"]
     end
 
-    subgraph AILAYER["AI -- Claude (Anthropic API)"]
-        AIORCH["Commander + 4 specialists per AI opponent / Human Strategist advisor / Natural language queries / Tab autocomplete"]
+    subgraph A["CLAUDE  ·  Anthropic API"]
+        ORCH["AI Orchestration"]
+        NLQ["Query Translation"]
+        STRAT["Strategist Advisor"]
     end
 
-    UI -->|"reducer calls"| REDUCERS
-    REDUCERS -->|"table mutations"| TABLES
-    TABLES -->|"live subscriptions"| UI
-    SCHED -->|"spawn parallel threads"| AIORCH
-    AIORCH -->|"AI actions via reducers"| REDUCERS
-    UI -->|"queries + autocomplete"| AIORCH
-    AIORCH -->|"results + alerts"| UI
+    HAND & MAP -->|"actions"| RED
+    QB         -->|"query"| RED
+    RED        -->|"mutate"| TAB
+    TAB        -->|"live subscriptions"| MAP & TICKER & ALERTS
+    SCH        -->|"AI cycles · 60s"| ORCH
+    SCH        -->|"Strategist · 60s"| STRAT
+    RED        -->|"query thread"| NLQ
+    ORCH       -->|"submit actions"| RED
+    NLQ        -->|"structured results"| TAB
+    STRAT      -->|"push alerts"| TAB
+
+    class MAP,HAND,QB,TICKER,ALERTS client
+    class RED,TAB,SCH               server
+    class ORCH,NLQ,STRAT            ai
 ```
 
 ---
