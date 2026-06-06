@@ -1,8 +1,7 @@
-```bash
 #!/usr/bin/env bash
 #
-# setup.sh — Risk: Dominion Environment Setup
-# Run this script from inside the cloned repository.
+# setup.sh -- Risk: Dominion Environment Setup
+# Run this script from inside the risk-dominion/ folder.
 # It installs all dependencies, creates the project structure,
 # configures your Anthropic API key, and verifies everything works.
 #
@@ -26,14 +25,14 @@ MIN_GIT_VERSION="2.0.0"
 MIN_BASH_VERSION="4.0"
 
 REQUIRED_FOLDERS=(
+    "prompts"
     "slice-1"
-    "slice-1/prompts"
     "slice-2"
-    "slice-2/prompts"
     "slice-3"
-    "slice-3/prompts"
     "slice-4"
-    "slice-4/prompts"
+    "slice-5"
+    "slice-6"
+    "slice-7"
 )
 
 REQUIRED_ENV_VARS=(
@@ -66,7 +65,7 @@ VERIFY_FAILED=0
 print_header() {
     echo ""
     echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"
-    echo -e "${CYAN}  Risk: Dominion — Environment Setup${NC}"
+    echo -e "${CYAN}  Risk: Dominion -- Environment Setup${NC}"
     echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"
     echo ""
 }
@@ -346,7 +345,7 @@ configure_env() {
 
     # Prompt for Anthropic API key
     echo ""
-    echo "  An Anthropic API key is needed for AI features (Slices 2-4)."
+    echo "  An Anthropic API key is needed for AI features (Slices 2-7)."
     echo "  Get one at: https://console.anthropic.com"
     echo "  It starts with 'sk-ant-'."
     echo ""
@@ -564,6 +563,20 @@ run_verification() {
         verify_check "Anthropic API key (.env not found)" 1
     fi
 
+    # Prompt files
+    local all_prompts_exist=true
+    for i in 1 2 3 4 5 6 7; do
+        if [ ! -f "prompts/generate_slice_${i}.txt" ]; then
+            all_prompts_exist=false
+            break
+        fi
+    done
+    if [ "$all_prompts_exist" = true ]; then
+        verify_check "Prompt files (generate_slice_1.txt through generate_slice_7.txt)" 0
+    else
+        verify_check "Prompt files (one or more missing from prompts/)" 1
+    fi
+
     # SpacetimeDB start/stop test
     if check_command_exists "spacetime"; then
         echo -e "  ${INFO} Testing SpacetimeDB start..."
@@ -597,6 +610,7 @@ run_verification() {
         echo "  - Wrong versions: update the tool and re-run verification"
         echo "  - Missing .env: run 'bash setup.sh' to configure"
         echo "  - Invalid API key: run 'bash setup.sh --configure-key'"
+        echo "  - Missing prompts: ensure the repo was cloned in full"
     fi
     echo -e "${CYAN}────────────────────────────────────────────────────${NC}"
 }
@@ -606,7 +620,7 @@ run_verification() {
 # ─────────────────────────────────────────────────────────────
 
 show_help() {
-    echo "Risk: Dominion — Environment Setup"
+    echo "Risk: Dominion -- Environment Setup"
     echo ""
     echo "Usage:"
     echo "  bash setup.sh                  Full setup (install + folders + key + verify)"
@@ -616,12 +630,13 @@ show_help() {
     echo ""
     echo "The full setup will:"
     echo "  1. Check for and install missing dependencies (Rust, Node.js, Git, SpacetimeDB CLI)"
-    echo "  2. Create the project folder structure"
+    echo "  2. Create the project folder structure (slice-1 through slice-7, prompts/)"
     echo "  3. Configure your Anthropic API key"
     echo "  4. Run verification on all installed tools"
     echo ""
     echo "Prerequisites:"
-    echo "  - Run this script from inside the risk-dominion/ folder (cd RiskDominion/risk-dominion)"
+    echo "  - Run this script from inside the risk-dominion/ folder"
+    echo "    cd RiskDominion/risk-dominion && bash setup.sh"
     echo "  - Have an Anthropic API key ready (get one at https://console.anthropic.com)"
 }
 
@@ -668,11 +683,11 @@ main() {
     echo -e "${GREEN}  Setup complete!${NC}"
     echo ""
     echo "  Next steps:"
-    echo "  1. Open slice-1/prompts/generate.txt"
-    echo "  2. Copy its entire contents"
-    echo "  3. Open Claude Code in your terminal"
-    echo "  4. Paste and press Enter"
-    echo "  5. Claude Code will generate the Slice 1 application"
+    echo "  1. Open prompts/generate_slice_1.txt in Claude Code"
+    echo "  2. Claude Code will generate the Slice 1 application into slice-1/"
+    echo "  3. Start the SpacetimeDB server: spacetime start"
+    echo "  4. Open http://localhost:5173"
+    echo "  5. For each subsequent slice, open prompts/generate_slice_N.txt"
     echo ""
     echo "  For help: bash setup.sh --help"
     echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
@@ -680,4 +695,3 @@ main() {
 }
 
 main "$@"
-```
