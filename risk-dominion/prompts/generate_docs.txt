@@ -24,7 +24,7 @@ Structure:
   - **Server:** SpacetimeDB. Tables (military, economic, cultural, covert, players, game_state, event_feed, ai_state, ai_reasoning_log, strategist_log), reducers (game actions, queries, intel), scheduled reducers (action regen, cultural spread, AI cycles, Strategist cycle).
   - **AI:** Claude (Anthropic API). Commander + 4 specialist subordinates per AI opponent. Human Strategist advisor. Natural language query translation. Tab autocomplete.
   - Arrows: Client → Reducers → Tables → Subscriptions → Client (real-time loop). Scheduled Reducers → Claude → AI Actions → Reducers. Query Bar → Claude → Results → Client. Strategist Cycle → Claude → Alerts → Client.
-- **Quick start:** 3-4 lines. "Clone the repo. Run bash setup.sh. Open slice-1/prompts/generate_slice_1.txt in Claude Code. Start the server. Open localhost:5173."
+- **Quick start:** 3-4 lines. "Clone the repo. Run bash setup.sh. Open prompts/generate_slice_1.txt in Claude Code. Start the server. Open localhost:5173."
 - **Features:** Bullet list covering all five slices. Four dimensions, AI opponents with orchestration, cultural spread with cross-dimension bonuses, natural language query system, live event ticker, keyboard controls, Strategist advisor, Tab autocomplete.
 - **Tech stack table:** SpacetimeDB, Rust, React 18, TypeScript, Vite, dnd-kit, Tailwind CSS, Claude (Anthropic API).
 - **Slice structure:** Brief explanation of what each slice adds. Slice 1: core gameplay. Slice 2: AI opponents. Slice 3: cultural dimension. Slice 4: query system + ticker. Slice 5: orchestration + hotkeys.
