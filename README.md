@@ -14,23 +14,23 @@ flowchart LR
     classDef ai fill:#2a0d0d,stroke:#FF6666,stroke-width:2px,color:#ffc8c8
 
     subgraph C["CLIENT - React / TypeScript / dnd-kit / Tailwind"]
-        MAP["Hex Map"]:::client
-        HAND["Card Hand"]:::client
-        QB["Query Bar"]:::client
-        TICKER["Event Ticker"]:::client
-        ALERTS["Strategist Alerts"]:::client
+        MAP("Hex Map"):::client
+        HAND("Card Hand"):::client
+        QB("Query Bar"):::client
+        TICKER("Event Ticker"):::client
+        ALERTS("Strategist Alerts"):::client
     end
 
     subgraph S["SPACETIMEDB - Rust"]
-        RED["Reducers"]:::server
-        TAB["10 Tables"]:::server
-        SCH["Scheduled Reducers"]:::server
+        RED("Reducers"):::server
+        TAB("10 Tables"):::server
+        SCH("Scheduled Reducers"):::server
     end
 
     subgraph A["CLAUDE - Anthropic API"]
-        ORCH["AI Orchestration"]:::ai
-        NLQ["Query Translation"]:::ai
-        STRAT["Strategist Advisor"]:::ai
+        ORCH("AI Orchestration"):::ai
+        NLQ("Query Translation"):::ai
+        STRAT("Strategist Advisor"):::ai
     end
 
     MAP -->|"actions"| RED
