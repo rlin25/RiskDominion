@@ -42,7 +42,7 @@ Key constraints:
 - No emojis. No em dashes. No custom CSS files. All styling via Tailwind using AESTHETIC.md tokens.
 
 Scope boundary:
-- This is Slice 2 of 5. Add ONLY what is specified in the masterplan.
+- This is Slice 2 of 7. Add ONLY what is specified in the masterplan.
 - Do NOT add: Cultural dimension, cultural_spread_tick, cross-dimension bonuses, query bar, event ticker.
 - The game is three dimensions (Military, Economic, Covert) and single-player against AI. Nothing more.
 

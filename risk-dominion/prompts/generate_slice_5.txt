@@ -1,6 +1,6 @@
 You are in the slice-1/ directory. You are modifying the working Slice 4 codebase to add Slice 5 features — the final slice. Generate all changes relative to this directory.
 
-You are implementing Slice 5 of Risk: Dominion — adding subagent orchestration, keyboard controls, and the human Strategist advisor. This is the last slice. After this, the game is complete.
+You are implementing Slice 5 of Risk: Dominion — adding subagent orchestration, keyboard controls, and the human Strategist advisor.
 
 Before generating any changes, read every file in the existing Slice 4 codebase:
 - slice-1/server/Cargo.toml
@@ -50,7 +50,7 @@ Key constraints:
 - All styling via Tailwind using AESTHETIC.md tokens. No emojis. No em dashes. No custom CSS files.
 
 Scope boundary:
-- This is Slice 5 of 5 — the FINAL slice. There are no future slices.
+- This is Slice 5 of 7. Add ONLY what is specified in the masterplan.
 - Generate EVERY feature specified in the masterplan. Do not leave stubs, TODOs, or placeholders.
 - Do not add new dimensions, new AI opponents, new card types, or new gameplay mechanics. Orchestration and hotkeys enhance existing systems.
 

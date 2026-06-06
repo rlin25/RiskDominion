@@ -23,7 +23,7 @@ flowchart LR
 
     subgraph S["SPACETIMEDB - Rust"]
         RED("Reducers"):::server
-        TAB("10 Tables"):::server
+        TAB("12 Tables"):::server
         SCH("Scheduled Reducers"):::server
     end
 
@@ -118,7 +118,7 @@ Open `prompts/generate_slice_1.txt` in Claude Code. Follow the generation instru
 
 - [GLOSSARY.md](risk-dominion/GLOSSARY.md) -- Every game term defined in plain English for judges and new players
 - [ARCHITECTURE.md](risk-dominion/ARCHITECTURE.md) -- Technical deep-dive: tables, reducers, AI orchestration, data flow diagrams
-- [DEMO_SCRIPT.md](risk-dominion/DEMO_SCRIPT.md) -- Timed 5-minute walkthrough script for presenting to judges
+- [DEMO_SCRIPT.md](risk-dominion/DEMO_SCRIPT.md) -- Timed 7-minute walkthrough script for presenting to judges
 - [AESTHETIC.md](risk-dominion/AESTHETIC.md) -- Visual design system: colors, fonts, territory rendering, component specs
 - [SETUP.md](risk-dominion/SETUP.md) -- Environment setup, verification, and troubleshooting
 

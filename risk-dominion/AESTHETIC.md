@@ -1,7 +1,7 @@
 # AESTHETIC.md — Risk: Dominion Visual Design System
 
 ## Version 1.0
-## Scope: All Slices (1–4)
+## Scope: All Slices (1–7)
 ## Target: Claude Code Generation — Visual Consistency Across the Entire Project
 
 ---
@@ -405,4 +405,4 @@ module.exports = {
 
 ## End of AESTHETIC.md
 
-Every generated component must reference this document for colors, fonts, spacing, and animation values. Use the Tailwind config tokens defined here. Never hardcode hex values or font families in component code. The visual identity of Risk: Dominion is a single, coherent system. Maintain it across all four slices.
+Every generated component must reference this document for colors, fonts, spacing, and animation values. Use the Tailwind config tokens defined here. Never hardcode hex values or font families in component code. The visual identity of Risk: Dominion is a single, coherent system. Maintain it across all seven slices.

@@ -42,7 +42,7 @@ Key constraints:
 - No emojis. No em dashes. No custom CSS files.
 
 Scope boundary:
-- This is Slice 3 of 5. Add ONLY what is specified in the masterplan.
+- This is Slice 3 of 7. Add ONLY what is specified in the masterplan.
 - Do NOT add: query bar, query_database, get_canned_query, event feed table, event ticker.
 - The game now has all four dimensions. Slice 4 will add the query system and event ticker.
 

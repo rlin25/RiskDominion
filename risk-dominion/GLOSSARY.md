@@ -8,7 +8,7 @@ For technical implementation details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Category Index
 
-- [Game Concepts](#game-concepts): Action Points, Cross-Dimension Bonus, Information Warfare, Pre-Seeded Board, Real-Time, Risk: Dominion, Territory, Unified Territory Count, Unification, Victory Condition
+- [Game Concepts](#game-concepts): Action Points, Cross-Dimension Bonus, Information Warfare, Pre-Seeded Board, Real-Time, Risk: Dominion, Territory, Unification, Unified Territory Count, Victory Condition
 - [Dimensions](#dimensions): Covert, Cultural, Dimension, Economic, Military, Quadrant Map, Split Ownership
 - [Actions](#actions): Action Card, Card Hand, Deploy Agent, Drag-and-Drop, Economic Invest, Military Attack
 - [AI Systems](#ai-systems): AI Opponent, Commander, Consortium, Deliberation Chain, Intel, Intel Threshold, Orchestration, Persona, Prophet, Reasoning Cycle, Specialist, Strategist, Strategist Alert, Subordinate, Trust Score, Zhao
@@ -25,7 +25,7 @@ The currency you spend to take actions. Each player has a pool of action points,
 A small mechanical advantage granted when you own multiple dimensions in the same territory. The four bonuses form a cycle: Military ownership makes economic investments in that territory more effective. Economic ownership amplifies the cultural pressure a territory exerts on its neighbors. Cultural ownership makes your agents in that territory count more effectively toward the intel threshold. Covert ownership (agents) adds to your attacking troop count when striking from that territory. The bonuses are modest by design -- they reward coordinated play without punishing specialization. See also: Dimension, Split Ownership.
 
 **Information Warfare**
-The strategic practice of learning what AI opponents are planning before they execute. Because AI reasoning is stored as text in a database table, a player with sufficient covert presence can read it. Information warfare means choosing to invest action points in agents rather than attacks -- trading short-term power for intelligence. See also: Intel, Covert, Deliberation Chain.
+The strategic practice of shaping your information environment -- both gathering intelligence on opponents and feeding them false information. Covert presence lets you read AI reasoning stored in the database. In Slice 6, the battlefield extends to the chat channel: AI opponents actively lie, issue false warnings, and attempt to manipulate you into fighting their enemies. The Strategist cross-references AI chat claims against your agent network and flags likely deceptions. Information warfare now has two fronts: the intel system (what you learn about them) and the chat channel (what they want you to believe). See also: Intel, Covert, Trust Score, Deliberation Chain.
 
 **Pre-Seeded Board**
 The game does not start from an empty map. All 12 territories are populated with split ownership across dimensions before the first action is taken. Home territories (North America for the player, Western Europe for the Consortium, East Asia for Zhao, Middle East for the Prophet) are unified under their home factions. The remaining 8 territories are fractured, with different players owning different dimensions and cultural influence already accumulating. The game starts mid-conflict, not at peace.
@@ -39,11 +39,11 @@ A real-time strategy game built on SpacetimeDB where the battlefield is a live m
 **Territory**
 One of 12 named regions on the hex map. Territories are grouped into three continents: the Americas (North America, Central America, Caribbean, South America), Europe-Africa (Western Europe, North Africa, Southern Africa, Eastern Europe), and Asia-Oceania (Middle East, South Asia, East Asia, Oceania). Each territory has four dimensions of ownership that can be held by different players simultaneously. See also: Dimension, Split Ownership, Quadrant Map.
 
-**Unified Territory Count**
-The number of territories in which a single player owns all four dimensions simultaneously. This is the game's score. Victory requires a count of 5. The count is dynamic -- a territory that was unified can become fragmented again if any single dimension flips to another player. See also: Unification, Victory Condition.
-
 **Unification**
 A territory is unified when the same player owns all four dimensions -- Military, Economic, Cultural, and Covert -- at the same time. Unification is not permanent. If any dimension flips to another player, the territory is no longer unified. The player who unifies 5 territories first wins. See also: Unified Territory Count, Victory Condition.
+
+**Unified Territory Count**
+The number of territories in which a single player owns all four dimensions simultaneously. This is the game's score. Victory requires a count of 5. The count is dynamic -- a territory that was unified can become fragmented again if any single dimension flips to another player. See also: Unification, Victory Condition.
 
 **Victory Condition**
 The first player to unify 5 territories wins. A territory counts as unified only when one player owns all four of its dimensions (Military, Economic, Cultural, Covert) simultaneously. The win check runs after every dimension ownership change. There is no end-of-round resolution. The moment the fifth territory unifies, the game ends immediately. See also: Unification, Unified Territory Count.
@@ -141,7 +141,7 @@ In Slice 5, one of four domain-focused Claude agents that analyze a subset of th
 The player's AI advisor. Unlike the three AI opponents, the Strategist is not an adversary -- it is an ally. It runs its own 60-second cycle, offset 50 seconds from game start. Each cycle, it analyzes the full game state and identifies up to 3 notifications for the player: threats (what should concern you), opportunities (where you can gain an advantage), and weaknesses (where you are vulnerable). Notifications appear as dismissable alert cards in the top-right of the screen. The Strategist can also be queried directly through the query bar. See also: Strategist Alert, Reasoning Cycle.
 
 **Strategist Alert**
-A notification card generated by the Strategist and displayed in the top-right of the screen. Each alert has a priority level -- critical (red, pulsing border), warning (orange), or info (gray) -- and actionable text. If the alert references a specific territory, clicking the card body highlights that territory on the map. Alerts can be dismissed individually with the X button. Up to three active (non-dismissed) alerts are shown at a time. See also: Strategist.
+A notification card generated by the Strategist and displayed in the top-right of the screen. Each alert has a priority level -- critical (red, pulsing border), warning (orange), or info (gray) -- and actionable text. Alerts fall into three categories: threats (what should concern you), opportunities (where you can gain advantage), weaknesses (where you are vulnerable), and -- added in Slice 6 -- Chat Analysis (when the Strategist cross-references an AI chat claim against your agent network and finds it likely false). If the alert references a specific territory, clicking the card body highlights that territory on the map. Alerts can be dismissed individually with the X button. Up to three active (non-dismissed) alerts are shown at a time. See also: Strategist, Trust Score.
 
 **Subordinate**
 Any AI agent that operates below a commander in an orchestration hierarchy. In the context of Risk: Dominion, the four domain specialists are subordinates of their faction's commander. The Strategist is a subordinate of the player (a helpful one, not adversarial). Each subordinate has a named identity that reflects the AI faction's persona. See also: Specialist, Commander, Orchestration.
@@ -157,7 +157,7 @@ One of three AI opponents. Player color: red. Zhao plays as an aggressive milita
 ## Technical Terms
 
 **Claude**
-The large language model (LLM) made by Anthropic, accessed through the Anthropic API. In Risk: Dominion, Claude is used for: AI opponent reasoning cycles, specialist subordinate analysis, natural language query translation, Tab autocomplete suggestions, and Strategist advisor analysis. All Claude calls are made server-side from within SpacetimeDB scheduled reducers, using spawned threads to avoid blocking the game. See also: LLM, Reasoning Cycle, Query System.
+The large language model (LLM) made by Anthropic, accessed through the Anthropic API. In Risk: Dominion, Claude is used for: AI opponent reasoning cycles, specialist subordinate analysis, natural language query translation, Tab autocomplete suggestions, Strategist advisor analysis, and AI chat message generation. All Claude calls are made server-side from within SpacetimeDB scheduled reducers, using spawned threads to avoid blocking the game. See also: LLM, Reasoning Cycle, Strategist.
 
 **Fire-and-Forget**
 A pattern for writing to the event feed table inside a reducer without letting that write affect the reducer's primary outcome. Event writes are wrapped so that if the write fails, the main state change (the attack, the investment, etc.) still succeeds and persists. The event feed cannot break the game. This design choice ensures that a narrative side-effect never blocks or rolls back a core gameplay transaction. See also: Reducer, SpacetimeDB.

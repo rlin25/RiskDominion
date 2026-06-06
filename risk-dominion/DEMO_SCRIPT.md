@@ -78,7 +78,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 
 ---
 
-## 2:30-3:15 -- AI Orchestration [Slice 5]
+## 2:30-3:30 -- AI Orchestration [Slice 5]
 
 **Say:**
 "The AI opponents aren't simple bots. Each one runs a council of specialists."
@@ -99,7 +99,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 
 ---
 
-## 3:15-3:45 -- Strategist and Alerts [Slice 5]
+## 3:30-4:15 -- Strategist and Alerts [Slice 5]
 
 **Say:**
 "I also have an AI on my side."
@@ -120,7 +120,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 
 ---
 
-## 3:45-4:15 -- Hotkeys [Slice 5]
+## 4:15-4:45 -- Hotkeys [Slice 5]
 
 **Say:**
 "And I can command all of this from the keyboard."
@@ -142,7 +142,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 
 ---
 
-## 4:15-5:15 -- Deception and Chat [Slice 6]
+## 4:45-5:45 -- Deception and Chat [Slice 6]
 
 **Say:**
 "And then there is the fifth dimension of conflict: deception."
@@ -166,7 +166,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 
 ---
 
-## 5:15-6:15 -- Spectator and Replay [Slice 7]
+## 5:45-6:45 -- Spectator and Replay [Slice 7]
 
 **Say:**
 "Let me show you what the database looks like from outside the game."
@@ -193,7 +193,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 
 ---
 
-## 6:15-6:30 -- Wrap Up
+## 6:45-7:00 -- Wrap Up
 
 **Say:**
 "Risk: Dominion. Four dimensions. AI opponents that deliberate through councils of specialists. A database you can interrogate in plain English. A chat channel where every message is a potential weapon. And a complete replay of every thought the AI ever had."

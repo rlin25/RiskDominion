@@ -16,7 +16,7 @@ Risk: Dominion is a single-page React application connected to a SpacetimeDB ser
 
 ### Tables
 
-There are ten tables. Four dimension tables hold the core game state. The rest support players, AI, events, and queries.
+There are twelve tables. Four dimension tables hold the core game state. The rest support players, AI, events, queries, and communication.
 
 | Table | Primary Key | Key Columns | Purpose |
 |-------|-------------|-------------|---------|
@@ -25,7 +25,7 @@ There are ten tables. Four dimension tables hold the core game state. The rest s
 | `cultural` | `territory_id` | `owner_id`, `influence_pct` | Cultural dimension ownership and accumulating influence |
 | `covert` | `territory_id` | `owner_id`, `agent_count` | Covert dimension ownership and agent count |
 | `players` | `player_id` | `player_name`, `color`, `action_points`, `is_ai` | All players -- human and AI share the same table |
-| `game_state` | `key` | `value` | Global flags: `status` (active/ended), `winner` |
+| `game_state` | `key` | `value`, `started_at`, `ended_at` | Global flags: `status` (active/ended), `winner`; `ended_at` set on victory (used for replay timeline bounds) |
 | `event_feed` | `id` (auto) | `event_text`, `player_id`, `territory_id`, `event_type`, `timestamp` | Narrative events for the ticker |
 | `ai_state` | `ai_player_id` | `cycle_status`, `last_cycle_at` | Whether each AI is idle or mid-cycle |
 | `ai_reasoning_log` | `id` (auto) | `ai_player_id`, `cycle_at`, `subordinate_id`, `reasoning_text`, `actions_taken` | Full deliberation chain per AI cycle |

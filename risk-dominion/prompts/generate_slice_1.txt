@@ -18,7 +18,7 @@ Key constraints:
 - Two human players via URL parameter (?player=1, ?player=2). Shared SpacetimeDB instance.
 
 Scope boundary:
-- This is Slice 1 of 5. Generate ONLY what is specified in the masterplan.
+- This is Slice 1 of 7. Generate ONLY what is specified in the masterplan.
 - Do NOT generate: AI opponents, Cultural dimension, Covert dimension, query bar, event ticker, intel panel, debug panel.
 - The game is two dimensions (Military, Economic) and two human players. Nothing more.
 

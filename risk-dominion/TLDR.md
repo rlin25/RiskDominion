@@ -17,6 +17,8 @@ Current slice progress during the hackathon. Update as each slice is validated.
 | 3 | Cultural dimension, cross-dimension bonuses | ⬜ |
 | 4 | Query system, event ticker, autocomplete | ⬜ |
 | 5 | Subagent orchestration, hotkeys, Strategist | ⬜ |
+| 6 | Global chat with AI deception and trust scoring | ⬜ |
+| 7 | Spectator mode and replay system | ⬜ |
 
 ---
 
@@ -47,6 +49,10 @@ A React frontend connects to a SpacetimeDB server written in Rust. All game stat
 - Live event ticker narrates every action in real time for spectators
 - Keyboard controls for every common action (WASD navigation, card hotkeys, panel toggles)
 - Human Strategist AI advisor that watches the game and pushes proactive alerts
+- Global chat channel where AI opponents lie, threaten, and attempt to manipulate you
+- Per-player AI trust scores updated by cross-referencing chat claims against agent networks
+- Spectator mode with a hidden-state overlay showing trust scores, dimension dominance, and AI cycle status
+- Replay system: scrub through the full post-game history to see AI deliberation and chat at any moment
 - Hex map with X-split quadrant territory rendering
 - Victory by unifying 5 territories across all four dimensions
 
@@ -69,6 +75,6 @@ Clone the repo. Run `bash setup.sh`. Follow the prompts. Open `prompts/generate_
 - **README.md** — Full project overview with architecture diagram
 - **ARCHITECTURE.md** — Technical deep-dive into the system design
 - **GLOSSARY.md** — Every game term defined in plain English
-- **DEMO_SCRIPT.md** — Timed 5-minute walkthrough for presenting to judges
+- **DEMO_SCRIPT.md** — Timed 7-minute walkthrough for presenting to judges
 - **AESTHETIC.md** — Visual design system (colors, fonts, territory design)
 - **SETUP.md** — Environment setup guide
