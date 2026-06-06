@@ -31,6 +31,11 @@ const AI_CYCLE_SECONDS: u64 = 60;
 const AI_STAGGER_SECONDS: u64 = 20;
 const AI_LLM_TIMEOUT_SECONDS: u64 = 30;
 const AI_MAX_TOKENS: u32 = 1500;
+const SPECIALIST_LLM_TIMEOUT_SECONDS: u64 = 15;
+const STRATEGIST_CYCLE_SECONDS: u64 = 60;
+const STRATEGIST_OFFSET_SECONDS: u64 = 50;
+const STRATEGIST_MAX_TOKENS: u32 = 300;
+const STRATEGIST_TIMEOUT_SECONDS: u64 = 15;
 const INTEL_THRESHOLD: i32 = 3;
 
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -125,6 +130,23 @@ pub struct AiReasoningLog {
     pub cycle_at: i64,
     pub reasoning_text: String,
     pub actions_taken: String, // JSON array
+    /// Which agent produced this row: a specialist id, or "commander".
+    pub subordinate_id: String,
+}
+
+/// Advisor notifications for the human player (Slice 5). Public so the client
+/// can subscribe; written by the strategist_cycle procedure.
+#[spacetimedb::table(accessor = strategist_log, public)]
+pub struct StrategistLog {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub created_at: i64,
+    pub notification: String,
+    pub priority: String, // "critical" | "warning" | "info"
+    pub territory_id: i32, // 0 = none
+    pub player_id: i32,
+    pub dismissed: bool,
 }
 
 /// Private module configuration (e.g. the Anthropic API key). Never `public`, so
@@ -169,7 +191,25 @@ pub struct AiCycleSchedule {
     pub scheduled_at: ScheduleAt,
 }
 
+/// Drives the `strategist_cycle` *procedure* (Claude via ctx.http). Self-paced.
+#[spacetimedb::table(accessor = strategist_schedule, scheduled(strategist_cycle))]
+pub struct StrategistSchedule {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub scheduled_at: ScheduleAt,
+}
+
 // ---- PROCEDURE RETURN TYPES ----
+
+#[derive(SpacetimeType)]
+pub struct DeliberationEntry {
+    pub subordinate_id: String,
+    pub subordinate_name: String,
+    pub role: String,
+    pub reasoning: String,
+    pub actions_json: String,
+}
 
 #[derive(SpacetimeType)]
 pub struct IntelResult {
@@ -177,8 +217,90 @@ pub struct IntelResult {
     pub intel_text: String,
     pub ai_player_name: String,
     pub cycle_timestamp: i64,
+    pub deliberation: Vec<DeliberationEntry>,
     pub territories_referenced: Vec<i32>,
 }
+
+/// One specialist's output within an AI reasoning cycle (in-memory only).
+struct SubordinateResult {
+    subordinate_id: String,
+    reasoning_text: String,
+    actions_json: String,
+}
+
+/// (display name, role) for a subordinate id; "commander" maps to the AI's name.
+fn subordinate_meta(ai_id: i32, sub_id: &str) -> (String, String) {
+    if sub_id.is_empty() || sub_id == "commander" {
+        return (ai_persona(ai_id).0.to_string(), "Commander".to_string());
+    }
+    let (name, role) = match sub_id {
+        "vanguard" => ("Vanguard", "Military Specialist"),
+        "paymaster" => ("Paymaster", "Economic Specialist"),
+        "scout" => ("Scout", "Covert Specialist"),
+        "adjutant" => ("Adjutant", "Cultural Specialist"),
+        "auditor" => ("Auditor", "Economic Specialist"),
+        "actuary" => ("Actuary", "Military Specialist"),
+        "courier" => ("Courier", "Covert Specialist"),
+        "appraiser" => ("Appraiser", "Cultural Specialist"),
+        "whisper" => ("Whisper", "Cultural Specialist"),
+        "oracle" => ("Oracle", "Covert Specialist"),
+        "seer" => ("Seer", "Economic Specialist"),
+        "warden" => ("Warden", "Military Specialist"),
+        other => (other, "Specialist"),
+    };
+    (name.to_string(), role.to_string())
+}
+
+/// The four specialists for an AI, in fixed order: military, economic, cultural,
+/// covert. Each tuple is (subordinate_id, prompt body).
+fn specialists(ai_id: i32) -> [(&'static str, &'static str); 4] {
+    match ai_id {
+        2 => [
+            ("vanguard", ZHAO_VANGUARD),
+            ("paymaster", ZHAO_PAYMASTER),
+            ("adjutant", ZHAO_ADJUTANT),
+            ("scout", ZHAO_SCOUT),
+        ],
+        3 => [
+            ("actuary", CONS_ACTUARY),
+            ("auditor", CONS_AUDITOR),
+            ("appraiser", CONS_APPRAISER),
+            ("courier", CONS_COURIER),
+        ],
+        _ => [
+            ("warden", PROPHET_WARDEN),
+            ("seer", PROPHET_SEER),
+            ("whisper", PROPHET_WHISPER),
+            ("oracle", PROPHET_ORACLE),
+        ],
+    }
+}
+
+const SPECIALIST_SYSTEM: &str =
+    "You are a domain specialist advising your faction's commander. Reply with ONLY a JSON array of up to 3 recommended actions, each {\"action_type\":\"...\",\"territory_id\":N,\"reasoning\":\"one sentence\"}. action_type MUST be exactly one of: \"military_attack\", \"economic_invest\", \"deploy_agent\". No prose outside the array.";
+
+const ZHAO_VANGUARD: &str = "You are Vanguard, military specialist for General Zhao, an aggressive commander who prioritizes direct conquest. Recommend up to 3 attack targets where Zhao has a troop advantage and adjacency; consider covert agent combat bonuses.";
+const ZHAO_PAYMASTER: &str = "You are Paymaster, economic specialist for General Zhao, who funds military expansion. Recommend up to 2 economic investments that generate capital or reinforce territories Zhao controls militarily.";
+const ZHAO_SCOUT: &str = "You are Scout, covert specialist for General Zhao. Recommend up to 2 agent deployments in territories Zhao plans to attack or where enemy agents threaten operations.";
+const ZHAO_ADJUTANT: &str = "You are Adjutant, cultural specialist for General Zhao, who treats culture as secondary. If a territory is near a cultural flip (influence > 40%) that aids conquest, recommend up to 1 economic investment in the source territory; otherwise return an empty array.";
+
+const CONS_AUDITOR: &str = "You are Auditor, economic specialist for the Consortium, a calculating economic power. Recommend up to 3 investments where the Consortium has military presence or high return potential.";
+const CONS_ACTUARY: &str = "You are Actuary, military specialist for the Consortium, which fights only to defend economic holdings. Recommend up to 1 attack only if it defends a critical position or success exceeds 80%; otherwise return an empty array.";
+const CONS_COURIER: &str = "You are Courier, covert specialist for the Consortium. Recommend up to 2 agent deployments where competitors have agents near Consortium economic holdings.";
+const CONS_APPRAISER: &str = "You are Appraiser, cultural specialist for the Consortium, treating culture as a compounding asset. Recommend up to 2 economic investments that accelerate cultural pressure on valuable neighbors.";
+
+const PROPHET_WHISPER: &str = "You are Whisper, cultural specialist for the Prophet, who wins through cultural dominance. Recommend up to 3 economic investments that accelerate cultural pressure; identify the next likely flip (prioritize influence > 30%).";
+const PROPHET_ORACLE: &str = "You are Oracle, covert specialist for the Prophet. Recommend up to 2 agent deployments where opponents are massing or where a cultural flip is imminent.";
+const PROPHET_SEER: &str = "You are Seer, economic specialist for the Prophet, whose investments are about influence. Recommend up to 2 investments that create cascading cultural pressure on multiple neighbors.";
+const PROPHET_WARDEN: &str = "You are Warden, military specialist for the Prophet, who strikes only where culture has already won. Recommend up to 1 attack on a territory the Prophet owns culturally but not militarily; otherwise return an empty array.";
+
+const COMMANDER_SYSTEM: &str =
+    "You are a faction commander synthesizing your specialists' advice. Explain your decision in at most 3 short sentences (no headers or lists), then end with a JSON action array as the last thing in your reply. Each action is {\"action_type\":\"...\",\"territory_id\":N} where action_type is EXACTLY one of: \"military_attack\", \"economic_invest\", \"deploy_agent\".";
+
+const STRATEGIST_SYSTEM: &str =
+    "You are the Strategist, an AI advisor on the human player's side. Reply with ONLY a JSON array of up to 3 notifications.";
+
+const STRATEGIST_PROMPT: &str = "You advise the human player (player_id 1) in Risk: Dominion. Identify THREATS (opponents near victory, border troop buildups, economic takeovers), OPPORTUNITIES (territories near unification, vulnerable opponents, imminent cultural flips), and WEAKNESSES (no agent coverage, losing cultural influence, holdings at risk). Return ONLY a JSON array of up to 3 notifications, each {\"notification\":\"concise actionable advice\",\"priority\":\"critical|warning|info\",\"territory_id\":N or null}. Critical threats first.";
 
 // ---- ADJACENCY / NAMES ----
 
@@ -398,6 +520,14 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
         scheduled_id: 0,
         scheduled_at: ScheduleAt::Interval(
             std::time::Duration::from_secs(CULTURAL_TICK_SECONDS).into(),
+        ),
+    });
+
+    // Strategist advisor cycle (first fire offset after the AIs; self-paced).
+    ctx.db.strategist_schedule().insert(StrategistSchedule {
+        scheduled_id: 0,
+        scheduled_at: ScheduleAt::Time(
+            ctx.timestamp + std::time::Duration::from_secs(STRATEGIST_OFFSET_SECONDS),
         ),
     });
 
@@ -656,6 +786,19 @@ pub fn deploy_agent(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> 
     do_deploy_agent(ctx, territory_id, player_id)
 }
 
+#[spacetimedb::reducer]
+pub fn dismiss_strategist_alert(ctx: &ReducerContext, notification_id: u64) -> Result<(), String> {
+    let mut row = ctx
+        .db
+        .strategist_log()
+        .id()
+        .find(notification_id)
+        .ok_or("No such notification.".to_string())?;
+    row.dismissed = true;
+    ctx.db.strategist_log().id().update(row);
+    Ok(())
+}
+
 // ---- INTERNAL: WIN CHECK ----
 
 /// Re-evaluate the win condition after an ownership flip. Covert does NOT count
@@ -803,7 +946,7 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
 
     // tx1: always re-arm the next cycle (keeps the chain alive), then decide
     // whether to run. Returns the system prompt + API config when we should run.
-    let plan: Option<(String, String, String)> = ctx.with_tx(|tx| {
+    let plan: Option<(String, String, String, i64, i32)> = ctx.with_tx(|tx| {
         // Re-schedule the next cycle for this AI.
         tx.db.ai_cycle_schedule().insert(AiCycleSchedule {
             scheduled_id: 0,
@@ -821,6 +964,8 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
 
         let api_key = config_value(tx, "anthropic_api_key")?;
         let model = config_value(tx, "anthropic_model").unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let action_points = tx.db.players().player_id().find(ai_id).map(|p| p.action_points).unwrap_or(0);
+        let cycle_at = now_millis_ts(now);
 
         // Mark pending + record schedule.
         let mut st = state;
@@ -828,22 +973,54 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
         st.next_cycle_at = now_millis_ts(next_at);
         tx.db.ai_state().ai_player_id().update(st);
 
-        Some((build_system_prompt(tx, ai_id), api_key, model))
+        Some((api_key, model, build_board_snapshot(tx), cycle_at, action_points))
     });
 
-    let (system_prompt, api_key, model) = match plan {
+    let (api_key, model, snapshot, cycle_at, action_points) = match plan {
         Some(p) => p,
         None => return,
     };
 
+    // Specialists: four sequential Claude calls (no threads, no join).
+    let mut subordinates: Vec<SubordinateResult> = Vec::new();
+    for (sub_id, prompt) in specialists(ai_id) {
+        let user = format!("{prompt}\n\nCurrent game data:\n{snapshot}");
+        let (reasoning_text, actions_json) = match anthropic_call(
+            ctx, &api_key, &model, SPECIALIST_SYSTEM, &user, 150, SPECIALIST_LLM_TIMEOUT_SECONDS,
+        ) {
+            Ok(text) => {
+                let aj = last_balanced_array(&text).unwrap_or("[]").to_string();
+                (text, aj)
+            }
+            Err(err) => {
+                log::warn!("AI {ai_id} specialist {sub_id} failed: {err}");
+                (String::new(), "[]".to_string())
+            }
+        };
+        subordinates.push(SubordinateResult {
+            subordinate_id: sub_id.to_string(),
+            reasoning_text,
+            actions_json,
+        });
+    }
+
+    // Commander: synthesize the specialists' advice into final actions.
+    let (cname, cdesc) = ai_persona(ai_id);
+    let mut spec_block = String::new();
+    for sub in &subordinates {
+        let (sname, role) = subordinate_meta(ai_id, &sub.subordinate_id);
+        let body = if sub.reasoning_text.is_empty() {
+            "No recommendation received - specialist unavailable this cycle.".to_string()
+        } else {
+            sub.reasoning_text.clone()
+        };
+        spec_block.push_str(&format!("{role} ({sname}):\n{body}\n\n"));
+    }
+    let commander_user = format!(
+        "You are {cname}, commander of your faction.\nYour persona: {cdesc}\n\nCurrent full game state:\n{snapshot}\nYour specialist team has reported:\n{spec_block}Your available action points: {action_points}\nWin condition: unify {WIN_UNIFIED_TERRITORIES} territories (all 4 dimensions).\nSynthesize your team's advice, resolve conflicts per your persona, and decide. End with the JSON action array."
+    );
     let result = anthropic_call(
-        ctx,
-        &api_key,
-        &model,
-        &system_prompt,
-        "Decide your moves for this turn. End with the JSON action array.",
-        AI_MAX_TOKENS,
-        AI_LLM_TIMEOUT_SECONDS,
+        ctx, &api_key, &model, COMMANDER_SYSTEM, &commander_user, AI_MAX_TOKENS, AI_LLM_TIMEOUT_SECONDS,
     );
 
     // tx2: apply actions + log + return to idle.
@@ -851,10 +1028,10 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
         match &result {
             Ok(text) => {
                 let actions = parse_actions(text);
-                apply_ai_actions(tx, ai_id, &actions, text);
+                apply_ai_actions(tx, ai_id, &actions, text, &subordinates, cycle_at);
             }
             Err(err) => {
-                log::error!("AI {ai_id} Claude call failed: {err}");
+                log::error!("AI {ai_id} commander call failed: {err}");
                 if let Some(mut st) = tx.db.ai_state().ai_player_id().find(ai_id) {
                     st.cycle_status = "idle".to_string();
                     tx.db.ai_state().ai_player_id().update(st);
@@ -872,7 +1049,72 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
     });
 }
 
-/// Build the per-AI system prompt from a live snapshot of the board.
+/// Scheduled procedure: the human's Strategist advisor. Calls Claude via
+/// ctx.http and writes up to 3 notifications to `strategist_log`. Self-paced.
+#[spacetimedb::procedure]
+pub fn strategist_cycle(ctx: &mut ProcedureContext, _row: StrategistSchedule) {
+    let now = ctx.timestamp;
+    let next_at = now + std::time::Duration::from_secs(STRATEGIST_CYCLE_SECONDS);
+
+    let plan: Option<(String, String, String)> = ctx.with_tx(|tx| {
+        tx.db.strategist_schedule().insert(StrategistSchedule {
+            scheduled_id: 0,
+            scheduled_at: ScheduleAt::Time(next_at),
+        });
+        if !game_is_active(tx) {
+            return None;
+        }
+        let api_key = config_value(tx, "anthropic_api_key")?;
+        let model = config_value(tx, "anthropic_model").unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        Some((api_key, model, build_board_snapshot(tx)))
+    });
+    let (api_key, model, snapshot) = match plan {
+        Some(p) => p,
+        None => return,
+    };
+
+    let user = format!("{STRATEGIST_PROMPT}\n\nCurrent game state:\n{snapshot}");
+    let result = anthropic_call(
+        ctx, &api_key, &model, STRATEGIST_SYSTEM, &user, STRATEGIST_MAX_TOKENS, STRATEGIST_TIMEOUT_SECONDS,
+    );
+    let text = match result {
+        Ok(t) => t,
+        Err(err) => {
+            log::warn!("Strategist call failed: {err}");
+            return;
+        }
+    };
+
+    ctx.with_tx(|tx| {
+        let Some(slice) = last_balanced_array(&text) else { return };
+        let Ok(serde_json::Value::Array(arr)) =
+            serde_json::from_str::<serde_json::Value>(slice)
+        else {
+            return;
+        };
+        for item in arr.iter().take(3) {
+            let notification = item.get("notification").and_then(|v| v.as_str()).unwrap_or("");
+            if notification.is_empty() {
+                continue;
+            }
+            let priority = item.get("priority").and_then(|v| v.as_str()).unwrap_or("info");
+            let territory_id = item.get("territory_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            tx.db.strategist_log().insert(StrategistLog {
+                id: 0,
+                created_at: now_millis(tx),
+                notification: notification.to_string(),
+                priority: priority.to_string(),
+                territory_id,
+                player_id: 1,
+                dismissed: false,
+            });
+        }
+    });
+}
+
+/// Superseded in Slice 5 by `build_board_snapshot` + the specialist/commander
+/// prompts; kept for reference.
+#[allow(dead_code)]
 fn build_system_prompt(ctx: &ReducerContext, ai_id: i32) -> String {
     let (name, persona) = ai_persona(ai_id);
     let action_points = ctx
@@ -960,8 +1202,16 @@ fn build_system_prompt(ctx: &ReducerContext, ai_id: i32) -> String {
     )
 }
 
-/// Apply the AI's chosen actions (within tx2), log reasoning, return to idle.
-fn apply_ai_actions(ctx: &ReducerContext, ai_id: i32, actions: &[(String, i32)], reasoning: &str) {
+/// Apply commander actions and log the full deliberation (one row per
+/// subordinate plus the commander, all sharing `cycle_at`). Runs inside tx2.
+fn apply_ai_actions(
+    ctx: &ReducerContext,
+    ai_id: i32,
+    actions: &[(String, i32)],
+    commander_reasoning: &str,
+    subordinates: &[SubordinateResult],
+    cycle_at: i64,
+) {
     let mut results: Vec<serde_json::Value> = Vec::new();
     for (action_type, territory_id) in actions {
         let outcome = match action_type.as_str() {
@@ -980,18 +1230,30 @@ fn apply_ai_actions(ctx: &ReducerContext, ai_id: i32, actions: &[(String, i32)],
         }
     }
 
-    let ts = now_millis(ctx);
     if let Some(mut st) = ctx.db.ai_state().ai_player_id().find(ai_id) {
         st.cycle_status = "idle".to_string();
-        st.last_cycle_at = ts;
+        st.last_cycle_at = cycle_at;
         ctx.db.ai_state().ai_player_id().update(st);
+    }
+
+    // One log row per specialist, then the commander row last.
+    for sub in subordinates {
+        ctx.db.ai_reasoning_log().insert(AiReasoningLog {
+            id: 0,
+            ai_player_id: ai_id,
+            cycle_at,
+            reasoning_text: sub.reasoning_text.clone(),
+            actions_taken: sub.actions_json.clone(),
+            subordinate_id: sub.subordinate_id.clone(),
+        });
     }
     ctx.db.ai_reasoning_log().insert(AiReasoningLog {
         id: 0,
         ai_player_id: ai_id,
-        cycle_at: ts,
-        reasoning_text: reasoning.to_string(),
+        cycle_at,
+        reasoning_text: commander_reasoning.to_string(),
         actions_taken: serde_json::Value::Array(results).to_string(),
+        subordinate_id: "commander".to_string(),
     });
 }
 
@@ -1104,6 +1366,7 @@ pub fn get_intel(ctx: &mut ProcedureContext, ai_player_id: i32) -> IntelResult {
                 intel_text: "Unknown AI.".to_string(),
                 ai_player_name: name,
                 cycle_timestamp: 0,
+                deliberation: Vec::new(),
                 territories_referenced: Vec::new(),
             };
         }
@@ -1124,6 +1387,7 @@ pub fn get_intel(ctx: &mut ProcedureContext, ai_player_id: i32) -> IntelResult {
                 ),
                 ai_player_name: name,
                 cycle_timestamp: 0,
+                deliberation: Vec::new(),
                 territories_referenced: Vec::new(),
             };
         };
@@ -1176,18 +1440,49 @@ pub fn get_intel(ctx: &mut ProcedureContext, ai_player_id: i32) -> IntelResult {
                 ),
                 ai_player_name: name,
                 cycle_timestamp: 0,
+                deliberation: Vec::new(),
                 territories_referenced: Vec::new(),
             };
         }
 
-        // Collect referenced territory ids from the logged actions.
+        // Gather the full deliberation: all rows from the latest cycle, with
+        // specialists first and the commander last.
+        let cycle_at = latest.cycle_at;
+        let mut rows: Vec<AiReasoningLog> = tx
+            .db
+            .ai_reasoning_log()
+            .iter()
+            .filter(|r| r.ai_player_id == ai_player_id && r.cycle_at == cycle_at)
+            .collect();
+        rows.sort_by_key(|r| {
+            let is_commander = r.subordinate_id.is_empty() || r.subordinate_id == "commander";
+            (is_commander, r.id)
+        });
+
+        let mut deliberation = Vec::new();
         let mut refs = Vec::new();
-        if let Ok(serde_json::Value::Array(arr)) =
-            serde_json::from_str::<serde_json::Value>(&latest.actions_taken)
-        {
-            for item in arr {
-                if let Some(tid) = item.get("territory_id").and_then(|v| v.as_i64()) {
-                    refs.push(tid as i32);
+        for r in &rows {
+            let (sub_name, role) = subordinate_meta(ai_player_id, &r.subordinate_id);
+            deliberation.push(DeliberationEntry {
+                subordinate_id: if r.subordinate_id.is_empty() {
+                    "commander".to_string()
+                } else {
+                    r.subordinate_id.clone()
+                },
+                subordinate_name: sub_name,
+                role,
+                reasoning: r.reasoning_text.clone(),
+                actions_json: r.actions_taken.clone(),
+            });
+            if let Ok(serde_json::Value::Array(arr)) =
+                serde_json::from_str::<serde_json::Value>(&r.actions_taken)
+            {
+                for item in arr {
+                    if let Some(tid) = item.get("territory_id").and_then(|v| v.as_i64()) {
+                        if !refs.contains(&(tid as i32)) {
+                            refs.push(tid as i32);
+                        }
+                    }
                 }
             }
         }
@@ -1196,7 +1491,8 @@ pub fn get_intel(ctx: &mut ProcedureContext, ai_player_id: i32) -> IntelResult {
             status: "success".to_string(),
             intel_text: latest.reasoning_text.clone(),
             ai_player_name: name,
-            cycle_timestamp: latest.cycle_at,
+            cycle_timestamp: cycle_at,
+            deliberation,
             territories_referenced: refs,
         }
     })

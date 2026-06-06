@@ -12,9 +12,10 @@ import {
 
 export default __t.row({
   id: __t.u64().primaryKey(),
-  aiPlayerId: __t.i32().name("ai_player_id"),
-  cycleAt: __t.i64().name("cycle_at"),
-  reasoningText: __t.string().name("reasoning_text"),
-  actionsTaken: __t.string().name("actions_taken"),
-  subordinateId: __t.string().name("subordinate_id"),
+  createdAt: __t.i64().name("created_at"),
+  notification: __t.string(),
+  priority: __t.string(),
+  territoryId: __t.i32().name("territory_id"),
+  playerId: __t.i32().name("player_id"),
+  dismissed: __t.bool(),
 });

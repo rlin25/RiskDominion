@@ -35,6 +35,7 @@ import {
 
 // Import all reducer arg schemas
 import DeployAgentReducer from "./deploy_agent_reducer";
+import DismissStrategistAlertReducer from "./dismiss_strategist_alert_reducer";
 import EconomicInvestReducer from "./economic_invest_reducer";
 import MilitaryAttackReducer from "./military_attack_reducer";
 import SetConfigReducer from "./set_config_reducer";
@@ -56,6 +57,7 @@ import EventFeedRow from "./event_feed_table";
 import GameStateRow from "./game_state_table";
 import MilitaryRow from "./military_table";
 import PlayersRow from "./players_table";
+import StrategistLogRow from "./strategist_log_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -160,11 +162,23 @@ const tablesSchema = __schema({
       { name: 'players_player_id_key', constraint: 'unique', columns: ['playerId'] },
     ],
   }, PlayersRow),
+  strategist_log: __table({
+    name: 'strategist_log',
+    indexes: [
+      { accessor: 'id', name: 'strategist_log_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'strategist_log_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, StrategistLogRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("deploy_agent", DeployAgentReducer),
+  __reducerSchema("dismiss_strategist_alert", DismissStrategistAlertReducer),
   __reducerSchema("economic_invest", EconomicInvestReducer),
   __reducerSchema("military_attack", MilitaryAttackReducer),
   __reducerSchema("set_config", SetConfigReducer),

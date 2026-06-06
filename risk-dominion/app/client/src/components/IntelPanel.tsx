@@ -47,7 +47,20 @@ export function IntelPanel({ onHighlight }: Props) {
       {intel && (
         <div className="mt-2 overflow-y-auto rounded bg-bg-surface p-2 font-data text-[11px] text-text-primary">
           <div className="mb-1 font-ui text-[11px] text-text-accent">{intel.aiPlayerName}</div>
-          {intel.status === "success" ? (
+          {intel.status === "success" && intel.deliberation.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {intel.deliberation.map((d, i) => (
+                <div key={i} className="border-b border-[#334455] pb-1 last:border-0">
+                  <div
+                    className={`font-ui text-[11px] ${d.subordinateId === "commander" ? "text-text-accent" : "text-text-secondary"}`}
+                  >
+                    {d.subordinateName} — {d.role}
+                  </div>
+                  <p className="whitespace-pre-wrap leading-snug">{d.reasoning}</p>
+                </div>
+              ))}
+            </div>
+          ) : intel.status === "success" ? (
             <p className="whitespace-pre-wrap leading-snug">{intel.intelText}</p>
           ) : (
             <p className="text-text-secondary">{intel.intelText}</p>

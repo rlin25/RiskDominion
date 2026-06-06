@@ -23,6 +23,7 @@ export const AiReasoningLog = __t.object("AiReasoningLog", {
   cycleAt: __t.i64(),
   reasoningText: __t.string(),
   actionsTaken: __t.string(),
+  subordinateId: __t.string(),
 });
 export type AiReasoningLog = __Infer<typeof AiReasoningLog>;
 
@@ -65,6 +66,15 @@ export const DataTable = __t.object("DataTable", {
 });
 export type DataTable = __Infer<typeof DataTable>;
 
+export const DeliberationEntry = __t.object("DeliberationEntry", {
+  subordinateId: __t.string(),
+  subordinateName: __t.string(),
+  role: __t.string(),
+  reasoning: __t.string(),
+  actionsJson: __t.string(),
+});
+export type DeliberationEntry = __Infer<typeof DeliberationEntry>;
+
 export const Economic = __t.object("Economic", {
   territoryId: __t.i32(),
   ownerId: __t.i32(),
@@ -93,6 +103,9 @@ export const IntelResult = __t.object("IntelResult", {
   intelText: __t.string(),
   aiPlayerName: __t.string(),
   cycleTimestamp: __t.i64(),
+  get deliberation() {
+    return __t.array(DeliberationEntry);
+  },
   territoriesReferenced: __t.array(__t.i32()),
 });
 export type IntelResult = __Infer<typeof IntelResult>;
@@ -134,4 +147,21 @@ export const RegenTimer = __t.object("RegenTimer", {
   scheduledAt: __t.scheduleAt(),
 });
 export type RegenTimer = __Infer<typeof RegenTimer>;
+
+export const StrategistLog = __t.object("StrategistLog", {
+  id: __t.u64(),
+  createdAt: __t.i64(),
+  notification: __t.string(),
+  priority: __t.string(),
+  territoryId: __t.i32(),
+  playerId: __t.i32(),
+  dismissed: __t.bool(),
+});
+export type StrategistLog = __Infer<typeof StrategistLog>;
+
+export const StrategistSchedule = __t.object("StrategistSchedule", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type StrategistSchedule = __Infer<typeof StrategistSchedule>;
 

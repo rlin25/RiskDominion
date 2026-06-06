@@ -11,7 +11,9 @@ export type {
   AiState as AIStateRow,
   AiReasoningLog as AIReasoningLogRow,
   EventFeed as EventFeedRow,
+  StrategistLog as StrategistLogRow,
   IntelResult,
+  DeliberationEntry,
   QueryResult,
   AutocompleteResult,
 } from "./module_bindings/types";

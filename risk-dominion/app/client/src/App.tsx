@@ -10,6 +10,7 @@ import { Map } from "./components/Map";
 import { CardHand } from "./components/CardHand";
 import { ActionBar } from "./components/ActionBar";
 import { IntelPanel } from "./components/IntelPanel";
+import { StrategistAlerts } from "./components/StrategistAlerts";
 import { QueryBar } from "./components/QueryBar";
 import { ResultsPanel } from "./components/ResultsPanel";
 import { EventTicker } from "./components/EventTicker";
@@ -19,24 +20,58 @@ import type { QueryResult } from "./types";
 const PLAYER_ID = HUMAN_PLAYER_ID;
 
 export default function App() {
-  const { military, economic, covert, cultural, players, gameState, eventFeed, isReady } =
+  const { military, economic, covert, cultural, players, gameState, eventFeed, strategistLog, isReady } =
     useSubscriptions();
 
   const startGame = useReducer(reducers.startGame);
   const militaryAttack = useReducer(reducers.militaryAttack);
   const economicInvest = useReducer(reducers.economicInvest);
   const deployAgent = useReducer(reducers.deployAgent);
+  const dismissAlert = useReducer(reducers.dismissStrategistAlert);
 
   const [highlighted, setHighlighted] = useState<Set<number>>(new Set());
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryHighlights, setQueryHighlights] = useState<number[]>([]);
   const [tickerHighlight, setTickerHighlight] = useState<number | null>(null);
+  const [ownedHighlight, setOwnedHighlight] = useState(false);
+  const [intelOpen, setIntelOpen] = useState(true);
   const seedAttempted = useRef(false);
 
   function handleEventClick(territoryId: number) {
     setTickerHighlight(territoryId);
     window.setTimeout(() => setTickerHighlight(null), 3000);
   }
+
+  // Hotkeys: H toggle owned highlight, Q focus query, I toggle intel, Escape clear.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const inInput = document.activeElement?.tagName === "INPUT";
+      if (inInput && e.key !== "Escape") return;
+      switch (e.key) {
+        case "h":
+        case "H":
+          setOwnedHighlight((v) => !v);
+          break;
+        case "i":
+        case "I":
+          setIntelOpen((v) => !v);
+          break;
+        case "q":
+        case "Q":
+          e.preventDefault();
+          document.querySelector<HTMLInputElement>("input")?.focus();
+          break;
+        case "Escape":
+          setQueryResult(null);
+          setQueryHighlights([]);
+          setOwnedHighlight(false);
+          (document.activeElement as HTMLElement | null)?.blur();
+          break;
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     if (!isReady || seedAttempted.current) return;
@@ -97,9 +132,22 @@ export default function App() {
     );
   }
 
+  const ownedIds = ownedHighlight
+    ? territories
+        .filter(
+          (t) =>
+            t.militaryOwner === PLAYER_ID ||
+            t.economicOwner === PLAYER_ID ||
+            t.culturalOwner === PLAYER_ID ||
+            t.covertOwner === PLAYER_ID,
+        )
+        .map((t) => t.territoryId)
+    : [];
+
   const mapHighlights = new Set<number>([
     ...highlighted,
     ...queryHighlights,
+    ...ownedIds,
     ...(tickerHighlight != null ? [tickerHighlight] : []),
   ]);
 
@@ -126,8 +174,14 @@ export default function App() {
           />
         )}
 
+        <StrategistAlerts
+          alerts={strategistLog}
+          onDismiss={(id) => dismissAlert({ notificationId: id }).catch(() => {})}
+          onAlertClick={handleEventClick}
+        />
+
         <div className="flex flex-1 overflow-hidden">
-          <IntelPanel onHighlight={(ids) => setQueryHighlights(ids)} />
+          {intelOpen && <IntelPanel onHighlight={(ids) => setQueryHighlights(ids)} />}
           <Map territories={territories} highlighted={mapHighlights} currentPlayerId={PLAYER_ID} />
         </div>
 

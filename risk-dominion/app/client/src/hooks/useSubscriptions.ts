@@ -8,6 +8,7 @@ import type {
   PlayerRow,
   GameStateRow,
   EventFeedRow,
+  StrategistLogRow,
 } from "../types";
 
 // Subscribes to the public game tables and returns live rows. The SDK delivers
@@ -20,6 +21,7 @@ export function useSubscriptions() {
   const [players, playersReady] = useTable(tables.players);
   const [gameState, gameStateReady] = useTable(tables.game_state);
   const [eventFeed, eventFeedReady] = useTable(tables.event_feed);
+  const [strategistLog, strategistReady] = useTable(tables.strategist_log);
 
   const isReady =
     militaryReady &&
@@ -28,7 +30,8 @@ export function useSubscriptions() {
     culturalReady &&
     playersReady &&
     gameStateReady &&
-    eventFeedReady;
+    eventFeedReady &&
+    strategistReady;
 
   return {
     military: military as readonly MilitaryRow[],
@@ -38,6 +41,7 @@ export function useSubscriptions() {
     players: players as readonly PlayerRow[],
     gameState: gameState as readonly GameStateRow[],
     eventFeed: eventFeed as readonly EventFeedRow[],
+    strategistLog: strategistLog as readonly StrategistLogRow[],
     isReady,
   };
 }

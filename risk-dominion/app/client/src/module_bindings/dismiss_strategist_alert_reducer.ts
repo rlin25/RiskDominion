@@ -10,11 +10,6 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  id: __t.u64().primaryKey(),
-  aiPlayerId: __t.i32().name("ai_player_id"),
-  cycleAt: __t.i64().name("cycle_at"),
-  reasoningText: __t.string().name("reasoning_text"),
-  actionsTaken: __t.string().name("actions_taken"),
-  subordinateId: __t.string().name("subordinate_id"),
-});
+export default {
+  notificationId: __t.u64(),
+};
