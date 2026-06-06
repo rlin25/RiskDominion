@@ -159,7 +159,7 @@ This serves three purposes:
 | Economic invest amount | +5 capital per action |
 | Server structure | Single lib.rs with all tables, reducers, scheduled reducers |
 | Frontend stack | React 18 + TypeScript + Vite + dnd-kit + Tailwind CSS |
-| Map rendering | React Simple Maps or plain SVG |
+| Map rendering | Plain SVG (hexagonal grid per AESTHETIC.md Section 4) |
 
 ---
 

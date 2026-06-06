@@ -386,7 +386,7 @@ Subscriptions deliver arrays of rows matching the table schemas in Section 1. Ex
 
 - React 18 + TypeScript 5.3 + Vite.
 - dnd-kit for drag-and-drop (`@dnd-kit/core`).
-- React Simple Maps or plain SVG for the map.
+- Plain SVG for the map. Hexagonal territories per `../AESTHETIC.md` Section 4.
 - Tailwind CSS for all styling. No custom CSS files.
 - Player ID from URL parameter: `?player=1` or `?player=2`. Default to 1 if absent.
 - `useSubscriptions` hook manages all four table subscriptions.

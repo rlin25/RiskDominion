@@ -52,7 +52,7 @@ Clone the repository and run the setup script:
 
 ```
 git clone https://github.com/rlin25/RiskDominion.git
-cd RiskDominion
+cd RiskDominion/risk-dominion
 bash setup.sh
 ```
 
@@ -112,18 +112,19 @@ bash setup.sh --verify
 You should see:
 
 ```
-[VERIFY] Rust ............ OK (1.75.0)
-[VERIFY] Node.js ......... OK (v20.11.0)
-[VERIFY] npm ............. OK (10.2.0)
-[VERIFY] SpacetimeDB CLI . OK (1.0.0)
-[VERIFY] Git ............. OK (2.43.0)
-[VERIFY] Project folder .. OK
-[VERIFY] .env file ....... OK
-[VERIFY] Anthropic key ... OK
-[VERIFY] SpacetimeDB start OK
+  [PASS] Bash version (5.1.16)
+  [PASS] Rust v1.75.0
+  [PASS] Node.js v20.11.0
+  [PASS] npm v10.2.0
+  [PASS] SpacetimeDB CLI v1.0.0
+  [PASS] Git (2.43.0)
+  [PASS] Project folders
+  [PASS] .env file
+  [PASS] Anthropic API key format
+  [PASS] SpacetimeDB starts successfully
 ```
 
-All checks show "OK"? You're ready.
+All checks show "[PASS]"? You're ready.
 
 ---
 

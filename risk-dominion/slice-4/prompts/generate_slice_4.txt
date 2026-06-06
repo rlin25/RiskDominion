@@ -1,0 +1,58 @@
+You are in the slice-1/ directory. You are modifying the working Slice 3 codebase to add Slice 4 features — the final slice. Generate all changes relative to this directory.
+
+You are implementing Slice 4 of Risk: Dominion — adding the query system, event ticker, and Tab autocomplete. This is the last slice. After this, the game is complete.
+
+Before generating any changes, read every file in the existing Slice 3 codebase:
+- slice-1/server/Cargo.toml
+- slice-1/server/src/lib.rs
+- slice-1/client/src/App.tsx
+- slice-1/client/src/constants.ts
+- slice-1/client/src/types.ts
+- slice-1/client/src/hooks/useSubscriptions.ts
+- slice-1/client/src/utils/territoryHelpers.ts
+- slice-1/client/src/components/Map.tsx
+- slice-1/client/src/components/Territory.tsx
+- slice-1/client/src/components/CardHand.tsx
+- slice-1/client/src/components/ActionCard.tsx
+- slice-1/client/src/components/IntelPanel.tsx
+- slice-1/client/src/components/ActionBar.tsx
+- slice-1/client/src/components/VictoryScreen.tsx
+
+Understand the current code before making any changes.
+
+Read these files in full before generating:
+- MASTERPLAN_SLICE_4.md (your authoritative spec — event_feed table, event writes in 7 reducers, query reducers with Claude prompts, 10 canned query prompt strings, autocomplete reducer, new components, modified components)
+- ../AESTHETIC.md (visual design system — geometric SVG icons for ticker, query bar styling, results panel styling)
+
+Modify the existing Slice 3 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
+
+Key constraints:
+- Event writes are fire-and-forget. Insert the event as the LAST operation in each reducer. Wrap in a result handler. Log errors to the server console. Never block or roll back the primary state change. The game state must persist regardless of event write success.
+- Query reducers use std::thread::spawn + reqwest::blocking::Client. Same pattern as ai_reasoning_cycle. Multiple threads may run concurrently — this is expected and safe.
+- All three query reducers (query_database, get_canned_query, autocomplete_query) call Claude. Use the model from ANTHROPIC_MODEL env var. Temperature 0.3 for queries. Autocomplete timeout is 5 seconds. Query timeout is 10 seconds. On any error, return the error fallback structure — never crash.
+- The 10 canned query prompts are pre-formulated strings stored as constants in lib.rs. Each is appended with the game state snapshot before sending to Claude. These are real LLM calls with optimized prompts. No deterministic logic. No dummy data.
+- The event ticker displays the last 50 events client-side. Slice the array: events.slice(-50). Server stores all events. Ticker scrolls with CSS animation, pauses on hover.
+- Ticker icons are geometric SVG shapes — not emojis. Military: upward triangle. Economic: circle with vertical line. Cultural: diamond. Covert: concentric circles. Victory: hexagon outline. System: horizontal dash. All 12x12px, monochrome, text-secondary color.
+- Query bar has a gold > prompt character. Text input in JetBrains Mono. 10 canned query pill buttons in two rows of five. Tab key triggers autocomplete — dropdown with up to 3 suggestions.
+- Results panel slides down between query bar and map. Shows summary text and a sortable data table. Close button clears highlights.
+- Clicking a ticker event highlights the referenced territory with a white pulse for 3 seconds.
+- All styling via Tailwind using AESTHETIC.md tokens. No custom CSS files. No emojis. No em dashes.
+
+Scope boundary:
+- This is Slice 4 of 4 — the FINAL slice. There are no future slices.
+- Generate EVERY feature specified in the masterplan. Do not leave stubs, TODOs, or placeholders for future work. The game must be complete after this generation.
+- Do not add new dimensions, new AI opponents, new card types, or new gameplay mechanics. The query system and event ticker are additive — they reveal and narrate the existing game, not change it.
+
+If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_4.md and INTERFACE_CONTRACT_SLICE_4.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
+
+Success criteria. After applying all modifications:
+1. Compile without errors (cargo build, npm run build).
+2. Event ticker shows "Game started" on load. New events appear for all action types with correct colors and geometric SVG icons.
+3. All 10 canned query buttons return summary, data table, and map highlights via real Claude calls.
+4. Natural language queries return structured results. Nonsense queries show graceful error message. No crashes.
+5. Tab autocomplete shows up to 3 context-aware suggestions. Empty array when partial is too short or on error.
+6. Clicking a ticker event highlights the referenced territory with a white pulse.
+7. Results panel opens on query, closes with × button, clears highlights on close.
+8. All Slice 3 gameplay preserved — actions, AI, cultural spread, victory all unchanged. Events are additive.
+
+This is the final generation. After this, Risk: Dominion is complete. Generate now. Output every changed file. Mark each as MODIFIED or NEW.

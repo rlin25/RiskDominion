@@ -1,0 +1,61 @@
+You are in the slice-1/ directory. You are modifying the working Slice 1 codebase to add Slice 2 features. Generate all changes relative to this directory.
+
+You are implementing Slice 2 of Risk: Dominion — adding AI opponents, the Covert dimension, and the intel system on top of the existing two-player game.
+
+Before generating any changes, read every file in the existing Slice 1 codebase:
+- slice-1/server/Cargo.toml
+- slice-1/server/src/lib.rs
+- slice-1/client/src/App.tsx
+- slice-1/client/src/constants.ts
+- slice-1/client/src/types.ts
+- slice-1/client/src/hooks/useSubscriptions.ts
+- slice-1/client/src/utils/territoryHelpers.ts
+- slice-1/client/src/components/Map.tsx
+- slice-1/client/src/components/Territory.tsx
+- slice-1/client/src/components/CardHand.tsx
+- slice-1/client/src/components/ActionCard.tsx
+- slice-1/client/src/components/ActionBar.tsx
+- slice-1/client/src/components/VictoryScreen.tsx
+- slice-1/client/src/components/PlayerIndicator.tsx
+
+Understand the current code before making any changes.
+
+Read these files in full before generating:
+- MASTERPLAN_SLICE_2.md (your authoritative spec — all modifications, new tables, new reducers, LLM prompt templates, seed data, component changes)
+- ../AESTHETIC.md (visual design system — Covert card icon is concentric circles SVG, Section 13.3)
+
+Modify the existing Slice 1 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED, NEW, or REMOVED at the top.
+
+If a file listed as MODIFIED does not exist in the Slice 1 codebase, create it as NEW and note the discrepancy.
+
+Key constraints:
+- Server: add reqwest crate with blocking and json features to Cargo.toml. Use std::thread::spawn + reqwest::blocking::Client for LLM calls. Do not use async Rust.
+- Use the model specified in the ANTHROPIC_MODEL environment variable. Use the key from ANTHROPIC_API_KEY.
+- The human player is always player_id 1. Remove all ?player= URL parameter logic.
+- Covert ownership does NOT count toward unification. Victory is still 3 territories with Military AND Economic owned by the same player.
+- Three card types: Military, Economic, Covert (purple left border, concentric circles SVG icon, "DEPLOY").
+- Territory hexagons now show 3 X-split quadrants (Military, Economic, Covert). Bottom-right wedge is neutral (reserved for Cultural in Slice 3).
+- Agents persist on ownership flip: new owner inherits existing agents + 1.
+- Intel threshold: 3 agents in a territory where the AI has military or economic presence.
+- AI cycles fire every 60s, staggered 20s apart (Zhao at 0s, Consortium at 20s, Prophet at 40s). 30s LLM timeout. Skip cycle if previous still pending.
+- Delete PlayerIndicator.tsx. No other file imports it.
+- No emojis. No em dashes. No custom CSS files. All styling via Tailwind using AESTHETIC.md tokens.
+
+Scope boundary:
+- This is Slice 2 of 4. Add ONLY what is specified in the masterplan.
+- Do NOT add: Cultural dimension, cultural_spread_tick, cross-dimension bonuses, query bar, event ticker.
+- The game is three dimensions (Military, Economic, Covert) and single-player against AI. Nothing more.
+
+If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_2.md and INTERFACE_CONTRACT_SLICE_2.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
+
+Success criteria. After applying all modifications:
+1. Compile without errors (cargo build, npm run build).
+2. Load as single-player with no URL parameter. Player is blue.
+3. Render 3-quadrant hexes matching seed data (Player blue, Zhao red, Consortium orange, Prophet purple).
+4. Offer three card types in hand rotation (Military, Economic, Covert).
+5. Deploy agents via Covert card. Agent count increments. Inherits on ownership flip.
+6. All three AIs execute actions within 60 seconds of game start.
+7. Player with 3+ agents in AI territory sees reasoning text and territory highlights from get_intel.
+8. Player without agents sees "Insufficient intel" message.
+
+Generate now. Output every changed file. Mark each as MODIFIED, NEW, or REMOVED.

@@ -598,7 +598,7 @@ Top-level component.
 5. **TypeScript strict mode.** All types defined in `types.ts`.
 6. **Functional components with hooks.** No class components.
 7. **dnd-kit imports:** `import { DndContext, useDraggable } from '@dnd-kit/core'`. Do not use deprecated react-dnd.
-8. **Map rendering:** Use React Simple Maps if it simplifies territory positioning. Otherwise use plain SVG `<rect>` elements positioned absolutely. Territories do not need to be real geographic shapes — rounded rectangles are sufficient.
+8. **Map rendering:** Use plain SVG elements positioned absolutely. Territories do not need to be real geographic shapes — hexagons per `../AESTHETIC.md` Section 4.
 9. **No mock data, no test stubs.** All data comes from SpacetimeDB subscriptions.
 10. **Error handling:** Wrap reducer calls in try/catch. Log errors to console. Display user-friendly messages for common failures (insufficient action points).
 11. **The frontend must compile** with `npm run build` without errors. The server must compile with `cargo build` without errors.
