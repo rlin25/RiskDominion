@@ -222,7 +222,15 @@ export default function App() {
         />
 
         <div className="flex items-center justify-between px-4 py-2">
-          <span className="font-ui text-[12px] text-text-secondary">Risk: Dominion</span>
+          <div className="flex items-center gap-3">
+            <span className="font-ui text-[12px] text-text-secondary">Risk: Dominion</span>
+            <button
+              onClick={() => setIntelOpen((v) => !v)}
+              className="rounded border border-[#334455] px-2 py-1 font-ui text-[10px] text-text-secondary hover:text-text-primary"
+            >
+              {intelOpen ? "Hide Intel" : "Show Intel"}
+            </button>
+          </div>
           <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
         </div>
 
