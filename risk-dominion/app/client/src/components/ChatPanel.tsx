@@ -10,14 +10,26 @@ interface Props {
   currentPlayerId: number;
   onSendMessage: (text: string, recipientId: number) => void;
   onTerritoryClick: (territoryId: number) => void;
+  mode?: "player" | "spectator" | "replay";
+  currentTimestamp?: number | null;
 }
 
-export function ChatPanel({ messages, currentPlayerId, onSendMessage, onTerritoryClick }: Props) {
+export function ChatPanel({
+  messages,
+  currentPlayerId,
+  onSendMessage,
+  onTerritoryClick,
+  mode = "player",
+  currentTimestamp = null,
+}: Props) {
   const [tab, setTab] = useState<Tab>(0);
   const [text, setText] = useState("");
 
   const shown = useMemo(() => {
-    const list = [...messages].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+    let list = [...messages].sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+    if (currentTimestamp != null) {
+      list = list.filter((m) => Number(m.timestamp) <= currentTimestamp);
+    }
     if (tab === 0) return list.filter((m) => m.recipientId === 0);
     return list.filter(
       (m) =>
@@ -25,7 +37,7 @@ export function ChatPanel({ messages, currentPlayerId, onSendMessage, onTerritor
         ((m.senderId === currentPlayerId && m.recipientId === tab) ||
           (m.senderId === tab && m.recipientId === currentPlayerId)),
     );
-  }, [messages, tab, currentPlayerId]);
+  }, [messages, tab, currentPlayerId, currentTimestamp]);
 
   function send() {
     const t = text.trim();
@@ -90,19 +102,21 @@ export function ChatPanel({ messages, currentPlayerId, onSendMessage, onTerritor
         )}
       </div>
 
-      <div className="flex items-center gap-1 border-t border-[#334455] p-2">
-        <input
-          value={text}
-          maxLength={MAX_CHAT_MESSAGE_LENGTH}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={tab === 0 ? "Message all..." : `DM ${AI_PLAYERS.find((a) => a.id === tab)?.name}...`}
-          className="flex-1 bg-transparent font-data text-[11px] text-text-primary placeholder:text-text-secondary focus:outline-none"
-        />
-        <button onClick={send} className="font-ui text-[10px] text-text-accent">
-          Send
-        </button>
-      </div>
+      {mode === "player" && (
+        <div className="flex items-center gap-1 border-t border-[#334455] p-2">
+          <input
+            value={text}
+            maxLength={MAX_CHAT_MESSAGE_LENGTH}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={tab === 0 ? "Message all..." : `DM ${AI_PLAYERS.find((a) => a.id === tab)?.name}...`}
+            className="flex-1 bg-transparent font-data text-[11px] text-text-primary placeholder:text-text-secondary focus:outline-none"
+          />
+          <button onClick={send} className="font-ui text-[10px] text-text-accent">
+            Send
+          </button>
+        </div>
+      )}
     </div>
   );
 }

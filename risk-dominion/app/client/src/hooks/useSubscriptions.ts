@@ -11,6 +11,8 @@ import type {
   EventFeedRow,
   StrategistLogRow,
   ChatLogRow,
+  AIStateRow,
+  AiTrustRow,
 } from "../types";
 
 // Subscribes to the public game tables and returns live rows. The SDK delivers
@@ -24,6 +26,8 @@ export function useSubscriptions() {
   const [gameState, gameStateReady] = useTable(tables.game_state);
   const [eventFeed, eventFeedReady] = useTable(tables.event_feed);
   const [strategistLog, strategistReady] = useTable(tables.strategist_log);
+  const [aiState] = useTable(tables.ai_state);
+  const [aiTrust] = useTable(tables.ai_trust);
   // Privacy: only global messages and DMs involving this client ever reach the
   // client. AI-to-AI DMs never match this filter; the secret table is non-public.
   const [chatLog, chatReady] = useTable(
@@ -53,6 +57,8 @@ export function useSubscriptions() {
     eventFeed: eventFeed as readonly EventFeedRow[],
     strategistLog: strategistLog as readonly StrategistLogRow[],
     chatLog: chatLog as readonly ChatLogRow[],
+    aiState: aiState as readonly AIStateRow[],
+    aiTrust: aiTrust as readonly AiTrustRow[],
     isReady,
   };
 }

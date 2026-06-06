@@ -12,6 +12,8 @@ import { ActionBar } from "./components/ActionBar";
 import { IntelPanel } from "./components/IntelPanel";
 import { StrategistAlerts } from "./components/StrategistAlerts";
 import { ChatPanel } from "./components/ChatPanel";
+import { SpectatorOverlay } from "./components/SpectatorOverlay";
+import { ReplayControls } from "./components/ReplayControls";
 import { QueryBar } from "./components/QueryBar";
 import { ResultsPanel } from "./components/ResultsPanel";
 import { EventTicker } from "./components/EventTicker";
@@ -20,8 +22,18 @@ import type { QueryResult } from "./types";
 
 const PLAYER_ID = HUMAN_PLAYER_ID;
 
+type Mode = "player" | "spectator" | "replay";
+
+function readMode(): Mode {
+  const p = new URLSearchParams(window.location.search);
+  if (p.get("replay") === "true") return "replay";
+  if (p.get("spectator") === "true") return "spectator";
+  return "player";
+}
+
 export default function App() {
-  const { military, economic, covert, cultural, players, gameState, eventFeed, strategistLog, chatLog, isReady } =
+  const mode = useMemo(readMode, []);
+  const { military, economic, covert, cultural, players, gameState, eventFeed, strategistLog, chatLog, aiState, aiTrust, isReady } =
     useSubscriptions();
 
   const startGame = useReducer(reducers.startGame);
@@ -47,7 +59,37 @@ export default function App() {
   const [tickerHighlight, setTickerHighlight] = useState<number | null>(null);
   const [ownedHighlight, setOwnedHighlight] = useState(false);
   const [intelOpen, setIntelOpen] = useState(true);
+  const [currentTimestamp, setCurrentTimestamp] = useState<number>(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const seedAttempted = useRef(false);
+
+  const startedAt = Number(gameState.find((r) => r.key === "started_at")?.value ?? 0);
+  const endedAt = Number(gameState.find((r) => r.key === "ended_at")?.value ?? 0);
+
+  // Replay: initialize the playhead at game start once data is ready.
+  useEffect(() => {
+    if (mode === "replay" && currentTimestamp === 0 && startedAt > 0) {
+      setCurrentTimestamp(startedAt);
+    }
+  }, [mode, currentTimestamp, startedAt]);
+
+  // Replay playback loop: advance the playhead while playing.
+  useEffect(() => {
+    if (mode !== "replay" || !isPlaying || endedAt <= startedAt) return;
+    const stepMs = 200;
+    const timer = window.setInterval(() => {
+      setCurrentTimestamp((t) => {
+        const next = t + stepMs * playbackSpeed;
+        if (next >= endedAt) {
+          setIsPlaying(false);
+          return endedAt;
+        }
+        return next;
+      });
+    }, stepMs);
+    return () => window.clearInterval(timer);
+  }, [mode, isPlaying, playbackSpeed, startedAt, endedAt]);
 
   function handleEventClick(territoryId: number) {
     setTickerHighlight(territoryId);
@@ -86,13 +128,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isReady || seedAttempted.current) return;
+    if (mode !== "player" || !isReady || seedAttempted.current) return;
     const hasStatus = gameState.some((row) => row.key === "status");
     if (!hasStatus) {
       seedAttempted.current = true;
       startGame().catch((e) => console.warn("start_game failed:", e));
     }
-  }, [isReady, gameState, startGame]);
+  }, [mode, isReady, gameState, startGame]);
 
   const territories = useMemo(
     () => buildTerritoryStates(military, economic, covert, cultural),
@@ -140,6 +182,14 @@ export default function App() {
     return (
       <div className="flex h-full items-center justify-center font-data text-text-secondary">
         Connecting to SpacetimeDB...
+      </div>
+    );
+  }
+
+  if (mode === "replay" && status !== "ended") {
+    return (
+      <div className="flex h-full items-center justify-center font-ui text-text-secondary">
+        Replay will be available after the game ends.
       </div>
     );
   }
@@ -200,14 +250,42 @@ export default function App() {
             currentPlayerId={PLAYER_ID}
             onSendMessage={handleSendMessage}
             onTerritoryClick={handleEventClick}
+            mode={mode}
+            currentTimestamp={mode === "replay" ? currentTimestamp : null}
           />
+          {mode !== "player" && (
+            <SpectatorOverlay
+              territories={territories}
+              players={players}
+              aiState={aiState}
+              aiTrust={aiTrust}
+              eventFeed={eventFeed}
+            />
+          )}
         </div>
 
-        <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />
+        {mode === "player" && <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />}
 
-        <EventTicker events={eventFeed} onEventClick={handleEventClick} />
+        {mode === "replay" ? (
+          <ReplayControls
+            events={eventFeed}
+            startedAt={startedAt}
+            endedAt={endedAt > startedAt ? endedAt : startedAt + 1}
+            currentTimestamp={currentTimestamp}
+            onSeek={(t) => setCurrentTimestamp(t)}
+            isPlaying={isPlaying}
+            onPlayPause={() => setIsPlaying((p) => !p)}
+            speed={playbackSpeed}
+            onSpeedChange={setPlaybackSpeed}
+          />
+        ) : (
+          <EventTicker
+            events={eventFeed}
+            onEventClick={handleEventClick}
+          />
+        )}
 
-        {gameEnded && (
+        {gameEnded && mode === "player" && (
           <VictoryScreen
             winner={winner}
             didWin={didWin}
