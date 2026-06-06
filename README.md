@@ -11,42 +11,41 @@
 flowchart LR
     classDef client fill:#0d1729,stroke:#4488FF,stroke-width:2px,color:#c8d8ff
     classDef server fill:#0a1f12,stroke:#44CC66,stroke-width:2px,color:#c8ffcc
-    classDef ai     fill:#2a0d0d,stroke:#FF6666,stroke-width:2px,color:#ffc8c8
+    classDef ai fill:#2a0d0d,stroke:#FF6666,stroke-width:2px,color:#ffc8c8
 
-    subgraph C["CLIENT  ·  React  ·  TypeScript  ·  dnd-kit  ·  Tailwind"]
-        MAP["Hex Map"]
-        HAND["Card Hand"]
-        QB["Query Bar"]
-        TICKER["Event Ticker"]
-        ALERTS["Strategist Alerts"]
+    subgraph C["CLIENT - React / TypeScript / dnd-kit / Tailwind"]
+        MAP["Hex Map"]:::client
+        HAND["Card Hand"]:::client
+        QB["Query Bar"]:::client
+        TICKER["Event Ticker"]:::client
+        ALERTS["Strategist Alerts"]:::client
     end
 
-    subgraph S["SPACETIMEDB  ·  Rust"]
-        RED["Reducers"]
-        TAB["10 Tables"]
-        SCH["Scheduled Reducers"]
+    subgraph S["SPACETIMEDB - Rust"]
+        RED["Reducers"]:::server
+        TAB["10 Tables"]:::server
+        SCH["Scheduled Reducers"]:::server
     end
 
-    subgraph A["CLAUDE  ·  Anthropic API"]
-        ORCH["AI Orchestration"]
-        NLQ["Query Translation"]
-        STRAT["Strategist Advisor"]
+    subgraph A["CLAUDE - Anthropic API"]
+        ORCH["AI Orchestration"]:::ai
+        NLQ["Query Translation"]:::ai
+        STRAT["Strategist Advisor"]:::ai
     end
 
-    HAND & MAP -->|"actions"| RED
-    QB         -->|"query"| RED
-    RED        -->|"mutate"| TAB
-    TAB        -->|"live subscriptions"| MAP & TICKER & ALERTS
-    SCH        -->|"AI cycles · 60s"| ORCH
-    SCH        -->|"Strategist · 60s"| STRAT
-    RED        -->|"query thread"| NLQ
-    ORCH       -->|"submit actions"| RED
-    NLQ        -->|"structured results"| TAB
-    STRAT      -->|"push alerts"| TAB
-
-    class MAP,HAND,QB,TICKER,ALERTS client
-    class RED,TAB,SCH               server
-    class ORCH,NLQ,STRAT            ai
+    MAP -->|"actions"| RED
+    HAND -->|"actions"| RED
+    QB -->|"query"| RED
+    RED -->|"mutate"| TAB
+    TAB -->|"subscriptions"| MAP
+    TAB -->|"subscriptions"| TICKER
+    TAB -->|"subscriptions"| ALERTS
+    SCH -->|"AI cycles 60s"| ORCH
+    SCH -->|"Strategist 60s"| STRAT
+    RED -->|"query thread"| NLQ
+    ORCH -->|"submit actions"| RED
+    NLQ -->|"results"| TAB
+    STRAT -->|"alerts"| TAB
 ```
 
 ---
