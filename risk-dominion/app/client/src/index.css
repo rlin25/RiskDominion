@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background-color: #0a0a1a;
+    color: #e0e0e0;
+    font-family: "Orbitron", sans-serif;
+    overflow: hidden;
+  }
+}

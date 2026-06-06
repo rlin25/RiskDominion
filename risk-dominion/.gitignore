@@ -1,0 +1,17 @@
+# Rust / SpacetimeDB module
+target/
+**/target/
+# Cargo.lock is committed (this is an application, not a library)
+
+# Node / client
+node_modules/
+dist/
+test-results/
+.vite/
+
+# Generated SpacetimeDB client bindings are committed intentionally (see app/client/src/module_bindings)
+
+# Secrets / local env (never commit; holds ANTHROPIC_API_KEY)
+.env
+.env.local
+*.local-backup
