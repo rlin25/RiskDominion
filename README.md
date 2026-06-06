@@ -21,10 +21,11 @@ flowchart LR
         ALERTS("Strategist Alerts"):::client
     end
 
-    subgraph S["SPACETIMEDB - Rust"]
+    subgraph S["SPACETIMEDB 2.4.1 - Rust"]
         RED("Reducers"):::server
-        TAB("12 Tables"):::server
-        SCH("Scheduled Reducers"):::server
+        TAB("Tables"):::server
+        PROC("Procedures - ctx.http"):::server
+        SCH("Scheduled reducers + procedures"):::server
     end
 
     subgraph A["CLAUDE - Anthropic API"]
@@ -35,16 +36,17 @@ flowchart LR
 
     MAP -->|"actions"| RED
     HAND -->|"actions"| RED
-    QB -->|"query"| RED
+    QB -->|"query"| PROC
     RED -->|"mutate"| TAB
+    PROC -->|"with_tx"| TAB
     TAB -->|"subscriptions"| MAP
     TAB -->|"subscriptions"| TICKER
     TAB -->|"subscriptions"| ALERTS
-    SCH -->|"AI cycles 60s"| ORCH
-    SCH -->|"Strategist 60s"| STRAT
-    RED -->|"query thread"| NLQ
-    ORCH -->|"submit actions"| RED
-    NLQ -->|"results"| TAB
+    SCH -->|"AI cycle procedure 60s"| ORCH
+    SCH -->|"Strategist procedure 60s"| STRAT
+    PROC -->|"ctx.http query"| NLQ
+    ORCH -->|"apply actions"| TAB
+    NLQ -->|"return value"| QB
     STRAT -->|"alerts"| TAB
 ```
 
@@ -55,10 +57,21 @@ flowchart LR
 ```bash
 git clone https://github.com/rlin25/RiskDominion.git
 cd RiskDominion/risk-dominion
+curl -sSf https://install.spacetimedb.com | sh   # SpacetimeDB 2.4.1+ CLI
 bash setup.sh
 ```
 
-Open `prompts/generate_slice_1.txt` in Claude Code. Follow the generation instructions for each slice in order. Start the SpacetimeDB server, then open `http://localhost:5173`.
+The code lives in a single evolving codebase at `risk-dominion/app/` (`app/server` for the Rust module, `app/client` for the React client); each slice is tagged `slice-N-complete` in git. Publish the module, generate the TypeScript bindings, seed the Anthropic key into the private `module_config` table, and run the client:
+
+```bash
+spacetime start
+spacetime publish --project-path app/server risk-dominion
+spacetime generate --lang typescript --out-dir app/client/src/module_bindings --module-path app/server
+spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'
+cd app/client && npm install && npm run dev
+```
+
+Then open `http://localhost:5173`.
 
 ---
 
@@ -66,8 +79,8 @@ Open `prompts/generate_slice_1.txt` in Claude Code. Follow the generation instru
 
 - **Four dimensions of control** -- Military, Economic, Cultural, and Covert. Each territory can be owned by a different player in each dimension simultaneously.
 - **Split ownership map** -- Victory requires unifying all four dimensions across five territories. Holding land is not enough.
-- **Three AI opponents** -- Zhao (aggressive general), Consortium (patient financier), Prophet (cultural spymaster). Each runs live LLM reasoning cycles every 60 seconds against the same live database the player is reading.
-- **Multi-agent AI orchestration** -- Each AI opponent runs a council of five Claude agents: four domain specialists (military, economic, cultural, covert) and a commander who synthesizes their recommendations. Fifteen calls per minute across all three AIs.
+- **Three AI opponents** -- Zhao (aggressive general), Consortium (patient financier), Prophet (cultural spymaster). Each runs a live Claude reasoning cycle every 60 seconds, implemented as a scheduled SpacetimeDB procedure that calls the Anthropic API via `ctx.http` against the same live database the player is reading.
+- **Multi-agent AI orchestration** -- Each AI opponent runs a council of five Claude agents: four domain specialists (military, economic, cultural, covert) and a commander who synthesizes their recommendations. All five calls are issued from one reasoning procedure -- fifteen calls per minute across all three AIs.
 - **Traceable deliberation chain** -- Every subordinate recommendation and commander decision is logged to the database and queryable through the intel system. See not just what the AI decided, but who recommended what.
 - **Passive cultural spread** -- Cultural influence spreads every 30 seconds based on adjacent economic pressure. There is no Cultural card. The dimension is shaped indirectly through economic investment.
 - **Cross-dimension bonuses** -- Military protects Economic, Economic funds Cultural, Cultural enables Covert, Covert sharpens Military. Coordinated multi-dimension play compounds.
@@ -89,14 +102,15 @@ Open `prompts/generate_slice_1.txt` in Claude Code. Follow the generation instru
 
 | Technology | Role |
 |------------|------|
-| **SpacetimeDB** | Database, server, and subscriptions -- all in one process |
-| **Rust** | Server modules, reducers, scheduled reducers, thread orchestration |
+| **SpacetimeDB 2.4.1** | Database, server, and subscriptions -- all in one process |
+| **Rust** | Server module: reducers, procedures (with `ctx.http`), views, scheduled functions |
 | **React 18** | Frontend UI |
 | **TypeScript** | Type-safe client code |
 | **Vite** | Frontend build tool and dev server |
+| **`spacetimedb` (npm)** | SpacetimeDB client SDK and React hooks (`spacetimedb/react`) |
 | **dnd-kit** | Drag-and-drop card interaction |
 | **Tailwind CSS** | All styling via utility classes |
-| **Claude (Anthropic API)** | AI reasoning, multi-agent orchestration, queries, Strategist |
+| **Claude (Anthropic API)** | AI reasoning, multi-agent orchestration, queries, Strategist -- all called from procedures |
 
 ---
 

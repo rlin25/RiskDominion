@@ -1,36 +1,38 @@
-You are in the slice-1/ directory. You are modifying the working Slice 3 codebase to add Slice 4 features. Generate all changes relative to this directory.
+You are evolving the single Risk: Dominion app at risk-dominion/app/ (as of the slice-3-complete tag) to add Slice 4 features. Generate all changes against app/server and app/client.
 
 You are implementing Slice 4 of Risk: Dominion — adding the query system, event ticker, and Tab autocomplete. This is Slice 4 of 7.
 
-Before generating any changes, read every file in the existing Slice 3 codebase:
-- slice-1/server/Cargo.toml
-- slice-1/server/src/lib.rs
-- slice-1/client/src/App.tsx
-- slice-1/client/src/constants.ts
-- slice-1/client/src/types.ts
-- slice-1/client/src/hooks/useSubscriptions.ts
-- slice-1/client/src/utils/territoryHelpers.ts
-- slice-1/client/src/components/Map.tsx
-- slice-1/client/src/components/Territory.tsx
-- slice-1/client/src/components/CardHand.tsx
-- slice-1/client/src/components/ActionCard.tsx
-- slice-1/client/src/components/IntelPanel.tsx
-- slice-1/client/src/components/ActionBar.tsx
-- slice-1/client/src/components/VictoryScreen.tsx
+Before generating any changes, read every file in the existing app/ codebase:
+- app/server/Cargo.toml
+- app/server/src/lib.rs
+- app/client/src/App.tsx
+- app/client/src/constants.ts
+- app/client/src/types.ts
+- app/client/src/hooks/useSubscriptions.ts
+- app/client/src/utils/territoryHelpers.ts
+- app/client/src/components/Map.tsx
+- app/client/src/components/Territory.tsx
+- app/client/src/components/CardHand.tsx
+- app/client/src/components/ActionCard.tsx
+- app/client/src/components/IntelPanel.tsx
+- app/client/src/components/ActionBar.tsx
+- app/client/src/components/VictoryScreen.tsx
 
 Understand the current code before making any changes.
 
 Read these files in full before generating:
-- MASTERPLAN_SLICE_4.md (your authoritative spec — event_feed table, event writes in 7 reducers, query reducers with Claude prompts, 10 canned query prompt strings, autocomplete reducer, new components, modified components)
+- MASTERPLAN_SLICE_4.md (your authoritative spec — event_feed table, event writes on every game-state change, query/canned/autocomplete procedures with Claude prompts, 10 canned query prompt strings, new components, modified components)
 - ../AESTHETIC.md (visual design system — geometric SVG icons for ticker, query bar styling, results panel styling)
 
-Modify the existing Slice 3 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
+Modify the existing app/ codebase in place. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
 
 Key constraints:
-- Event writes are fire-and-forget. Insert the event as the LAST operation in each reducer. Wrap in a result handler. Log errors to the server console. Never block or roll back the primary state change. The game state must persist regardless of event write success.
-- Query reducers use std::thread::spawn + reqwest::blocking::Client. Same pattern as ai_reasoning_cycle. Multiple threads may run concurrently — this is expected and safe.
-- All three query reducers (query_database, get_canned_query, autocomplete_query) call Claude. Use the model from ANTHROPIC_MODEL env var. Temperature 0.3 for queries. Autocomplete timeout is 5 seconds. Query timeout is 10 seconds. On any error, return the error fallback structure — never crash.
+- Event writes are a side effect of each reducer's transaction. Insert the event_feed row as the LAST operation, after the primary state change. It shares the reducer's tx, so it commits atomically with the action. event_feed is a public event/log table written only by the server module. Use id: 0 (auto_inc) and event_at: now_millis(ctx) (never wall-clock). For AI moves, the writes live in the shared do_* action helpers so player and AI actions are narrated by one code path.
+- query_database, get_canned_query, and autocomplete_query are PROCEDURES, not reducers. They both call Claude over ctx.http and return structured data to the caller, which only procedures can do. They reuse the shared anthropic_call(ctx, ...) helper (the same one the ai_reasoning_cycle procedure uses). There is no reqwest, no std::thread::spawn, no tokio. Snapshot the board in ctx.with_tx, drop the tx, make the HTTP call, then parse and return.
+- Each procedure returns a #[derive(SpacetimeType)] struct: QueryResult { summary, highlighted_territories, data_table: DataTable { columns, rows } } and AutocompleteResult { suggestions }. On any error (HTTP failure, timeout, unparseable JSON), return the defined error-fallback struct — never panic.
+- The procedures read anthropic_api_key and anthropic_model from the private module_config table (via config_value), never from environment variables. Query max_tokens 500 / timeout 10s; autocomplete max_tokens 150 / timeout 5s.
 - The 10 canned query prompts are pre-formulated strings stored as constants in lib.rs. Each is appended with the game state snapshot before sending to Claude. These are real LLM calls with optimized prompts. No deterministic logic. No dummy data.
+- The client calls the query procedures via useProcedure(procedures.queryDatabase | getCannedQuery | autocompleteQuery), each as (args) => Promise<Ret> with a single named-args object (e.g. queryDatabase({ query }), getCannedQuery({ queryId }), autocompleteQuery({ partial })). Subscribe to the event feed via useTable(tables.eventFeed) which returns [rows, isReady]. Regenerate bindings after the server change: spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server. Generated row/return fields are camelCase (eventText, territoryId, highlightedTerritories, dataTable).
 - The event ticker displays the last 50 events client-side. Slice the array: events.slice(-50). Server stores all events. Ticker scrolls with CSS animation, pauses on hover.
 - Ticker icons are geometric SVG shapes — not emojis. Military: upward triangle. Economic: circle with vertical line. Cultural: diamond. Covert: concentric circles. Victory: hexagon outline. System: horizontal dash. All 12x12px, monochrome, text-secondary color.
 - Query bar has a gold > prompt character. Text input in JetBrains Mono. 10 canned query pill buttons in two rows of five. Tab key triggers autocomplete — dropdown with up to 3 suggestions.
@@ -40,18 +42,18 @@ Key constraints:
 
 Scope boundary:
 - This is Slice 4 of 7. Add ONLY what is specified in the masterplan. Do not leave stubs, TODOs, or placeholders.
-- Do not add new dimensions, new AI opponents, new card types, or new gameplay mechanics. The query system and event ticker are additive — they reveal and narrate the existing game, not change it.
+- Do not add new dimensions, new AI opponents, new card types, or new gameplay mechanics. Do not add multi-agent orchestration, the human Strategist, chat, or spectator/replay (those are later slices). The query system and event ticker are additive — they reveal and narrate the existing game, not change it.
 
 If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_4.md and INTERFACE_CONTRACT_SLICE_4.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
 
 Success criteria. After applying all modifications:
-1. Compile without errors (cargo build, npm run build).
+1. Compile without errors (spacetime build or cargo build for the module, npm run build for the client). Bindings regenerated with spacetime generate.
 2. Event ticker shows "Game started" on load. New events appear for all action types with correct colors and geometric SVG icons.
-3. All 10 canned query buttons return summary, data table, and map highlights via real Claude calls.
-4. Natural language queries return structured results. Nonsense queries show graceful error message. No crashes.
-5. Tab autocomplete shows up to 3 context-aware suggestions. Empty array when partial is too short or on error.
+3. All 10 canned query buttons call the get_canned_query procedure and return summary, data table, and map highlights via real Claude calls.
+4. Natural language queries call the query_database procedure and return structured results. Nonsense queries show graceful error message. No crashes.
+5. Tab autocomplete (the autocomplete_query procedure) shows up to 3 context-aware suggestions. Empty array when partial is too short or on error.
 6. Clicking a ticker event highlights the referenced territory with a white pulse.
 7. Results panel opens on query, closes with × button, clears highlights on close.
-8. All Slice 3 gameplay preserved — actions, AI, cultural spread, victory all unchanged. Events are additive.
+8. All prior-slice gameplay preserved — actions, AI, cultural spread, victory all unchanged. Events are additive. Win condition remains 5 unified territories across all four dimensions.
 
 Generate now. Output every changed file. Mark each as MODIFIED or NEW.

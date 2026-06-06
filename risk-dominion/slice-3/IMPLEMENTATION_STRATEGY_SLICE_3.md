@@ -1,16 +1,16 @@
 # RISK: DOMINION — SLICE 3 IMPLEMENTATION STRATEGY
 
-## Version 1.0
+## Version 2.0 (SpacetimeDB 2.4.1)
 ## Scope: Cultural Dimension, Cross-Dimension Bonuses, Four-Dimension Game
-## Target: Human Team — After Claude Code Generation
+## Target: Human Team — After Claude Code Generation (Slice 3 of 7)
 
 ---
 
 ## Principle 0: Validate Before You Build On It
 
-Slice 3 completes the dimensional picture. It adds the Cultural dimension (passive spread), cross-dimension bonuses (Military→Economic, Economic→Cultural, Cultural→Covert, Covert→Military), and expands the win condition to 5 unified territories across all four dimensions. It modifies critical reducers from Slice 2: `economic_invest`, `get_intel`, and `dimension_owner_change`.
+Slice 3 completes the dimensional picture. It adds the Cultural dimension (passive spread), cross-dimension bonuses (Military to Economic, Economic to Cultural, Cultural to Covert, Covert to Military), and expands the win condition to 5 unified territories across all four dimensions. It modifies critical server functions from Slice 2: the `economic_invest` reducer (via shared `do_economic_invest` logic), the `get_intel` procedure, and the private `dimension_owner_change` win-check fn.
 
-If Slice 3 has a bug — a broken cultural tick, a miscalculated bonus, a win condition that doesn't fire — Slice 4 (the final slice: query system and event ticker) will be debugging passive spread mechanics on top of LLM query translation. That is a nightmare.
+If Slice 3 has a bug — a broken cultural tick, a miscalculated bonus, a win condition that doesn't fire — Slice 4 (query system and event ticker) will be debugging passive spread mechanics on top of LLM query translation. That is a nightmare. (Slice 4 is not the final slice either; the project runs through Slice 7.)
 
 The rule: Slice 3 must pass every regression check and every new feature test before Slice 4 generation begins. No exceptions.
 
@@ -34,10 +34,10 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 ### Prerequisites
 
-- SpacetimeDB server is running.
-- Frontend dev server is running.
+- The SpacetimeDB module is published and running (`spacetime publish` from `app/server`, plus `spacetime version` reporting 2.4.1).
+- Frontend dev server is running (`npm run dev` in `app/client`).
 - One browser tab open to `http://localhost:5173`.
-- Anthropic API key configured in `.env`.
+- Anthropic API key seeded into the private `module_config` table via `spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'` (the key is never in source, never `public`, never exposed to clients).
 
 ---
 
@@ -52,7 +52,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - Middle East (9): all four quadrants purple (Prophet).
 - North Africa (6): Cultural quadrant shows purple (Prophet) with partial fill indicating 40% influence. Military and Economic show orange (Consortium).
 
-**If this fails:** Cultural table not seeded or subscription not connected. Check `start_game` reducer, check `subscribe_cultural` in `useSubscriptions.ts`.
+**If this fails:** Cultural table not seeded or subscription not connected. Check the `start_game` reducer, check `useTable(tables.cultural)` in `useSubscriptions.ts`, and confirm the bindings were regenerated after the server change.
 
 ---
 
@@ -89,7 +89,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **Expected Result:** Intel panel shows Zhao's reasoning text. Territories referenced are highlighted.
 
-**If this fails:** Check `get_intel` reducer — the Cultural→Covert bonus addition may have broken the threshold check. Verify agent count is still 3+ and effective agent calculation includes the bonus correctly.
+**If this fails:** Check the `get_intel` procedure — the Cultural to Covert bonus addition may have broken the threshold check. Verify agent count is still 3+ and the effective agent calculation includes the bonus correctly.
 
 ---
 
@@ -126,7 +126,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **Expected Result:** After 30 seconds, the influence percentage on that territory has increased. The increase is visible both in the hover tooltip and in the partial fill on the Cultural wedge.
 
-**If nothing changes after 30 seconds:** Check `cultural_spread_tick` scheduled reducer registration. Check the tick interval (must be 30000ms). Check server logs for errors during tick execution.
+**If nothing changes after 30 seconds:** Check that `cultural_timer` is armed in `start_game` (one `ScheduleAt::Interval` row at `CULTURAL_TICK_SECONDS`). Check that the `cultural_spread_tick` scheduled reducer is wired to that table via `scheduled(cultural_spread_tick)`. Check server logs for errors during tick execution.
 
 ---
 
@@ -175,7 +175,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **Expected Result:** Intel now shows the AI's reasoning. Effective agents = 3 + (3 * 10 / 100) = 3 + 0 = 3. Meets threshold.
 
-**If the bonus changes the threshold unexpectedly:** Check `get_intel` reducer — the `effective_agents` calculation with integer truncation. Verify the formula is `agent_count + (agent_count * 10 / 100)`.
+**If the bonus changes the threshold unexpectedly:** Check the `get_intel` procedure — the `effective_agents` calculation with integer truncation. Verify the formula is `agent_count + (agent_count * 10 / 100)`.
 
 ---
 
@@ -214,10 +214,10 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 | Step | Symptom | Most Likely Cause | Check |
 |------|---------|-------------------|-------|
-| A1 | Cultural quadrant shows neutral on all territories | Cultural subscription not connected | `useSubscriptions.ts` — add `subscribe_cultural` |
+| A1 | Cultural quadrant shows neutral on all territories | Cultural subscription not connected | `useSubscriptions.ts` — add `useTable(tables.cultural)`; regenerate bindings |
 | A1 | Cultural quadrant colors wrong | Seed data mismatch | `start_game` reducer — compare cultural inserts against Interface Contract Section 3 |
 | A1 | Only 3 quadrants visible | Territory component not updated | `Territory.tsx` — activate bottom-right wedge |
-| B2 | No influence change after 30s | Cultural tick not firing | Server logs — check `cultural_spread_tick` scheduled reducer registration. Check interval (30000ms). |
+| B2 | No influence change after 30s | Cultural tick not firing | Server logs — check that `cultural_timer` is armed in `start_game` (`ScheduleAt::Interval` at `CULTURAL_TICK_SECONDS`) and wired via `scheduled(cultural_spread_tick)`. |
 | B2 | Influence changes on wrong territories | Adjacency map error | `cultural_spread_tick` — check adjacency lookup |
 | B3 | Influence exceeds 50 but no flip | Flip condition uses >= instead of > | `cultural_spread_tick` — change to `>` |
 | B3 | Flip occurs but influence doesn't reset | Reset logic missing | `cultural_spread_tick` — add `influence_pct = 0` after flip |
@@ -285,7 +285,7 @@ Before generating Slice 4, all of the following must be true:
 8. **Server compiles** with `cargo build` — zero errors.
 9. **Client compiles** with `npm run build` — zero errors.
 10. **No known showstopper bugs.** Any discovered bug is fixed or documented.
-11. **The Slice 3 codebase is committed.** Slice 4 generation modifies this codebase.
+11. **The Slice 3 codebase is committed and tagged `slice-3-complete`.** Slice 4 generation modifies this same `app/` codebase.
 
 If any condition is not met, do not proceed to Slice 4.
 
@@ -294,7 +294,7 @@ If any condition is not met, do not proceed to Slice 4.
 ## 7. MANUAL ITERATION NOTES
 
 - **Cultural tick timing for testing:** 30 seconds is long for validation. You may temporarily lower `CULTURAL_TICK_SECONDS` to 10 seconds to observe multiple ticks quickly. Restore to 30 before Slice 4.
-- **Debug buttons (temporary):** Add a "Force Cultural Tick" button to `DebugPanel.tsx` that calls `cultural_spread_tick()` immediately. This is invaluable for testing influence accumulation and flip logic without waiting.
+- **Forcing a tick (temporary):** To trigger a cultural tick on demand without waiting, add a temporary operator-only reducer that inserts a one-shot `cultural_timer` row with `ScheduleAt::Time(ctx.timestamp + Duration::from_secs(1))`; the scheduler then fires `cultural_spread_tick` almost immediately. Invoke it with `spacetime call`. A scheduled reducer is driven by its scheduled table, so it cannot be called directly from the client. Remove the temporary reducer before Slice 4.
 - **Pressure visibility:** Consider adding temporary console logs to `cultural_spread_tick` during validation to see per-territory pressure values. Remove before Slice 4.
 - **Win condition testing:** Lower `WIN_UNIFIED_TERRITORIES` to 2 temporarily to verify the four-dimension win check. Restore to 5 after validation.
 - **Scheduler overlap:** Every 60 seconds, the cultural tick (30s) and an AI cycle (60s) may fire simultaneously. SpacetimeDB serializes these. If you observe an AI cycle delayed by a few seconds every 60s, this is expected.
@@ -303,4 +303,4 @@ If any condition is not met, do not proceed to Slice 4.
 
 ## End of Slice 3 Implementation Strategy
 
-Validate. Debug. Fix. Commit. Then Slice 4 — the final slice.
+Validate. Debug. Fix. Commit (tag `slice-3-complete`). Then Slice 4 — the query system and event ticker. The final slice is Slice 7.

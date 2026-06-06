@@ -1,16 +1,19 @@
 # RISK: DOMINION — SLICE 2 INTERFACE CONTRACT
 
-## Version 1.0
+## Version 2.0
 ## Scope: AI Opponents, Covert Dimension, Intel System
-## Target: Claude Code Generation — Modifying the Slice 1 Codebase
+## Target: Claude Code Generation — Slice 2 of 7
+## Platform: SpacetimeDB 2.4.1
 
 ---
 
 ## 0. HOW TO READ THIS DOCUMENT
 
-This document specifies every table, reducer, subscription, seed data value, and constant that is **new or modified** in Slice 2. It does not repeat Slice 1 specifications.
+This document specifies every table, reducer, procedure, subscription, seed data value, and constant that is **new or modified** in Slice 2. It does not repeat Slice 1 specifications. The canonical code is the single `risk-dominion/app/{server,client}` codebase (tagged `slice-1-complete`), grown in place.
 
-**All Slice 1 tables, reducers, subscriptions, and constants remain in effect unless this document explicitly modifies them.** If a component is not mentioned here, it is unchanged from Slice 1.
+**All Slice 1 tables, reducers, procedures, subscriptions, and constants remain in effect unless this document explicitly modifies them.** If a component is not mentioned here, it is unchanged from Slice 1.
+
+SpacetimeDB has three server function types: **reducers** (deterministic, return `Result<(), String>`, cannot return data to clients, cannot make HTTP calls), **procedures** (return data to the caller and/or make HTTP calls via `ctx.http`), and views. Slice 2 introduces both procedures.
 
 ---
 
@@ -22,46 +25,59 @@ Add one column to the existing `players` table:
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `is_ai` | BOOLEAN | NOT NULL DEFAULT false | True for AI opponents, false for human |
+| `is_ai` | bool | | True for AI opponents, false for human |
 
-All other columns (`player_id`, `player_name`, `color`, `action_points`, `last_regen_at`) remain unchanged.
+All other columns (`player_id`, `player_name`, `color`, `action_points`, `last_regen_at`) remain unchanged. The table stays `public`.
 
 ---
 
 ## 2. NEW TABLES
 
+Tables are `pub struct`s with `#[spacetimedb::table(accessor = name, public)]`. Column constraints use attributes (`#[primary_key]`, `#[auto_inc]`). The `module_config` table (Section 2.4) is NOT `public`. Generated TS field names are camelCase (`territory_id` becomes `territoryId`).
+
 ### 2.1 `covert`
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `territory_id` | INT | PRIMARY KEY | Territory identifier (1–12) |
-| `owner_id` | INT | NOT NULL | Player who controls this dimension (1–4, or 0 if no agents) |
-| `agent_count` | INT | NOT NULL DEFAULT 0 | Number of agents deployed |
+| Column | Type | Attribute | Description |
+|--------|------|-----------|-------------|
+| `territory_id` | i32 | `#[primary_key]` | Territory identifier (1-12) |
+| `owner_id` | i32 | | Player who controls this dimension (1-4, or 0 if no agents) |
+| `agent_count` | i32 | | Number of agents deployed |
 
-Use `#[spacetimedb(table)]` macro.
+Accessor `covert`, `public`.
 
 ### 2.2 `ai_state`
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `ai_player_id` | INT | PRIMARY KEY | References `players.player_id` (2, 3, or 4) |
-| `cycle_status` | STRING | NOT NULL DEFAULT 'idle' | 'idle' or 'pending' |
-| `last_cycle_at` | BIGINT | NULL | Unix timestamp (ms) of last completed cycle |
-| `next_cycle_at` | BIGINT | NOT NULL | Unix timestamp (ms) of next scheduled cycle |
+| Column | Type | Attribute | Description |
+|--------|------|-----------|-------------|
+| `ai_player_id` | i32 | `#[primary_key]` | References `players.player_id` (2, 3, or 4) |
+| `cycle_status` | String | | "idle" or "pending" |
+| `last_cycle_at` | i64 | | Unix timestamp (ms) of last completed cycle; 0 if never |
+| `next_cycle_at` | i64 | | Unix timestamp (ms) of next scheduled cycle |
 
-Use `#[spacetimedb(table)]` macro.
+Accessor `ai_state`, `public`. `last_cycle_at` is a plain `i64` initialized to `0` (not nullable).
 
 ### 2.3 `ai_reasoning_log`
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | INT | PRIMARY KEY AUTO_INCREMENT | Unique log entry ID |
-| `ai_player_id` | INT | NOT NULL | Which AI produced this reasoning |
-| `cycle_at` | BIGINT | NOT NULL | Unix timestamp (ms) when cycle fired |
-| `reasoning_text` | STRING | NOT NULL | Full LLM reasoning output |
-| `actions_taken` | STRING | NOT NULL | JSON array of action objects with acceptance status |
+| Column | Type | Attribute | Description |
+|--------|------|-----------|-------------|
+| `id` | u64 | `#[primary_key] #[auto_inc]` | Unique log entry ID (insert with 0) |
+| `ai_player_id` | i32 | | Which AI produced this reasoning |
+| `cycle_at` | i64 | | Unix timestamp (ms) when cycle fired |
+| `reasoning_text` | String | | Full LLM reasoning output |
+| `actions_taken` | String | | JSON array of action objects with acceptance status |
 
-Use `#[spacetimedb(table)]` macro.
+Accessor `ai_reasoning_log`, `public`.
+
+### 2.4 `module_config` (private)
+
+Holds the Anthropic API key and optional model override. NEVER marked `public`, so clients cannot read it via subscription and the key never appears in source.
+
+| Column | Type | Attribute | Description |
+|--------|------|-----------|-------------|
+| `key` | String | `#[primary_key]` | Config key (e.g. "anthropic_api_key", "anthropic_model") |
+| `value` | String | | Config value |
+
+Accessor `module_config`. NOT `public`.
 
 `actions_taken` JSON format:
 ```json
@@ -71,6 +87,18 @@ Use `#[spacetimedb(table)]` macro.
     {"action_type": "deploy_agent", "territory_id": 5, "accepted": false, "reason": "Insufficient action points"}
 ]
 ```
+
+### 2.5 `ai_cycle_schedule` (scheduled table)
+
+Drives the `ai_reasoning_cycle` procedure. A scheduled table targets a function via `scheduled(target_fn)`; that target receives the row. One in-flight row per AI; each cycle re-arms the next via a one-shot `ScheduleAt::Time`.
+
+| Column | Type | Attribute | Description |
+|--------|------|-----------|-------------|
+| `scheduled_id` | u64 | `#[primary_key] #[auto_inc]` | Schedule row id (insert with 0) |
+| `ai_player_id` | i32 | | Which AI this cycle is for (2, 3, 4) |
+| `scheduled_at` | ScheduleAt | | When the cycle fires |
+
+Definition: `#[spacetimedb::table(accessor = ai_cycle_schedule, scheduled(ai_reasoning_cycle))]`.
 
 ---
 
@@ -87,15 +115,17 @@ Modify `start_game` to insert 4 players instead of 2:
 | 3 | Consortium | #FFAA00 | true | 5 | (server timestamp) |
 | 4 | Prophet | #AA44FF | true | 5 | (server timestamp) |
 
-### 3.2 AI State
+### 3.2 AI State + Cycle Schedule
 
-Insert after players:
+Insert after players. `last_cycle_at` is `0` (never run). Timestamps come from `ctx.timestamp` (deterministic), converted to `i64` millis. The stagger offset is `AI_STAGGER_SECONDS * (ai_id - 2)`.
 
 | ai_player_id | cycle_status | last_cycle_at | next_cycle_at |
 |-------------|-------------|---------------|---------------|
-| 2 | idle | NULL | (server timestamp) |
-| 3 | idle | NULL | (server timestamp + 20s) |
-| 4 | idle | NULL | (server timestamp + 40s) |
+| 2 | idle | 0 | (ctx.timestamp) |
+| 3 | idle | 0 | (ctx.timestamp + 20s) |
+| 4 | idle | 0 | (ctx.timestamp + 40s) |
+
+For each AI also insert one `ai_cycle_schedule` row with `scheduled_id: 0`, the `ai_player_id`, and `scheduled_at: ScheduleAt::Time(ctx.timestamp + Duration::from_secs(offset))`. Each cycle re-arms the next, so only the first fire is seeded here.
 
 ### 3.3 Territory Dimensions
 
@@ -129,46 +159,50 @@ Unchanged from Slice 1:
 
 ---
 
-## 4. NEW CLIENT-FACING REDUCERS
+## 4. CONFIG REDUCER
 
-All new reducers use `#[spacetimedb(reducer)]` macro and return JSON.
+### 4.1 `set_config(key: String, value: String)`
 
-### 4.1 `deploy_agent(territory_id: INT, player_id: INT)`
+`#[spacetimedb::reducer] fn set_config(ctx: &ReducerContext, key: String, value: String)`. Upserts a row into the private `module_config` table. Used once after publish to install the Anthropic API key:
 
-**Called by:** Frontend when player drops a Covert card onto a territory. Also called internally by `ai_submit_actions`.
-
-**Validation (in order, return first failure):**
-1. `game_state.status` must be `active`. Else return `{ "success": false, "error": "Game has ended." }`.
-2. `player_id` must be 1–4.
-3. `territory_id` must be 1–12. Else return `{ "success": false, "error": "Invalid territory." }`.
-4. Player must have `action_points >= 1`. Else return `{ "success": false, "error": "Insufficient action points." }`.
-
-**Behavior on success:**
-1. Decrement player's `action_points` by 1.
-2. If `covert.owner_id == player_id`:
-   - Increment `covert.agent_count` by 1.
-3. If `covert.owner_id != player_id` (including 0):
-   - Set `covert.owner_id = player_id`.
-   - Set `covert.agent_count = covert.agent_count + 1` (inherit existing agents, plus the new one).
-   - Call `dimension_owner_change(territory_id, 'covert', player_id)`.
-
-**Returns on success:**
-```json
-{
-    "success": true
-}
+```bash
+spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'
 ```
 
-### 4.2 `get_intel(ai_player_id: INT)`
+Optionally set `anthropic_model` to override the default `claude-sonnet-4-6`. The key never appears in source and is never exposed to clients.
 
-**Called by:** Frontend when player clicks "What is {AI} planning?" button.
+---
 
-**Validation:**
-1. `game_state.status` must be `active`.
-2. `ai_player_id` must be 2, 3, or 4.
+## 5. NEW CLIENT-FACING ENDPOINTS
+
+Slice 2 adds one reducer and one procedure callable from the client.
+
+### 5.1 `deploy_agent(territory_id: i32, player_id: i32)` (reducer)
+
+`#[spacetimedb::reducer] fn deploy_agent(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String>`. A thin wrapper over the shared `do_deploy_agent` fn (also used by the AI cycle). Reducers cannot return data; the client observes the outcome via the covert subscription. Called from the frontend as `deployAgent({ territoryId, playerId: 1 })`.
+
+**Validation (in order, return the first `Err`):**
+1. `game_state.status` must be `active`. Else `Err("Game has ended.")`.
+2. `player_id` must be 1-4. Else `Err("Invalid player.")`.
+3. `territory_id` must be 1-12. Else `Err("Invalid territory.")`.
+4. Player must have `action_points >= 1`. Else `Err("Insufficient action points.")`.
+
+**Behavior on success (returns `Ok(())`):**
+1. Decrement player's `action_points` by 1.
+2. `agent_count += 1`.
+3. If `owner_id != player_id` (including 0):
+   - Set `owner_id = player_id` (new owner inherits existing agents plus the new one).
+   - Call `dimension_owner_change(ctx, player_id)`.
+
+### 5.2 `get_intel(ai_player_id: i32) -> IntelResult` (procedure)
+
+`get_intel` RETURNS structured data, so it is a **procedure**, not a reducer: `#[spacetimedb::procedure] fn get_intel(ctx: &mut ProcedureContext, ai_player_id: i32) -> IntelResult`. It makes no HTTP call; all DB access is inside `ctx.with_tx(|tx| { ... })`. Called from the frontend as `await getIntel({ aiPlayerId })`, which resolves to the `IntelResult`.
+
+`IntelResult` is a `#[derive(SpacetimeType)]` struct: `{ status: String, intel_text: String, ai_player_name: String, cycle_timestamp: i64, territories_referenced: Vec<i32> }`.
 
 **Behavior:**
-1. Find the most recent row in `ai_reasoning_log` where `ai_player_id` matches, ordered by `cycle_at` descending. If no row exists, return:
+1. If `ai_player_id` is not 2-4, return status `"insufficient_intel"` with intel_text "Unknown AI."
+2. Find the most recent row in `ai_reasoning_log` for this AI (max by `cycle_at`). If none, return:
 ```json
 {
     "status": "no_recent_reasoning",
@@ -179,9 +213,9 @@ All new reducers use `#[spacetimedb(reducer)]` macro and return JSON.
 }
 ```
 
-2. Determine the player's maximum agent count across all territories where this AI has dimension ownership. Query: for each territory where `military.owner_id = ai_player_id` OR `economic.owner_id = ai_player_id`, check `covert.agent_count` where `covert.owner_id = 1` (the human player). Take the maximum.
+3. Determine the player's maximum agent count across all territories where this AI has dimension ownership: for each territory where `military.owner_id == ai_player_id` OR `economic.owner_id == ai_player_id`, read `covert.agent_count` where `covert.owner_id == 1` (the human). Take the maximum.
 
-3. If `max_agent_count >= 3`:
+4. If `max_agent_count >= INTEL_THRESHOLD` (3):
 ```json
 {
     "status": "success",
@@ -191,9 +225,9 @@ All new reducers use `#[spacetimedb(reducer)]` macro and return JSON.
     "territories_referenced": [3, 7, 11]
 }
 ```
-Extract `territories_referenced` by parsing the `actions_taken` JSON and collecting all `territory_id` values.
+Extract `territories_referenced` by parsing the latest `actions_taken` JSON and collecting all `territory_id` values.
 
-4. If `max_agent_count < 3`:
+5. If `max_agent_count < 3`:
 ```json
 {
     "status": "insufficient_intel",
@@ -206,102 +240,50 @@ Extract `territories_referenced` by parsing the `actions_taken` JSON and collect
 
 ---
 
-## 5. AI REDUCERS
+## 6. AI REASONING CYCLE (scheduled procedure)
 
-### 5.1 `ai_submit_actions(ai_player_id: INT, actions: [{action_type: STRING, territory_id: INT}])`
+### 6.1 `ai_reasoning_cycle(row: AiCycleSchedule)`
 
-**Called by:** The AI reasoning cycle (server-side only). Not client-callable.
+`#[spacetimedb::procedure] fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule)`. This is a **procedure**, not a reducer, because it calls Claude over HTTP and only procedures have `ctx.http`. It is the target of the `ai_cycle_schedule` scheduled table, which passes the row (carrying `ai_player_id`).
 
-**Validation:**
-1. `game_state.status` must be `active`.
-2. `ai_player_id` must have `ai_state.cycle_status == 'pending'`.
+There is no `ai_submit_actions` reducer, no `std::thread::spawn`, no `reqwest`, and no queue table. A scheduled procedure makes the HTTP call directly, then writes results in `ctx.with_tx`.
 
-**Behavior:**
-1. Initialize `accepted = 0`, `rejected = 0`. Create an empty results array.
-2. For each action in `actions`:
-   - If AI has `action_points < 1`: reject with reason "Insufficient action points". Increment rejected. Continue.
-   - Based on `action_type`:
-     - `"military_attack"`: Check that AI owns Military in a territory adjacent to `territory_id`. If valid, call `military_attack(territory_id, ai_player_id)` internally. If it returns success, increment accepted. Else increment rejected.
-     - `"economic_invest"`: Check that `territory_id` is valid. Call `economic_invest(territory_id, ai_player_id)`. Same accept/reject logic.
-     - `"deploy_agent"`: Check that `territory_id` is valid. Call `deploy_agent(territory_id, ai_player_id)`. Same accept/reject logic.
-     - Any other `action_type`: reject with reason "Unknown action type".
-   - Record each action with its acceptance status in the results array.
-3. Update `ai_state`:
-   - `cycle_status = 'idle'`
-   - `last_cycle_at = (current server timestamp)`
-4. Insert a row into `ai_reasoning_log`:
-   - `ai_player_id = ai_player_id`
-   - `cycle_at = (current server timestamp)`
-   - `reasoning_text = (passed from the LLM response)`
-   - `actions_taken = (JSON string of the results array)`
+**Schedule:** Self-pacing. `start_game` seeds the first fire per AI staggered by 20s (Zhao +0s, Consortium +20s, Prophet +40s). Each cycle re-arms the next one ~60s later, so effective cadence is ~60s per AI.
 
-**Returns:**
+**Three-phase pattern:**
+
+1. **tx1 (snapshot + reschedule under a pending guard):** in a single `ctx.with_tx`:
+   - Insert the next `ai_cycle_schedule` row (`ScheduleAt::Time(now + 60s)`) so the chain stays alive regardless of what follows.
+   - If `game_state.status != "active"`, stop (return `None` from the tx).
+   - Look up `ai_state` for this AI. If `cycle_status == "pending"` (previous cycle still in flight), skip this cycle (return `None`).
+   - Read the API key from `module_config` via `config_value(ctx, "anthropic_api_key")`. If missing, skip (return `None`). Read the model (default `claude-sonnet-4-6`).
+   - Set `cycle_status = "pending"`, update `next_cycle_at`.
+   - Build the system prompt from a live board snapshot (Section 7). Return `(system_prompt, api_key, model)`.
+
+2. **HTTP call (no transaction held open):** call the shared `anthropic_call` helper with `ctx.http`, the system prompt, the fixed user message, `max_tokens = 1500`, and a 30s timeout.
+
+3. **tx2 (apply + log + idle):** in a second `ctx.with_tx`:
+   - On success: `parse_actions(text)` extracts the trailing JSON array into `(action_type, territory_id)` pairs; `apply_ai_actions(tx, ai_id, &actions, text)` applies each via the shared `do_*` fns, records per-action acceptance, sets `cycle_status = "idle"`, `last_cycle_at = now`, and inserts the `ai_reasoning_log` row.
+   - On error (timeout/network/parse): log it and reset `cycle_status = "idle"`. The AI misses this turn; it does not bank actions. The next cycle proceeds normally.
+
+**The Anthropic call helper (`anthropic_call`):** the single place that builds and sends the Messages request via `ctx.http`, then extracts `content[0].text`. Endpoint `https://api.anthropic.com/v1/messages`. Headers: `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`. Timeout via `spacetimedb::http::Timeout(TimeDuration::from_micros(...))`. Request body:
 ```json
 {
-    "accepted": 3,
-    "rejected": 1
+    "model": "claude-sonnet-4-6",
+    "max_tokens": 1500,
+    "system": "{system_prompt}",
+    "messages": [{ "role": "user", "content": "Decide your moves for this turn. End with the JSON action array." }]
 }
 ```
+Returns `content[0].text` on a 2xx response, else an `Err` string.
 
----
-
-## 6. SCHEDULED REDUCER
-
-### 6.1 `ai_reasoning_cycle(ai_player_id: INT)`
-
-**Schedule:** Three instances, each firing every 60 seconds, staggered by 20 seconds.
-- `ai_reasoning_cycle(2)` — Zhao — fires at 0s, 60s, 120s...
-- `ai_reasoning_cycle(3)` — Consortium — fires at 20s, 80s, 140s...
-- `ai_reasoning_cycle(4)` — Prophet — fires at 40s, 100s, 160s...
-
-**Behavior:**
-1. If `ai_state.cycle_status == 'pending'` for this AI: **skip this cycle.** Return immediately.
-2. Set `ai_state.cycle_status = 'pending'`.
-3. Build a game state snapshot by reading all rows from `military`, `economic`, `covert`, and `players`.
-4. Build the unified territory counts: for each player, count territories where `military.owner_id = player_id AND economic.owner_id = player_id`.
-5. Construct the LLM prompt (see Section 7).
-6. **Spawn a `std::thread`** to make the HTTP call:
-   ```rust
-   std::thread::spawn(move || {
-       // Use reqwest::blocking::Client
-       // Call Anthropic API
-       // On success: parse JSON, call ai_submit_actions
-       // On timeout (30s): reset cycle_status to 'idle'
-       // On error: reset cycle_status to 'idle'
-   });
-   ```
-7. Return immediately. Do not wait for the thread.
-
-**Thread implementation details:**
-- Use `reqwest::blocking::Client` with a 30-second timeout.
-- Read `ANTHROPIC_API_KEY` from environment variables.
-- Read `ANTHROPIC_MODEL` from environment variables.
-- Anthropic API endpoint: `https://api.anthropic.com/v1/messages`
-- Headers:
-  - `x-api-key: {ANTHROPIC_API_KEY}`
-  - `anthropic-version: 2023-06-01`
-  - `content-type: application/json`
-- Request body:
-  ```json
-  {
-      "model": "{ANTHROPIC_MODEL}",
-      "max_tokens": 500,
-      "system": "{system_prompt}",
-      "messages": [
-          {"role": "user", "content": "Respond with the JSON action array."}
-      ]
-  }
-  ```
-- Parse the response. Extract the JSON action array from the content field.
-- If parsing fails, log the error, reset `cycle_status = 'idle'`, return.
-- On success, call `ai_submit_actions` with the parsed actions and the full reasoning text.
-- To call a SpacetimeDB reducer from within a thread, use the SpacetimeDB SDK's mechanism for internal reducer calls. If not available, the thread writes to a queue table and a scheduled reducer processes it. **Prefer direct internal call if the SDK supports it.**
+**Applying actions (`apply_ai_actions`, private fn inside tx2):** runs each action through the SAME shared `do_military_attack` / `do_economic_invest` / `do_deploy_agent` fns the human uses, so the AI is validated identically (adjacency, action points, ownership). Each `do_*` checks `action_points >= 1` and decrements before acting, so the AI can never overspend or bank actions. Per-action results are recorded as the `actions_taken` JSON.
 
 ---
 
 ## 7. LLM PROMPT TEMPLATE
 
-For each AI, construct the system prompt as follows. Replace `{placeholders}` with actual values.
+For each AI, the cycle builds the system prompt from a live board snapshot. Replace `{placeholders}` with actual values. The prompt asks for a short natural-language strategy followed by a trailing JSON action array, so the intel system can show readable reasoning and `parse_actions` can extract the array.
 
 ```
 You are {ai_name}, an AI opponent in the game Risk: Dominion.
@@ -322,12 +304,14 @@ Available actions:
 - economic_invest: Add 5 capital to a territory. Flips economic ownership if your capital exceeds the current owner. Requires 1 action point.
 - deploy_agent: Deploy an agent in a territory. Agents gather intel on opponents' plans. Requires 1 action point.
 
-Respond with ONLY a JSON array of actions. Each action must have "action_type" and "territory_id". Example:
+Explain your strategy in at most 3 short sentences. Do NOT use markdown headers, bullet lists, or numbered plans. Then end your reply with a JSON array of actions as the LAST thing in your response (nothing after it). Each action must have "action_type" and "territory_id". Example ending:
 [{"action_type": "military_attack", "territory_id": 3}, {"action_type": "economic_invest", "territory_id": 7}]
 
 Do not exceed your available action points ({action_points}).
 Prioritize actions consistent with your persona.
 ```
+
+The paired user message is the fixed string "Decide your moves for this turn. End with the JSON action array."
 
 **Persona descriptions:**
 
@@ -349,50 +333,49 @@ Territory {id} ({name}): Military owner={mil_owner_name}({troops}), Economic own
 
 ---
 
-## 8. MODIFIED EXISTING REDUCERS
+## 8. MODIFIED EXISTING FUNCTIONS
 
-### 8.1 `military_attack(territory_id: INT, player_id: INT)`
+Before adding the AI cycle, extract each action's body into a shared `do_*` fn taking `&ReducerContext` and returning `Result<(), String>`; the reducers become thin wrappers and the AI cycle reuses the same fns.
 
-**Change:** Expand player_id validation from `1 or 2` to `1 through 4`.
+### 8.1 `military_attack(ctx, territory_id, player_id)` (reducer)
 
-No other changes. All combat logic remains identical to Slice 1.
+**Change:** Thin wrapper over `do_military_attack`, which validates `player_id` in 1..=4 (was 1 or 2). Combat logic identical to Slice 1.
 
-### 8.2 `economic_invest(territory_id: INT, player_id: INT)`
+### 8.2 `economic_invest(ctx, territory_id, player_id)` (reducer)
 
-**Change:** Expand player_id validation from `1 or 2` to `1 through 4`.
+**Change:** Thin wrapper over `do_economic_invest`, which validates `player_id` in 1..=4 (was 1 or 2). Invest logic identical to Slice 1.
 
-No other changes. All invest logic remains identical to Slice 1.
-
-### 8.3 `start_game()`
+### 8.3 `start_game(ctx)` (reducer)
 
 **Changes:**
-- Insert 4 players instead of 2 (Section 3.1).
-- Insert 3 `ai_state` rows (Section 3.2).
+- Insert 4 players instead of 2 (Section 3.1), each with `is_ai` set.
+- Insert 3 `ai_state` rows + 3 `ai_cycle_schedule` rows with staggered first-fire (Section 3.2).
 - Insert 12 `covert` rows alongside `military` and `economic` (Section 3.3).
-- Start three `ai_reasoning_cycle` scheduled reducers with staggered offsets (Section 6.1).
-- Start `regenerate_action_points` for all 4 players.
+- The `regen_timer` (drives `regenerate_action_points`) is already armed in Slice 1.
 
-### 8.4 `regenerate_action_points()`
+### 8.4 `regenerate_action_points(ctx, timer)` (scheduled reducer)
 
-**Change:** Iterate over all 4 players instead of 2. Logic unchanged: +1 per player, cap 10, every 8 seconds.
+**Change:** Iterate over all 4 players instead of 2. Logic unchanged: +1 per player, cap 10, every 8 seconds. Uses `ctx.timestamp`.
 
-### 8.5 `dimension_owner_change(territory_id: INT, dimension: STRING, new_owner: INT)`
+### 8.5 `dimension_owner_change(ctx, new_owner)` (private fn, runs in caller's tx)
 
-**Change:** The win check must now ignore the `covert` dimension. Count unified territories where `military.owner_id = new_owner AND economic.owner_id = new_owner`. Covert ownership does not count toward unification.
+**Change:** The win check ignores the `covert` dimension. Count unified territories where `military.owner_id == new_owner AND economic.owner_id == new_owner`. Covert ownership does not count toward unification.
 
-Win threshold remains 3.
+Win threshold remains 3 unified territories across the 2 victory dimensions (Military + Economic).
 
 ---
 
 ## 9. NEW SUBSCRIPTIONS
 
-### 9.1 `subscribe_covert`
+Subscriptions use the generated table accessors via the React `useTable(tables.x)` hook, which returns `[rows, isReady]`.
 
-| Subscription | Table | Client Usage |
-|-------------|-------|--------------|
-| `subscribe_covert` | `covert` | Render Covert quadrant on territory hexes, show agent count on hover |
+### 9.1 `covert` table
 
-**Existing subscriptions** (`subscribe_military`, `subscribe_economic`, `subscribe_players`, `subscribe_game_state`) remain unchanged from Slice 1.
+| Table | Client Usage |
+|-------|--------------|
+| `covert` | Render Covert quadrant on territory hexes, show agent count on hover |
+
+**Existing table subscriptions** (`military`, `economic`, `players`, `game_state`) remain unchanged from Slice 1. The new `ai_state` and `ai_reasoning_log` tables are public and may be subscribed if a component needs them, but the intel feature reads reasoning through the `getIntel` procedure, not a subscription. The `module_config` table is NOT public and cannot be subscribed.
 
 ---
 
@@ -404,8 +387,13 @@ Win threshold remains 3.
 const AI_CYCLE_SECONDS: u64 = 60;
 const AI_STAGGER_SECONDS: u64 = 20;
 const AI_LLM_TIMEOUT_SECONDS: u64 = 30;
+const AI_MAX_TOKENS: u32 = 1500;
 const INTEL_THRESHOLD: i32 = 3;
 const TOTAL_PLAYERS: i32 = 4;
+
+const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 ```
 
 ### 10.2 Client Constants (add to `constants.ts`)
@@ -465,29 +453,27 @@ export interface IntelResult {
 
 ### 12.1 Server
 
-- Modify the existing `lib.rs` from Slice 1. Do not create a new file.
-- Add new tables alongside existing ones in the TABLES section.
-- Add new reducers in the REDUCERS section.
-- Add the scheduled AI cycle in the SCHEDULED REDUCERS section.
-- Use `std::thread::spawn` for the async LLM call. Import `std::thread`.
-- Use `reqwest::blocking::Client` for the HTTP call. Add `reqwest` to `Cargo.toml` with the `blocking` feature:
-  ```toml
-  reqwest = { version = "0.11", features = ["blocking", "json"] }
-  ```
-- Read environment variables using `std::env::var("ANTHROPIC_API_KEY")` and `std::env::var("ANTHROPIC_MODEL")`.
-- The thread must capture the SpacetimeDB reducer context to call `ai_submit_actions`. Use the SDK's mechanism for cross-thread reducer calls.
+- Modify the existing `app/server/src/lib.rs`. Do not create a new file. `Cargo.toml` is unchanged (no new crates).
+- Add new tables alongside existing ones in the TABLES section; add the scheduled table in the SCHEDULED TABLES section.
+- The AI cycle and `get_intel` are **procedures** (`#[spacetimedb::procedure]`, `ctx: &mut ProcedureContext`), not reducers. Only procedures can return data or make HTTP calls.
+- The LLM call uses `ctx.http` inside the procedure. Do NOT use `reqwest`, `tokio`, async Rust, `std::thread::spawn`, or a queue table. Build the request with `spacetimedb::http::Request::builder()` and send via `ctx.http.send(request)`.
+- DB access inside a procedure is only via `ctx.with_tx(|tx| { tx.db.<table>()... })`. Snapshot in one tx, make the HTTP call with no tx held open, commit results in a second tx.
+- Read the API key from the private `module_config` table (`config_value(ctx, "anthropic_api_key")`), never from environment variables. Model defaults to `claude-sonnet-4-6`.
+- Use `ctx.timestamp` for all time. Store `*_at` fields as `i64` millis via `ctx.timestamp.to_micros_since_unix_epoch() / 1000`.
+- There is no `ai_submit_actions` reducer. The AI's actions are applied by a private `apply_ai_actions` fn inside the cycle procedure's second `ctx.with_tx`, reusing the shared `do_*` fns.
 
 ### 12.2 Client
 
-- Modify the existing Slice 1 client codebase. Do not regenerate from scratch.
-- Add `subscribe_covert` to `useSubscriptions.ts`.
+- Modify the existing `app/client` codebase. Do not regenerate from scratch.
+- After server changes, regenerate bindings: `spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server`. Field names are camelCase.
+- Add the `covert` table subscription to `useSubscriptions.ts` via `useTable(tables.covert)`.
 - Modify `Territory.tsx` to render three quadrants (X-split hex pattern: three of four triangular wedges). The Covert wedge uses purple (#AA44FF) for player's agents, gray for AI agents, empty/transparent if no agents.
-- Modify `CardHand.tsx` to include the Covert card type (purple left border, geometric SVG icon per AESTHETIC.md Section 13.3, label "DEPLOY"). Three card types total.
+- Modify `CardHand.tsx` to include the Covert card type (purple left border, geometric SVG icon per AESTHETIC.md Section 13.3, label "DEPLOY"). Three card types total. Deploy calls `deployAgent({ territoryId, playerId: 1 })` via `useReducer(reducers.deployAgent)`.
 - Add `IntelPanel.tsx` component:
   - Three buttons: "What is Zhao planning?", "What is Consortium planning?", "What is Prophet planning?"
-  - Each calls `get_intel(ai_player_id)`.
-  - Displays the returned `intel_text` in a panel.
-  - Highlights `territories_referenced` on the map.
+  - Each calls the procedure: `const getIntel = useProcedure(procedures.getIntel); const result = await getIntel({ aiPlayerId });`. The returned `IntelResult` is stored in state.
+  - Displays the returned `intelText` in a panel.
+  - Highlights `territoriesReferenced` on the map.
   - Shows status messages for "insufficient_intel" and "no_recent_reasoning".
 - Modify `App.tsx`:
   - Remove `?player=` URL parameter logic. Player is always player_id 1.
@@ -501,13 +487,13 @@ export interface IntelResult {
 
 Do NOT add:
 - Cultural dimension table or `cultural_spread_tick` reducer
-- Cross-dimension bonuses (Military->Economic, etc.)
-- Query bar, query reducers, canned queries
+- Cross-dimension bonuses (Military to Economic, etc.)
+- Query bar, query procedures, canned queries
 - Event feed table or event ticker
-- Any features from Slices 3 or 4
+- Any features from Slices 3 through 7
 
 ---
 
 ## End of Slice 2 Interface Contract
 
-Modify the Slice 1 codebase as specified. Output every new and modified file. Indicate NEW or MODIFIED at the top of each file.
+Modify the `risk-dominion/app/` codebase as specified. Output every new and modified file. Indicate NEW or MODIFIED at the top of each file. This is Slice 2 of 7.

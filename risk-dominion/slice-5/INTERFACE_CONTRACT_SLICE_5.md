@@ -1,16 +1,18 @@
 # RISK: DOMINION — SLICE 5 INTERFACE CONTRACT
 
-## Version 1.0
+## Version 2.0 (SpacetimeDB 2.4.1)
 ## Scope: Subagent Orchestration, Hotkeys, Human Strategist
-## Target: Claude Code Generation — Modifying the Slice 4 Codebase
+## Target: Claude Code Generation — Evolving the `risk-dominion/app/` Codebase
 
 ---
 
 ## 0. HOW TO READ THIS DOCUMENT
 
-This document specifies every table, reducer, subscription, component, prompt, and hotkey binding that is **new or modified** in Slice 5. It does not repeat Slice 1–4 specifications.
+This document specifies every table, reducer, procedure, subscription, component, prompt, and hotkey binding that is **new or modified** in Slice 5. It does not repeat the Slice 1 through 4 specifications.
 
-**All prior tables, reducers, subscriptions, and constants remain in effect unless this document explicitly modifies them.** If a component is not mentioned here, it is unchanged from Slice 4.
+**All prior tables, reducers, procedures, subscriptions, and constants remain in effect unless this document explicitly modifies them.** If a component is not mentioned here, it is unchanged from the state after Slice 4 (tagged `slice-4-complete` in the single `risk-dominion/app/` codebase).
+
+Server function types in SpacetimeDB 2.4.1: **reducers** (deterministic, mutate state, return `Result<(), String>`, cannot make HTTP calls), **procedures** (can return data to the caller and are the only function type allowed to make HTTP calls via `ctx.http`), and **views**. Generated client bindings use camelCase field names (Rust `territory_id` -> TS `territoryId`).
 
 ---
 
@@ -18,15 +20,15 @@ This document specifies every table, reducer, subscription, component, prompt, a
 
 ### 1.1 `ai_reasoning_log`
 
-Add one column to the existing table:
+Add one column to the existing table (a plain `String` field on the `pub struct`; generated as `subordinateId` in client bindings):
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `subordinate_id` | STRING | NOT NULL DEFAULT 'commander' | Which agent produced this reasoning |
+| Column | Rust type | Notes | Description |
+|--------|-----------|-------|-------------|
+| `subordinate_id` | `String` | always written by the module | Which agent produced this reasoning ("commander" for the commander row) |
 
-Values: `'commander'`, `'vanguard'`, `'paymaster'`, `'scout'`, `'adjutant'` (Zhao), `'auditor'`, `'actuary'`, `'courier'`, `'appraiser'` (Consortium), `'whisper'`, `'oracle'`, `'seer'`, `'warden'` (Prophet), `'strategist'` (human advisor).
+Values: `"commander"`, `"vanguard"`, `"paymaster"`, `"scout"`, `"adjutant"` (Zhao), `"auditor"`, `"actuary"`, `"courier"`, `"appraiser"` (Consortium), `"whisper"`, `"oracle"`, `"seer"`, `"warden"` (Prophet). (The human Strategist writes to its own `strategist_log` table, not here.)
 
-All other columns (`id`, `ai_player_id`, `cycle_at`, `reasoning_text`, `actions_taken`) remain unchanged.
+There is no SQL `DEFAULT`; the value is set on every insert. Pre-Slice-5 rows that carry an empty `subordinate_id` are treated as `"commander"` by `get_intel`. All other columns (`id`, `ai_player_id`, `cycle_at`, `reasoning_text`, `actions_taken`) remain unchanged.
 
 ---
 
@@ -34,90 +36,75 @@ All other columns (`id`, `ai_player_id`, `cycle_at`, `reasoning_text`, `actions_
 
 ### 2.1 `strategist_log`
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | INT | PRIMARY KEY AUTO_INCREMENT | Unique notification ID |
-| `timestamp` | BIGINT | NOT NULL | Unix timestamp (ms) when notification was generated |
-| `notification` | STRING | NOT NULL | Advisor message text |
-| `priority` | STRING | NOT NULL DEFAULT 'info' | 'critical', 'warning', or 'info' |
-| `territory_id` | INT | NULL | Territory referenced, for map highlight on click |
-| `player_id` | INT | NULL | Player referenced, for color coding |
-| `dismissed` | BOOLEAN | NOT NULL DEFAULT false | Whether the player has dismissed this alert |
+| Column | Rust type | Notes | Description |
+|--------|-----------|-------|-------------|
+| `id` | `u64` | `#[primary_key] #[auto_inc]` | Unique notification ID |
+| `created_at` | `i64` | ms since epoch (`ctx.timestamp`) | When the notification was generated |
+| `notification` | `String` | | Advisor message text |
+| `priority` | `String` | written on insert | "critical", "warning", or "info" |
+| `territory_id` | `i32` | `0` means none | Territory referenced, for map highlight on click |
+| `player_id` | `i32` | `1` for the human | Player the advice is for |
+| `dismissed` | `bool` | `false` on insert | Whether the player has dismissed this alert |
 
-Use `#[spacetimedb(table)]` macro.
+Declare with `#[spacetimedb::table(accessor = strategist_log, public)]` on a `pub struct`. The table is `public` so the client can subscribe. We model the optional territory as `i32` with `0` = none (rather than `Option<i32>`) to keep the generated client binding flat; the client treats `territoryId === 0` as "no territory".
 
 ---
 
-## 3. MODIFIED REDUCERS
+## 3. MODIFIED PROCEDURES AND REDUCERS
 
-### 3.1 `ai_reasoning_cycle(ai_player_id: INT)`
+`ai_reasoning_cycle` and `get_intel` are **procedures** (the former makes HTTP calls; the latter returns data). `dismiss_strategist_alert` is a **reducer**. `apply_ai_actions` is a **private fn** invoked inside the cycle procedure's transaction (not a reducer, not cross-thread, and there is no queue table).
 
-**Schedule:** Unchanged from Slice 2 — three instances, 60s interval, staggered 20s apart (Zhao at 0s, Consortium at 20s, Prophet at 40s).
+### 3.1 Procedure `ai_reasoning_cycle(row: AiCycleSchedule)`
 
-**New logic — parallel orchestration:**
+**Schedule:** Unchanged from Slice 2 — driven by the `ai_cycle_schedule` table, three AIs, 60s cadence, staggered 20s apart (Zhao at 0s, Consortium at 20s, Prophet at 40s). Each cycle self-re-schedules with a one-shot `ScheduleAt::Time`.
 
-1. If `ai_state.cycle_status == 'pending'` for this AI: skip. Return.
-2. Set `cycle_status = 'pending'`.
-3. Determine the current cycle timestamp: `let cycle_at = current_time_ms()`.
-4. Build four domain-specific game state snapshots:
+**New logic: sequential orchestration (no threads).** SpacetimeDB has no `std::thread`, no `join()`, no `reqwest`, and no `tokio`. The four specialist calls and the one commander call are made **sequentially** inside this single procedure via the existing `anthropic_call` helper (`ctx.http`). DB access is only inside `ctx.with_tx`.
+
+1. **tx1:** Re-arm this AI's next cycle (`ScheduleAt::Time(now + 60s)`). If the game is not active, stop. If `ai_state.cycle_status == "pending"`, stop (previous cycle still in flight). Read `anthropic_api_key` and `anthropic_model` from the non-public `module_config` (stop if no key). Set `cycle_status = "pending"`. Capture `cycle_at` from `ctx.timestamp`. Build the four domain snapshots and the full game state snapshot, plus action points and persona. Return them out of the tx.
    - **Military snapshot:** military table (all rows), adjacency map, covert table (for combat bonus), players table.
    - **Economic snapshot:** economic table (all rows), military table (for invest bonus), adjacency map, players table.
    - **Cultural snapshot:** cultural table (all rows), economic table (for pressure bonus), adjacency map, players table.
    - **Covert snapshot:** covert table (all rows), cultural table (for intel bonus), players table.
-5. Select the four specialist prompts based on `ai_player_id` (see Section 5).
-6. Spawn four `std::thread`s — one per specialist. Each thread:
-   - Calls Claude with its domain snapshot and specialist prompt.
-   - Temperature: 0.3. Max tokens: 150. Timeout: 15 seconds.
-   - On success: parse the JSON array of recommendations. Return it to the main thread.
-   - On timeout or error: return an empty array.
-7. Collect all four `JoinHandle`s. Call `join()` on each. Collect results.
-8. Build the commander prompt (see Section 4). Include:
-   - Full game state snapshot.
-   - All four specialist recommendations (or "No recommendation — timed out" for any that failed).
-   - The AI's persona description.
-9. Spawn a commander thread. Temperature: 0.3. Max tokens: 500. Timeout: 30 seconds.
-10. On commander response:
-    - Parse the JSON action array.
-    - Call `ai_submit_actions(ai_player_id, actions, reasoning_text, cycle_at, subordinate_results)`.
-    - Log all five reasoning rows (see modified `ai_submit_actions`).
-11. On commander timeout or error:
-    - Reset `cycle_status = 'idle'`.
-    - Write timeout event to `event_feed`.
+2. **HTTP, specialists (no tx held open):** Select the four specialist prompts by `ai_player_id` (Section 5). For each specialist in fixed order (military, economic, cultural, covert), call `anthropic_call(ctx, &api_key, &model, prompt, snapshot, 150, 15)` (max_tokens 150, timeout 15s). On success, parse the JSON recommendation array. On error or timeout, record an empty `SubordinateResult` (do not abort).
+3. **HTTP, commander (no tx held open):** Build the commander prompt (Section 4) with the full game state, the AI persona, and the four specialists' recommendations (or the "specialist unavailable this cycle" placeholder from Section 4 for any that failed). Call `anthropic_call(ctx, &api_key, &model, commander_prompt, "Synthesize and decide. End with the JSON action array.", 500, 30)` (max_tokens 500, timeout 30s).
+4. **tx2:** On commander success, parse the action array (reuse `parse_actions`) and call the private `apply_ai_actions` fn (Section 3.2). On commander failure, log the error and set `cycle_status = "idle"`.
 
-### 3.2 `ai_submit_actions`
+**Latency trade-off:** the five Claude calls run sequentially, so a cycle's wall-clock time is roughly the sum of the five call latencies (first cycle up to ~120s). This is acceptable given the 20s stagger and self-re-scheduling. **Fallback only if needed:** fan the specialists out across separate scheduled-procedure rows that each write a `SubordinateResult` to a scratch table, with a follow-up commander row reading them back. Not implemented in Slice 5.
 
-**Modified signature:**
+### 3.2 Private fn `apply_ai_actions` (runs inside the cycle's tx2)
+
+This replaces the Slice 2 `apply_ai_actions`. It is a private Rust fn called inside `ctx.with_tx` from `ai_reasoning_cycle`: not a reducer, and not invoked across threads or via a queue table.
+
 ```rust
-fn ai_submit_actions(
+fn apply_ai_actions(
+    ctx: &ReducerContext,            // tx handle inside ctx.with_tx
     ai_player_id: i32,
-    actions: Vec<Action>,
-    commander_reasoning: String,
+    actions: &[(String, i32)],       // (action_type, territory_id) from the commander reply
+    commander_reasoning: &str,
+    subordinates: &[SubordinateResult],
     cycle_at: i64,
-    subordinate_results: Vec<SubordinateResult>
-) -> Result<(), String>
+)
 ```
 
 Where `SubordinateResult` is:
 ```rust
 struct SubordinateResult {
     subordinate_id: String,
-    reasoning_text: String,
-    recommendations: Vec<Action>, // parsed from specialist output
+    reasoning_text: String, // "" on failure
+    actions_json: String,   // JSON array of recommended actions, or "[]"
 }
 ```
 
-**New behavior:**
-1. Validate and execute actions as before (unchanged from Slice 2).
-2. After updating `ai_state`:
-   - Insert one `ai_reasoning_log` row per subordinate (including timed-out ones with empty reasoning).
-   - Insert the commander row last, with the final `actions_taken` JSON.
-   - All rows share the same `cycle_at` timestamp.
-   - All rows use the same `ai_player_id`.
-3. Each row uses the subordinate's `subordinate_id`.
+**Behavior:**
+1. Validate and execute each action via the shared `do_military_attack` / `do_economic_invest` / `do_deploy_agent` logic (unchanged from Slice 2 through Slice 4), building the `actions_taken` JSON of outcomes.
+2. Set `ai_state.cycle_status = "idle"` and `last_cycle_at = cycle_at`.
+3. Insert one `ai_reasoning_log` row per subordinate (including timed-out ones with empty reasoning), then the commander row last with the final `actions_taken` JSON. All rows share the same `cycle_at` and `ai_player_id`; each carries its own `subordinate_id` ("commander" for the commander row).
 
-### 3.3 `get_intel(ai_player_id: INT)`
+### 3.3 Procedure `get_intel(ai_player_id: INT)`
 
-**Modified return structure.** Instead of a single `intel_text` string, return a deliberation chain:
+`get_intel` remains a **procedure** (it returns structured data). Its `IntelResult` and the new `DeliberationEntry` are `#[derive(SpacetimeType)]` structs; `deliberation` is a `Vec<DeliberationEntry>`. All DB access is inside `ctx.with_tx`.
+
+**Modified return structure.** Instead of a single `intel_text` string, return a deliberation chain (shown as JSON for readability):
 
 ```json
 {
@@ -151,20 +138,29 @@ struct SubordinateResult {
 }
 ```
 
-- `deliberation` array is ordered by subordinate (specialists first, commander last).
-- `territories_referenced` aggregates all territory IDs from all subordinates' and commander's recommendations.
+- Query `ai_reasoning_log` for the most recent `cycle_at` for this AI, then return all rows with that `cycle_at`, ordered by subordinate (specialists first, "commander" last).
+- `deliberation` is a `Vec<DeliberationEntry>`; each entry carries `subordinate_id`, `subordinate_name`, `role`, `reasoning`, and `actions_json` (the recommended-actions JSON). Map `subordinate_id` to display name and role.
+- `territories_referenced` aggregates all territory IDs from all subordinates' and commander's `actions_taken` JSON.
+- Rows with an empty `subordinate_id` (pre-Slice-5 data) are treated as "commander".
 - The intel threshold check (3 effective agents) remains unchanged from Slice 3.
 - `insufficient_intel` and `no_recent_reasoning` statuses remain unchanged.
 
-### 3.4 `dismiss_strategist_alert(notification_id: INT)`
+### 3.4 Reducer `dismiss_strategist_alert(notification_id: u64)`
 
-**New client-callable reducer.**
+A plain client-callable **reducer** (mutates state, returns no data; the client observes the change via its `strategist_log` subscription).
 
 ```rust
-#[spacetimedb(reducer)]
-fn dismiss_strategist_alert(notification_id: i32) -> Result<(), String> {
-    // Set dismissed = true for the strategist_log row with this id
-    // Return success
+#[spacetimedb::reducer]
+pub fn dismiss_strategist_alert(ctx: &ReducerContext, notification_id: u64) -> Result<(), String> {
+    let mut row = ctx
+        .db
+        .strategist_log()
+        .id()
+        .find(notification_id)
+        .ok_or("No such notification.".to_string())?;
+    row.dismissed = true;
+    ctx.db.strategist_log().id().update(row);
+    Ok(())
 }
 ```
 
@@ -281,13 +277,25 @@ You are Warden, military specialist for the Prophet. You strike only when cultur
 
 ## 6. STRATEGIST CYCLE
 
-### 6.1 Scheduled Reducer: `strategist_cycle()`
+### 6.1 Scheduled Procedure: `strategist_cycle(row: StrategistSchedule)`
 
-**Schedule:** Every 60 seconds, offset at 50 seconds from game start (fires at 50s, 110s, 170s...). Use `#[spacetimedb(scheduled)]`.
+The Strategist calls Claude over HTTP, so it is a **scheduled procedure**, not a reducer (reducers cannot make HTTP calls). It is driven by its own scheduled table:
 
-**Logic:**
-1. Build full game state snapshot (same as `query_database`).
-2. Construct prompt:
+```rust
+#[spacetimedb::table(accessor = strategist_schedule, scheduled(strategist_cycle))]
+pub struct StrategistSchedule {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub scheduled_at: ScheduleAt,
+}
+```
+
+**Schedule:** `start_game` seeds one row with `ScheduleAt::Time(ctx.timestamp + 50s)` so the first cycle fires at 50s. Each cycle re-arms the next with `ScheduleAt::Time(now + 60s)`, giving fires at 50s, 110s, 170s, and so on.
+
+**Logic (tx1 -> HTTP -> tx2):**
+1. **tx1:** Re-arm the next cycle (`now + 60s`). If the game is not active, stop. Read `anthropic_api_key` and `anthropic_model` from `module_config` (stop if no key). Build the full game state snapshot (same content as `query_database`). Return it out of the tx.
+2. **HTTP (no tx held open):** Call `anthropic_call(ctx, &api_key, &model, strategist_prompt, "Return the JSON notifications array.", 300, 15)` (max_tokens 300, timeout 15s). The prompt:
 
 ```
 You are the Strategist, an AI advisor for the human player in Risk: Dominion. The player is player_id 1. You are on their side. Analyze the current game state and identify:
@@ -302,14 +310,11 @@ Current game state:
 {full_game_state_snapshot}
 ```
 
-3. Spawn thread. Call Claude. Temperature: 0.3. Max tokens: 300. Timeout: 15 seconds.
-4. Parse JSON array. For each notification:
-   - Insert a row into `strategist_log` with the current timestamp, notification text, priority, territory_id (or NULL), player_id=1, dismissed=false.
-5. On timeout or error: do nothing. The Strategist silently skips a cycle.
+3. **tx2:** Parse the JSON array (reuse `last_balanced_array`). For each of up to 3 notifications, insert a `strategist_log` row with the current timestamp (`ctx.timestamp`), notification text, priority, `territory_id` (0 if null), `player_id = 1`, `dismissed = false`. On timeout or error, do nothing: the Strategist silently skips a cycle (the next is already armed).
 
 ### 6.2 Strategist Query Integration
 
-The existing `query_database` reducer recognizes when the player asks for strategic advice. Add a prompt instruction: "If the player's question is asking for strategic advice (e.g., 'What should I do?', 'How can I win?', 'Where should I focus?'), respond as the Strategist — a helpful advisor on the player's side. Provide actionable, specific advice based on the current game state."
+The existing `query_database` procedure (added in Slice 4; it returns data and calls Claude over HTTP) recognizes when the player asks for strategic advice. Add a prompt instruction: "If the player's question is asking for strategic advice (e.g., 'What should I do?', 'How can I win?', 'Where should I focus?'), respond as the Strategist, a helpful advisor on the player's side. Provide actionable, specific advice based on the current game state."
 
 ---
 
@@ -355,13 +360,13 @@ Add small visual hints to UI elements:
 
 ## 8. NEW SUBSCRIPTIONS
 
-### 8.1 `subscribe_strategist_log`
+### 8.1 `strategist_log`
 
-| Subscription | Table | Client Usage |
-|-------------|-------|--------------|
-| `subscribe_strategist_log` | `strategist_log` | Render Strategist alert notifications |
+| Table | Client hook | Client Usage |
+|-------|-------------|--------------|
+| `strategist_log` | `useTable(tables.strategistLog)` -> `[rows, isReady]` | Render Strategist alert notifications |
 
-Full table subscription. Client filters for `dismissed = false` and renders as notification cards. Client calls `dismiss_strategist_alert(id)` when the player clicks dismiss.
+The `strategist_log` table is `public`, so the client subscribes to it with the SpacetimeDB React `useTable` hook (no custom subscription endpoint). The client filters for `dismissed === false` and renders as notification cards. It calls the `dismissStrategistAlert({ notificationId: id })` reducer (via `useReducer`) when the player clicks dismiss.
 
 ---
 
@@ -371,7 +376,7 @@ Full table subscription. Client filters for `dismissed = false` and renders as n
 
 **Position:** Top-right area of the screen, below the ActionBar. Stacked vertically.
 
-**Props:** `alerts: StrategistLogRow[]`, `onDismiss: (id: number) => void`, `onAlertClick: (territoryId: number | null) => void`, `playerColors: Record<number, string>`.
+**Props:** `alerts: StrategistLog[]` (the generated row type), `onDismiss: (id: bigint) => void`, `onAlertClick: (territoryId: number) => void`, `playerColors: Record<number, string>`.
 
 **Rendering:**
 - Filter: only show alerts where `dismissed === false`. Show the most recent 3.
@@ -382,7 +387,7 @@ Full table subscription. Client filters for `dismissed = false` and renders as n
 - Card content:
   - Notification text: Orbitron, 12px, `text-primary`. Padding: 8px 12px.
   - Dismiss button: small "×" in top-right corner. onClick calls `onDismiss(alert.id)`.
-  - If `territory_id` is not null, clicking the card body calls `onAlertClick(alert.territory_id)` and highlights that territory.
+  - If `territoryId` is non-zero, clicking the card body calls `onAlertClick(alert.territoryId)` and highlights that territory.
 - Cards stack vertically with 4px gaps. Newest at the top.
 - Cards animate in: slide in from the right over 200ms ease-out.
 
@@ -393,7 +398,7 @@ Full table subscription. Client filters for `dismissed = false` and renders as n
 const [selectedTerritory, setSelectedTerritory] = useState<number | null>(null);
 const [focusedCardType, setFocusedCardType] = useState<'military' | 'economic' | 'covert' | null>(null);
 const [ownedTerritoriesHighlighted, setOwnedTerritoriesHighlighted] = useState(false);
-const [strategistAlerts, setStrategistAlerts] = useState<StrategistLogRow[]>([]);
+// strategist alerts come from useTable(tables.strategistLog), not local state.
 ```
 
 **Keyboard event handler:**
@@ -428,13 +433,13 @@ useEffect(() => {
 
 **`moveCursor` function:** Compute the nearest territory in the pressed direction based on `HEX_GRID_COORDINATES`. If no territory is selected, select territory 1 (North America) as default.
 
-**`confirmAction` function:** If `focusedCardType` and `selectedTerritory` are both set, and the territory is a valid target for that card type, call the appropriate reducer. Clear selection after.
+**`confirmAction` function:** If `focusedCardType` and `selectedTerritory` are both set, and the territory is a valid target for that card type, call the appropriate reducer via its `useReducer` hook with a single named-args object (e.g. `militaryAttack({ territoryId, playerId: 1 })`). Clear selection after.
 
 **`clearSelection` function:** Set `focusedCardType = null`, `selectedTerritory = null`, close any open panels.
 
 **Layout changes:** Add `StrategistAlerts` component in the top-right area.
 
-**Subscriptions:** Add `strategistLog` from `useSubscriptions`.
+**Subscriptions:** Add `strategistLog` from `useSubscriptions` (backed by `useTable(tables.strategistLog)`). Wire dismiss to `dismissStrategistAlert({ notificationId: id })`.
 
 ### 9.3 `Map.tsx` (MODIFIED)
 
@@ -450,12 +455,13 @@ useEffect(() => {
 
 **Rendering:**
 - Header: add a hotkey hint square showing "I" next to "INTELLIGENCE".
-- Deliberation chain display: when `get_intel` returns `status: 'success'`, render the `deliberation` array:
-  - Each entry shows the subordinate name and role as a header (Orbitron, 11px, player color).
+- Deliberation chain display: when `get_intel` returns `status: "success"`, render the `deliberation` array:
+  - Each entry shows `subordinateName` and `role` as a header (Orbitron, 11px, player color).
   - Reasoning text below (JetBrains Mono, 11px, `text-primary`).
   - Commander entry is rendered last with a slightly larger font or bold weight.
   - Entries are separated by a thin divider line (0.5px, `#334455`).
   - The full chain is scrollable if it exceeds the panel height.
+  - Fallback: if `deliberation` is empty (pre-Slice-5 data), display `intelText` as before.
 
 ### 9.5 `ActionCard.tsx` (MODIFIED)
 
@@ -493,34 +499,36 @@ export const SPECIALIST_LLM_TIMEOUT_SECONDS = 15;
 
 ### 9.8 `types.ts` (MODIFIED)
 
-Add:
+The `StrategistLog` row type and the `IntelResult` / `DeliberationEntry` return types are produced by `spacetime generate` from the server's table and `#[derive(SpacetimeType)]` definitions, with camelCase fields. Local helper interfaces should match those generated names:
+
 ```typescript
-export interface StrategistLogRow {
-  id: number;
-  timestamp: number;
+// Generated from the StrategistLog table.
+interface StrategistLog {
+  id: bigint;            // u64
+  createdAt: bigint;     // i64 ms
   notification: string;
-  priority: 'critical' | 'warning' | 'info';
-  territory_id: number | null;
-  player_id: number | null;
+  priority: string;      // "critical" | "warning" | "info"
+  territoryId: number;   // 0 means "no specific territory"
+  playerId: number;
   dismissed: boolean;
 }
 
-export interface DeliberationEntry {
-  subordinate_id: string;
-  subordinate_name: string;
+// Generated from get_intel's return types.
+interface DeliberationEntry {
+  subordinateId: string;
+  subordinateName: string;
   role: string;
   reasoning: string;
-  recommendations: Array<{ action_type: string; territory_id: number }>;
+  actionsJson: string;   // JSON array of recommended actions
 }
 
-// Update IntelResult to use deliberation chain
-export interface IntelResult {
-  status: 'success' | 'insufficient_intel' | 'no_recent_reasoning';
-  ai_player_name: string;
-  cycle_timestamp: number;
-  deliberation?: DeliberationEntry[];  // present on success
-  intel_text?: string;  // present on insufficient_intel or no_recent_reasoning
-  territories_referenced: number[];
+interface IntelResult {
+  status: string;        // "success" | "insufficient_intel" | "no_recent_reasoning"
+  aiPlayerName: string;
+  cycleTimestamp: bigint;
+  deliberation: DeliberationEntry[]; // empty unless status === "success"
+  intelText: string;                 // set on insufficient_intel / no_recent_reasoning
+  territoriesReferenced: number[];
 }
 ```
 
@@ -530,16 +538,15 @@ export interface IntelResult {
 
 ### 10.1 Server
 
-- Modify `lib.rs` from Slice 4.
-- Add `subordinate_id` column to `ai_reasoning_log` table.
-- Add `strategist_log` table.
-- Restructure `ai_reasoning_cycle`: spawn 4 specialist threads, collect with `join()`, spawn commander thread.
-- Modify `ai_submit_actions`: accept subordinate results, log all 5 rows per cycle.
-- Modify `get_intel`: return deliberation chain instead of single text.
-- Add `dismiss_strategist_alert` reducer.
-- Add `strategist_cycle` scheduled reducer.
-- Store 12 specialist prompts as constants in `lib.rs`. Use the AI's player_id to select the correct set.
-- Thread synchronization: use `std::thread::spawn` and `JoinHandle::join()`. Wrap joins with a timeout mechanism using `std::time::Duration`.
+- Modify `app/server/src/lib.rs` (state after Slice 4).
+- Add `subordinate_id` column to the `ai_reasoning_log` table.
+- Add `strategist_log` table (`public`) and `strategist_schedule` scheduled table.
+- Restructure the `ai_reasoning_cycle` **procedure**: sequential `ctx.http` calls (4 specialists, then 1 commander) via `anthropic_call`, committed in `ctx.with_tx`. No threads, no `join()`, no `reqwest`.
+- Replace the private `apply_ai_actions` fn (called inside the cycle's tx2): accept subordinate results, log one `ai_reasoning_log` row per subordinate plus the commander row per cycle, all sharing `cycle_at`.
+- Modify the `get_intel` **procedure**: return a `deliberation` chain (`Vec<DeliberationEntry>`) instead of single text.
+- Add the `dismiss_strategist_alert` **reducer**.
+- Add the `strategist_cycle` **scheduled procedure** (Claude via `ctx.http`).
+- Store the 12 specialist prompts as `&str` constants in `lib.rs`. Use the AI's `player_id` to select the correct set.
 
 ### 10.2 Client
 
@@ -556,14 +563,15 @@ export interface IntelResult {
 
 ## 11. WHAT NOT TO GENERATE
 
-This is Slice 5. Generate everything specified. Do not add:
+This is Slice 5 of 7. Generate everything specified for Slice 5. Do not add:
 - New dimensions
 - New AI opponents
 - New card types
 - New gameplay mechanics beyond orchestration and hotkeys
+- Slice 6 (global chat + AI deception) or Slice 7 (spectator mode + replay) features
 
 ---
 
 ## End of Slice 5 Interface Contract
 
-Modify the Slice 4 codebase as specified. Output every new and modified file. Indicate NEW or MODIFIED at the top of each file.
+Modify the `risk-dominion/app/` codebase (state after Slice 4) as specified. Output every new and modified file. Indicate NEW or MODIFIED at the top of each file.

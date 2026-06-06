@@ -1,61 +1,68 @@
-You are in the slice-1/ directory. You are modifying the working Slice 2 codebase to add Slice 3 features. Generate all changes relative to this directory.
+You are working in the single evolving codebase at risk-dominion/app/. The Slice 2 work is already committed (tagged slice-2-complete). You are modifying that codebase in place to add Slice 3 features. Generate all changes relative to risk-dominion/app/.
 
-You are implementing Slice 3 of Risk: Dominion — adding the Cultural dimension, cross-dimension bonuses, and expanding the win condition to all four dimensions.
+You are implementing Slice 3 of 7 of Risk: Dominion: adding the Cultural dimension, cross-dimension bonuses, and expanding the win condition to all four dimensions.
 
-Before generating any changes, read every file in the existing Slice 2 codebase:
-- slice-1/server/Cargo.toml
-- slice-1/server/src/lib.rs
-- slice-1/client/src/App.tsx
-- slice-1/client/src/constants.ts
-- slice-1/client/src/types.ts
-- slice-1/client/src/hooks/useSubscriptions.ts
-- slice-1/client/src/utils/territoryHelpers.ts
-- slice-1/client/src/components/Map.tsx
-- slice-1/client/src/components/Territory.tsx
-- slice-1/client/src/components/CardHand.tsx
-- slice-1/client/src/components/ActionCard.tsx
-- slice-1/client/src/components/IntelPanel.tsx
-- slice-1/client/src/components/ActionBar.tsx
-- slice-1/client/src/components/VictoryScreen.tsx
+Before generating any changes, read every relevant file in the existing app/ codebase:
+- app/server/Cargo.toml
+- app/server/src/lib.rs
+- app/client/src/App.tsx
+- app/client/src/constants.ts
+- app/client/src/types.ts
+- app/client/src/connection.ts
+- app/client/src/hooks/useSubscriptions.ts
+- app/client/src/utils/territoryHelpers.ts
+- app/client/src/components/Map.tsx
+- app/client/src/components/Territory.tsx
+- app/client/src/components/CardHand.tsx
+- app/client/src/components/ActionCard.tsx
+- app/client/src/components/IntelPanel.tsx
+- app/client/src/components/ActionBar.tsx
+- app/client/src/components/PlayerIndicator.tsx
+- app/client/src/components/VictoryScreen.tsx
 
-Understand the current code before making any changes.
+Understand the current code before making any changes. Match the existing idioms: modern SpacetimeDB 2.4.1 table/reducer/scheduled-table macros on the server, and the spacetimedb npm SDK with React hooks (useTable, useReducer, useProcedure) and generated camelCase row fields on the client.
 
 Read these files in full before generating:
-- MASTERPLAN_SLICE_3.md (your authoritative spec — Cultural table, cultural_spread_tick algorithm, cross-dimension bonuses, expanded AI prompt, seed data, component changes)
-- ../AESTHETIC.md (visual design system — hex X-split quadrant rendering, influence fill pattern)
+- MASTERPLAN_SLICE_3.md (your authoritative spec: Cultural table, cultural_spread_tick algorithm, cross-dimension bonuses, expanded AI prompt, seed data, component changes)
+- ../AESTHETIC.md (visual design system: hex X-split quadrant rendering, influence fill pattern)
 
-Modify the existing Slice 2 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED at the top.
+Modify the existing app/ codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified.
 
 Key constraints:
+- The cultural table uses the modern table macro and follows the same shape as military/economic/covert:
+  #[spacetimedb::table(accessor = cultural, public)] on a pub struct with #[primary_key] territory_id: i32, owner_id: i32, influence_pct: i32.
+- cultural_spread_tick is a SCHEDULED REDUCER, not a procedure. It is a pure, deterministic state tick with NO HTTP. Drive it from a scheduled table:
+  #[spacetimedb::table(accessor = cultural_timer, scheduled(cultural_spread_tick))] holding #[primary_key] #[auto_inc] scheduled_id: u64 and scheduled_at: ScheduleAt. Arm it in start_game with ScheduleAt::Interval(Duration::from_secs(CULTURAL_TICK_SECONDS).into()), the same pattern as regen_timer. The target reducer signature is fn cultural_spread_tick(ctx: &ReducerContext, _timer: CulturalTimer) and uses ctx.timestamp for any timing (never wall-clock).
 - Cultural spread uses integer division throughout. All math truncates toward zero.
-  - Base pressure = economic.capital / 10
-  - Economic→Cultural bonus = pressure + (pressure * 15 / 100)
-  - Cultural→Covert bonus: effective_agents = agents + (agents * 10 / 100)
-- Military→Economic bonus is a flat +1 (not a percentage). invest_amount = 5 + 1 when player owns Military in target territory.
+  - Base pressure = economic.capital / 10 (CULTURAL_PRESSURE_DIVISOR)
+  - Economic->Cultural bonus = pressure + (pressure * 15 / 100)
+  - Cultural->Covert bonus: effective_agents = agents + (agents * 10 / 100)
+- Military->Economic bonus is a flat +1 (not a percentage). invest_amount = 5 + 1 when player owns Military in target territory.
 - Activate the fourth X-split quadrant (bottom-right wedge) for Cultural. Show influence_pct as a partial fill from the outer edge toward the center proportional to influence_pct / 100.
-- Win threshold is now 5 unified territories across all four dimensions (Military + Economic + Cultural + Covert). Update WIN_UNIFIED_TERRITORIES from 3 to 5.
-- The countUnifiedTerritories function now takes four dimension arrays (military, economic, cultural, covert). Update its call site in App.tsx to pass all four.
-- The cultural_spread_tick runs every 30 seconds. It executes in its own transaction — SpacetimeDB serializes concurrent operations. No special handling needed.
-- Update AI prompts to include Cultural data, cross-dimension bonus descriptions, and the note that Cultural is passive (no direct action, spreads through economic pressure).
+- Win threshold is now 5 unified territories across all four dimensions (Military + Economic + Cultural + Covert). Update WIN_UNIFIED_TERRITORIES from 3 to 5. Update the dimension_owner_change private fn (it stays a private fn called inside the reducer tx) so its unified count requires the same owner across all four dimension tables.
+- The countUnifiedTerritories helper now takes four dimension arrays (military, economic, cultural, covert) using camelCase fields (territoryId, ownerId). Update its call site in App.tsx to pass all four.
+- The cultural_spread_tick runs every 30 seconds. It executes in its own transaction. SpacetimeDB serializes concurrent transactions. No special handling needed.
+- Update AI prompts (built in build_system_prompt, used by the ai_reasoning_cycle scheduled procedure) to include Cultural data, cross-dimension bonus descriptions, and the note that Cultural is passive (no direct action, spreads through economic pressure).
 - AI personas expand to four dimensions: Zhao (Military > Covert > Economic > Cultural), Consortium (Economic > Cultural > Military > Covert), Prophet (Cultural > Covert > Economic > Military).
 - No new card types. Cultural has no card. The card hand remains Military, Economic, Covert.
+- Reducers stay deterministic and return Result<(), String> (Ok on success, Err on validation failure). They cannot return data to clients; clients observe outcomes via subscriptions. The client subscribes to the cultural table via useTable(tables.cultural).
 - No emojis. No em dashes. No custom CSS files.
 
 Scope boundary:
 - This is Slice 3 of 7. Add ONLY what is specified in the masterplan.
 - Do NOT add: query bar, query_database, get_canned_query, event feed table, event ticker.
-- The game now has all four dimensions. Slice 4 will add the query system and event ticker.
+- The game now has all four dimensions. Slice 4 will add the query system (a procedure that calls Claude via ctx.http) and event ticker.
 
 If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_3.md and INTERFACE_CONTRACT_SLICE_3.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
 
 Success criteria. After applying all modifications:
 1. Compile without errors (cargo build, npm run build).
 2. Render 4 X-split quadrants on all territories. Cultural quadrant shows influence fill percentage.
-3. Cultural spread tick fires every 30 seconds. Influence accumulates on territories with adjacent economic pressure.
+3. Cultural spread tick (a scheduled reducer) fires every 30 seconds. Influence accumulates on territories with adjacent economic pressure.
 4. Cultural flip occurs when influence exceeds 50%. Ownership changes, influence resets to 0.
-5. Military→Economic bonus: +6 capital when investing where player owns Military. +5 without.
-6. Cultural→Covert bonus: effective agents = agents + 10% for intel threshold.
+5. Military->Economic bonus: +6 capital when investing where player owns Military. +5 without.
+6. Cultural->Covert bonus: effective agents = agents + 10% for intel threshold.
 7. Victory triggers at 5 unified territories across all four dimensions.
 8. AI prompts include Cultural data, cross-dimension bonuses, and the passive nature of Cultural spread.
 
-Generate now. Output every changed file. Mark each as MODIFIED.
+Generate now. Apply every change to the app/ codebase in place.

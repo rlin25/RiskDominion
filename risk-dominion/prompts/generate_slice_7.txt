@@ -1,27 +1,28 @@
-You are in the slice-1/ directory. You are modifying the working Slice 6 codebase to add Slice 7 features — the final slice. Generate all changes relative to this directory.
+You are working in the single evolving app at risk-dominion/app/ (server in app/server, client in app/client), at the slice-6-complete git tag. You are modifying this codebase in place to add Slice 7 features — the final slice. Do not create a new project or a per-slice copy.
 
-You are implementing Slice 7 of Risk: Dominion — adding spectator mode and the replay system. This is the transparency layer. The last slice. After this, the game is complete.
+You are implementing Slice 7 of 7 of Risk: Dominion — adding spectator mode and the replay system. This is the transparency layer. The last slice. After this, the game is complete. Platform: SpacetimeDB 2.4.1.
 
-Before generating any changes, read every file in the existing Slice 6 codebase:
-- slice-1/server/Cargo.toml
-- slice-1/server/src/lib.rs
-- slice-1/client/src/App.tsx
-- slice-1/client/src/constants.ts
-- slice-1/client/src/types.ts
-- slice-1/client/src/hooks/useSubscriptions.ts
-- slice-1/client/src/utils/territoryHelpers.ts
-- slice-1/client/src/components/Map.tsx
-- slice-1/client/src/components/Territory.tsx
-- slice-1/client/src/components/CardHand.tsx
-- slice-1/client/src/components/ActionCard.tsx
-- slice-1/client/src/components/IntelPanel.tsx
-- slice-1/client/src/components/QueryBar.tsx
-- slice-1/client/src/components/ResultsPanel.tsx
-- slice-1/client/src/components/EventTicker.tsx
-- slice-1/client/src/components/StrategistAlerts.tsx
-- slice-1/client/src/components/ChatPanel.tsx
-- slice-1/client/src/components/ActionBar.tsx
-- slice-1/client/src/components/VictoryScreen.tsx
+Before generating any changes, read every file in the existing app/ codebase, including at least:
+- app/server/Cargo.toml
+- app/server/src/lib.rs
+- app/client/src/App.tsx
+- app/client/src/constants.ts
+- app/client/src/types.ts
+- app/client/src/connection.ts
+- app/client/src/hooks/useSubscriptions.ts
+- app/client/src/utils/territoryHelpers.ts
+- app/client/src/components/Map.tsx
+- app/client/src/components/Territory.tsx
+- app/client/src/components/CardHand.tsx
+- app/client/src/components/ActionCard.tsx
+- app/client/src/components/IntelPanel.tsx
+- app/client/src/components/QueryBar.tsx
+- app/client/src/components/ResultsPanel.tsx
+- app/client/src/components/EventTicker.tsx
+- app/client/src/components/StrategistAlerts.tsx
+- app/client/src/components/ChatPanel.tsx
+- app/client/src/components/ActionBar.tsx
+- app/client/src/components/VictoryScreen.tsx
 
 Understand the current code before making any changes.
 
@@ -29,20 +30,20 @@ Read these files in full before generating:
 - MASTERPLAN_SLICE_7.md (your authoritative spec — ended_at insertion, URL parameter routing, replayEngine utility with state reconstruction and snapshot caching, SpectatorOverlay with six stat sections, ReplayControls with timeline and playback, modified IntelPanel and ChatPanel for time-aware filtering, modified App.tsx with three-mode routing and playback animation loop)
 - ../AESTHETIC.md (visual design system — overlay panel styling, timeline colors, playback controls)
 
-Modify the existing Slice 6 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
+Modify the existing app/ codebase (at slice-6-complete). Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
 
 Key constraints:
 - Three modes controlled by URL parameters: default (player, no param), ?spectator=true, ?replay=true. Player mode must be completely unchanged from Slice 6.
 - Spectator mode: read-only. Cards are visible but NOT draggable. Chat input is hidden. SpectatorOverlay is visible with six stat sections. All subscriptions active. No reducer calls allowed from UI.
 - Replay mode: read-only. Card hand hidden entirely. Chat input hidden. Map shows reconstructed state from replayEngine, not live subscription data. IntelPanel and ChatPanel receive currentTimestamp prop for time-aware filtering. ReplayControls visible with timeline, playhead, and playback buttons. QueryBar and StrategistAlerts hidden.
-- Replay during active game: if ?replay=true is opened while game_state.status !== 'ended', render a message: "Replay will be available after the game ends." Do NOT render replay controls or attempt reconstruction.
-- State reconstruction is client-side only. No new server endpoints. Use event_feed for timeline markers and player action approximation. Use ai_reasoning_log.actions_taken for exact AI actions. Player-caused numerical values (exact troop counts) are approximated — acknowledge this in code comments.
+- Replay during active game: game_state is a key-value table; read the status with gameState.find((r) => r.key === 'status')?.value. If ?replay=true is opened while that value !== 'ended', render a message: "Replay will be available after the game ends." Do NOT render replay controls or attempt reconstruction.
+- State reconstruction is client-side only. No new server endpoints, reducers, or procedures. Use event_feed for timeline markers and player action approximation. Use the ai_reasoning_log rows (actionsTaken JSON in TS) for exact AI actions. Player-caused numerical values (exact troop counts) are approximated — acknowledge this in code comments.
 - Snapshot caching: build and cache ReplaySnapshot every 30 seconds of game time. When scrubbing, jump to nearest cached snapshot and replay events from there.
 - Playback uses requestAnimationFrame. Speed multiplier (1x, 2x, 4x) applied to delta time. Playback stops automatically at endedAt. Playhead is draggable.
-- ended_at: add ONE line to dimension_owner_change when the game ends — insert key='ended_at' with current timestamp into game_state table. No other server changes.
-- SpectatorOverlay sections: Unified Territory Count, Dimension Dominance (bar chart), Trust Score Summary, Cultural Hotspots, AI Cycle Status, Recent Events. All data from existing subscriptions. In replay mode, filter by currentTimestamp where applicable.
-- ReplayControls: horizontal timeline with colored event markers (military=#FF6666, economic=#FFCC44, cultural=#44DDAA, covert=#AA44FF, chat=#44CC66, victory/system=#FFD700). Hover tooltips. Clickable markers. Draggable playhead. Play/Pause, speed selector, Jump to Start/End, MM:SS display.
-- IntelPanel: new optional currentTimestamp prop. When provided, show most recent deliberation chain with cycle_at <= currentTimestamp. When null, existing behavior.
+- ended_at: add ONE line to the dimension_owner_change private fn (inside the existing reducer tx) when the game ends — set_game_value(ctx, "ended_at", &now_millis(ctx).to_string()) using ctx.timestamp (never wall-clock). game_state is key-value, written via the existing set_game_value helper. No other server changes.
+- SpectatorOverlay sections: Unified Territory Count, Dimension Dominance (bar chart), Trust Score Summary, Cultural Hotspots, AI Cycle Status, Recent Events. All data from existing useTable subscriptions (camelCase TS fields: ownerId, aiPlayerId, influencePct, cycleStatus, eventType). In replay mode, filter by currentTimestamp where applicable.
+- ReplayControls: horizontal timeline with colored event markers keyed by eventType (military=#FF6666, economic=#FFCC44, cultural=#44DDAA, covert=#AA44FF, chat=#44CC66, victory/system=#FFD700). Hover tooltips (eventText). Clickable markers. Draggable playhead. Play/Pause, speed selector, Jump to Start/End, MM:SS display.
+- IntelPanel: new optional currentTimestamp prop. When provided, show most recent deliberation chain with cycleAt <= currentTimestamp. When null, existing behavior.
 - ChatPanel: new optional currentTimestamp prop and mode prop. When currentTimestamp provided, filter messages to timestamp <= currentTimestamp. When mode !== 'player', hide input field.
 - CardHand: accept interactive prop. When false, cards render visually but are not draggable.
 - All styling via Tailwind using AESTHETIC.md tokens. No emojis. No em dashes. No custom CSS files.

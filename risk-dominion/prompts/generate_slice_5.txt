@@ -1,69 +1,79 @@
-You are in the slice-1/ directory. You are modifying the working Slice 4 codebase to add Slice 5 features — the final slice. Generate all changes relative to this directory.
+You are evolving the single Risk: Dominion codebase at risk-dominion/app/ to add Slice 5 features: subagent orchestration, keyboard controls, and the human Strategist advisor. The canonical code is one app at app/{server,client} that grows each slice; the state after Slice 4 is tagged slice-4-complete in git. Generate all changes against that codebase, in place.
 
-You are implementing Slice 5 of Risk: Dominion — adding subagent orchestration, keyboard controls, and the human Strategist advisor.
+This is Slice 5 of 7. Slices 6 (global chat with AI deception) and 7 (spectator mode and replay) come later.
 
-Before generating any changes, read every file in the existing Slice 4 codebase:
-- slice-1/server/Cargo.toml
-- slice-1/server/src/lib.rs
-- slice-1/client/src/App.tsx
-- slice-1/client/src/constants.ts
-- slice-1/client/src/types.ts
-- slice-1/client/src/hooks/useSubscriptions.ts
-- slice-1/client/src/utils/territoryHelpers.ts
-- slice-1/client/src/components/Map.tsx
-- slice-1/client/src/components/Territory.tsx
-- slice-1/client/src/components/CardHand.tsx
-- slice-1/client/src/components/ActionCard.tsx
-- slice-1/client/src/components/IntelPanel.tsx
-- slice-1/client/src/components/QueryBar.tsx
-- slice-1/client/src/components/ResultsPanel.tsx
-- slice-1/client/src/components/EventTicker.tsx
-- slice-1/client/src/components/ActionBar.tsx
-- slice-1/client/src/components/VictoryScreen.tsx
+Target stack: SpacetimeDB 2.4.1. Server is a Rust module (spacetimedb = { version = "2.4.1", features = ["unstable"] }, edition = "2024", crate-type = ["cdylib"]); the unstable feature is required for procedures and HTTP. Client is React + TypeScript using the spacetimedb npm package with the spacetimedb/react subpath. Generated bindings come from spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server, with camelCase field names (Rust territory_id -> TS territoryId).
 
-Understand the current code before making any changes.
+Before generating any changes, read every file in the existing codebase under app/:
+- app/server/Cargo.toml
+- app/server/src/lib.rs
+- app/client/src/App.tsx
+- app/client/src/constants.ts
+- app/client/src/types.ts
+- app/client/src/hooks/useSubscriptions.ts
+- app/client/src/utils/territoryHelpers.ts
+- app/client/src/components/Map.tsx
+- app/client/src/components/Territory.tsx
+- app/client/src/components/CardHand.tsx
+- app/client/src/components/ActionCard.tsx
+- app/client/src/components/IntelPanel.tsx
+- app/client/src/components/QueryBar.tsx
+- app/client/src/components/ResultsPanel.tsx
+- app/client/src/components/EventTicker.tsx
+- app/client/src/components/ActionBar.tsx
+- app/client/src/components/VictoryScreen.tsx
 
-Read these files in full before generating:
-- MASTERPLAN_SLICE_5.md (your authoritative spec — orchestrated AI cycle, specialist prompts, commander prompt, Strategist cycle, deliberation chain, hotkey map, component changes)
-- ../AESTHETIC.md (visual design system — hotkey hint styling, alert card styling, selection cursor)
+Understand the current code before making any changes. In particular, study how lib.rs already structures the ai_reasoning_cycle procedure (tx1 snapshot under a pending guard -> HTTP via the anthropic_call helper using ctx.http -> tx2 apply + log), the ScheduleAt-driven scheduled tables, and the module_config table that holds the Anthropic key. Reuse these idioms exactly.
 
-Modify the existing Slice 4 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
+Read these documents in full before generating:
+- MASTERPLAN_SLICE_5.md (your authoritative spec: orchestrated AI cycle, specialist prompts, commander prompt, Strategist cycle, deliberation chain, hotkey map, component changes)
+- ../AESTHETIC.md (visual design system: hotkey hint styling, alert card styling, selection cursor)
 
-Key constraints:
-- Replace the entire body of ai_reasoning_cycle. Do not preserve the old single-call logic. The new logic spawns 4 specialist threads, collects their JoinHandles, waits for all to complete or timeout, then spawns a commander thread.
-- Specialist threads: 15-second timeout each. Temperature 0.3. Max tokens 150. On timeout or error, return empty result — do not crash.
-- Commander thread: 30-second timeout. Temperature 0.3. Max tokens 500. Receives all specialist recommendations (or "specialist unavailable" for timeouts).
-- Update ai_submit_actions signature to accept: ai_player_id, actions, commander_reasoning, cycle_at, subordinate_results. Update all call sites. Log one ai_reasoning_log row per subordinate plus the commander row. All share the same cycle_at.
-- Store all 12 specialist prompts as constants in lib.rs. Select by ai_player_id. Each prompt includes domain-specific data placeholder, persona context, and JSON output format.
-- get_intel returns a deliberation array — all ai_reasoning_log rows from the latest cycle, ordered by subordinate_id (specialists first, commander last). Map subordinate_id strings to display names and role descriptions. Aggregate territories_referenced from all rows.
-- Handle missing subordinate_id on older rows by treating them as "commander".
-- Strategist cycle: scheduled reducer at 60s interval, 50s initial offset. Analyzes threats, opportunities, weaknesses. Returns up to 3 notifications with priority levels. Inserts into strategist_log.
-- dismiss_strategist_alert reducer sets dismissed=true on a notification.
-- Hotkeys must NOT fire when the query bar has focus. Check document.activeElement. Only Tab, Escape, and Enter pass through when an INPUT is focused.
-- WASD/arrow keys move a selection cursor on the hex grid. Use HEX_GRID_COORDINATES from constants.ts. Compute nearest territory in the pressed direction by Euclidean distance.
-- Enter/Space confirms action: deploys focused card to selected territory if valid.
-- Escape clears card focus, cursor selection, and closes all panels.
-- Q focuses query bar. I toggles Intel panel. C cycles AI intel targets (2→3→4→null). H toggles highlight of player-owned territories.
+Modify the existing codebase. Do not regenerate prior slices from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
+
+Key constraints (server):
+- ai_reasoning_cycle is a SCHEDULED PROCEDURE, not a reducer. Only procedures can make HTTP calls (ctx.http); reducers cannot. Replace the entire body. The new logic makes the four specialist Claude calls and the one commander Claude call SEQUENTIALLY inside the single procedure invocation via the existing anthropic_call helper.
+- THERE ARE NO THREADS. SpacetimeDB has no std::thread, no JoinHandle, no join(), no reqwest, and no tokio. Do not introduce any of them. Do not spawn threads.
+- Structure: tx1 (re-arm next cycle, pending guard, snapshot board + read api key/model from module_config) -> sequential HTTP (4 specialists, then commander; no tx held open) -> tx2 (apply actions, log rows, set status idle). All DB access is inside ctx.with_tx.
+- Specialist calls: anthropic_call(ctx, &api_key, &model, prompt, snapshot, 150, 15) -> max_tokens 150, timeout 15s. On error/timeout, record an empty SubordinateResult for that specialist; do not abort the cycle.
+- Commander call: anthropic_call(ctx, &api_key, &model, commander_prompt, "...end with the JSON action array.", 500, 30) -> max_tokens 500, timeout 30s.
+- Note the latency trade-off in a comment: five sequential calls means the first cycle can take up to ~120s. This is acceptable. The only fallback (mention briefly, do not implement) is fanning specialists out across separate scheduled-procedure rows that write to a scratch table, with a follow-up commander row.
+- apply_ai_actions is a PRIVATE fn invoked inside the cycle's tx2 (not a reducer, not cross-thread, no queue table). Signature accepts ai_player_id, the parsed actions, commander_reasoning, the subordinate results, and cycle_at. It executes actions via the shared do_military_attack / do_economic_invest / do_deploy_agent logic, sets ai_state to idle, and logs one ai_reasoning_log row per subordinate plus the commander row, all sharing the same cycle_at. Reuse parse_actions / last_balanced_array.
+- Add a subordinate_id String column to ai_reasoning_log ("commander" for the commander row). No SQL DEFAULT; always written on insert. get_intel treats an empty subordinate_id (pre-Slice-5 rows) as "commander".
+- Store all 12 specialist prompts as &str constants in lib.rs. Select the set by ai_player_id (2 = Zhao, 3 = Consortium, 4 = Prophet). Each prompt includes a domain-specific data placeholder, persona context, and a JSON output format. Keep the prompt text exactly as written in the masterplan.
+- get_intel stays a PROCEDURE and returns a deliberation chain: IntelResult and DeliberationEntry are #[derive(SpacetimeType)] structs; deliberation is a Vec<DeliberationEntry>. Return all ai_reasoning_log rows from the latest cycle_at for the AI, ordered by subordinate (specialists first, "commander" last). Map subordinate_id to display name and role. Aggregate territories_referenced from all rows' actions_taken JSON. Keep the existing insufficient_intel / no_recent_reasoning gating (3 effective agents) unchanged.
+- strategist_cycle is a SCHEDULED PROCEDURE (Claude via ctx.http), driven by a new strategist_schedule scheduled table. start_game seeds a one-shot ScheduleAt::Time(now + 50s); each cycle re-arms ScheduleAt::Time(now + 60s). Same tx1 -> HTTP -> tx2 shape. anthropic_call with max_tokens 300, timeout 15s. Parse up to 3 notifications and insert into strategist_log. On error/timeout, do nothing (next cycle already armed).
+- Add strategist_log as a public table: id (u64, primary_key, auto_inc), created_at (i64 ms), notification (String), priority (String), territory_id (i32; 0 means none), player_id (i32; 1), dismissed (bool, false on insert).
+- dismiss_strategist_alert is a plain REDUCER: fn(ctx: &ReducerContext, notification_id: u64) -> Result<(), String> that sets dismissed = true on the row.
+- The Anthropic key comes from the non-public module_config table via the existing set_config reducer. Never read env vars in module code. Never put the key in source. Keep model pins and the anthropic-version: 2023-06-01 header exactly as in lib.rs.
+
+Key constraints (client):
+- Subscribe to the new strategist_log table with useTable(tables.strategistLog) -> [rows, isReady]. Call reducers/procedures with a single named-args object via useReducer / useProcedure (e.g. militaryAttack({ territoryId, playerId }), dismissStrategistAlert({ notificationId })). Field access uses generated camelCase names (createdAt, territoryId, subordinateName, actionsJson, etc.).
+- Add StrategistAlerts.tsx (NEW): stacked cards top-right, border-left color by priority (critical = red pulse, warning = orange, info = gray), dismissable, clickable for territory highlight when territoryId !== 0, slide-in animation.
+- Modify App.tsx: keyboard event listener, cursor state, confirmation logic, layout changes, dismiss/click handlers.
+- Modify Map.tsx: selection cursor (white or gold 2px outline, distinct from query and ticker highlights), owned-territory highlight.
+- Modify IntelPanel.tsx: render the deliberation chain on success (subordinateName + role header, reasoning body, commander last, scrollable); fall back to intelText when deliberation is empty. Add the "I" hotkey hint.
+- Modify ActionCard.tsx (1/2/3 hint), QueryBar.tsx ("Q" hint), constants.ts (HEX_GRID_COORDINATES, Strategist constants), types.ts (match generated camelCase shapes).
+- Hotkeys must NOT fire when the query bar has focus. Check document.activeElement; only Tab, Escape, and Enter pass through when an INPUT is focused.
+- WASD/arrow keys move a selection cursor on the hex grid using HEX_GRID_COORDINATES (nearest in the pressed direction by Euclidean distance; default to territory 1 if none selected). Enter/Space confirms (deploys focused card to selected territory if valid). Escape clears card focus, cursor selection, and closes all panels. Q focuses query bar. I toggles Intel panel. C cycles AI intel targets (2 -> 3 -> 4 -> null). H toggles highlight of player-owned territories.
 - Hotkey hints: small 16x16px squares on ActionCard (1,2,3), QueryBar (Q), IntelPanel (I). JetBrains Mono 9px, text-secondary, faint border.
-- Selection cursor: white or gold 2px outline on the selected territory hex. Distinct from query highlights and ticker highlights.
-- StrategistAlerts component: stacked cards in top-right. Border-left color by priority (critical=red pulse, warning=orange, info=gray). Dismissable. Clickable for territory highlight. Slide-in animation.
 - All styling via Tailwind using AESTHETIC.md tokens. No emojis. No em dashes. No custom CSS files.
 
 Scope boundary:
-- This is Slice 5 of 7. Add ONLY what is specified in the masterplan.
-- Generate EVERY feature specified in the masterplan. Do not leave stubs, TODOs, or placeholders.
-- Do not add new dimensions, new AI opponents, new card types, or new gameplay mechanics. Orchestration and hotkeys enhance existing systems.
+- This is Slice 5 of 7. Add ONLY what the masterplan specifies for Slice 5.
+- Generate EVERY feature specified. Do not leave stubs, TODOs, or placeholders.
+- Do not add new dimensions, new AI opponents, new card types, or new gameplay mechanics. Orchestration and hotkeys enhance existing systems. Do not implement Slice 6 or Slice 7 features.
 
 If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_5.md and INTERFACE_CONTRACT_SLICE_5.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
 
 Success criteria. After applying all modifications:
-1. Compile without errors (cargo build, npm run build).
-2. AI cycles use orchestration — commander + 4 specialists. First cycle up to 120s. Intel shows full deliberation chain.
+1. Build without errors (spacetime build for the module, npm run build for the client). Regenerate bindings with spacetime generate.
+2. AI cycles use orchestration: commander + 4 specialists, all five Claude calls made sequentially within the single ai_reasoning_cycle procedure (no threads). First cycle up to ~120s. Intel shows the full deliberation chain.
 3. Strategist alerts appear at 50s and every 60s. Color-coded by priority. Dismissable.
 4. All hotkeys function: 1/2/3, WASD/arrows, Enter/Space, Escape, Q, I, C, H.
 5. Hotkeys suppressed when query bar focused. Escape exits query bar, hotkeys resume.
 6. Selection cursor visible on hex map. Moves with WASD. Confirm with Enter deploys card.
 7. Hotkey hints visible on cards, query bar, and Intel panel.
-8. All Slice 4 functionality preserved — gameplay, queries, ticker unchanged.
+8. All Slice 1 through 4 functionality preserved: gameplay, queries, ticker unchanged.
 
-This is the final generation. After this, Risk: Dominion is complete. Generate now. Output every changed file. Mark each as MODIFIED or NEW.
+Generate now. Output every changed file. Mark each as MODIFIED or NEW.

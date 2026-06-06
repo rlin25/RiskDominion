@@ -1,8 +1,9 @@
 # RISK: DOMINION — SLICE 7 DESIGN DECISIONS
 
 ## Version 1.0
-## Scope: Spectator Mode, Replay System, Complete Transparency
-## Relationship: Extends DECISIONS_SLICE_6.md
+## Scope: Spectator Mode, Replay System, Complete Transparency (Slice 7 of 7)
+## Platform: SpacetimeDB 2.4.1
+## Relationship: Extends DECISIONS_SLICE_6.md (applies to the single evolving app at risk-dominion/app/)
 
 ---
 
@@ -73,7 +74,7 @@ The replay transforms the game from a competition into a story. A story where ev
 
 **How it works under the hood.** The replay does not store snapshots of the game at every moment. It reconstructs the game by starting from the initial seed state — the same board the game began with — and replaying every known action in order. AI actions are fully logged in `ai_reasoning_log`, so the AI's moves can be reconstructed exactly. Player actions are partially captured in `event_feed` — the replay knows what happened and when, even if it doesn't have the exact before-and-after numbers for every player action. The reconstruction is an approximation that becomes more precise over time as more data is logged. For the hackathon, the replay focuses on what it can show perfectly: AI deliberation, chat history, trust scores, cultural pressure, and the event timeline. Full state reconstruction is noted as a future enhancement.
 
-**A small addition.** To know the timeline bounds, the game now records an `ended_at` timestamp in the `game_state` table when victory occurs. The replay timeline spans from `started_at` to `ended_at`.
+**A small addition.** To know the timeline bounds, the game now records an `ended_at` value in the key-value `game_state` table when victory occurs, derived from `ctx.timestamp` (the same deterministic clock that records `started_at`). This is one line inside the existing `dimension_owner_change` win check; no new server endpoints. The replay timeline spans from `started_at` to `ended_at`.
 
 ---
 

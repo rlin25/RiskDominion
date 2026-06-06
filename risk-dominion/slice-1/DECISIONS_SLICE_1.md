@@ -37,20 +37,24 @@ Future slices will activate additional dimensions. The architecture is designed 
 
 ## Principle 2: Dimensions Are Tables, Not Properties
 
-Each dimension is its own SpacetimeDB table. They share a territory ID as a join key, but they are independent structures:
+Each dimension is its own SpacetimeDB table. They share a territory ID as a join key, but they are independent structures, each a `public` table so both players can subscribe:
 
-```
-military (
-    territory_id  INT PRIMARY KEY,
-    owner_id      INT NOT NULL,
-    troop_count   INT NOT NULL DEFAULT 0
-)
+```rust
+#[spacetimedb::table(accessor = military, public)]
+pub struct Military {
+    #[primary_key]
+    pub territory_id: i32,
+    pub owner_id: i32,
+    pub troop_count: i32,
+}
 
-economic (
-    territory_id  INT PRIMARY KEY,
-    owner_id      INT NOT NULL,
-    capital       INT NOT NULL DEFAULT 0
-)
+#[spacetimedb::table(accessor = economic, public)]
+pub struct Economic {
+    #[primary_key]
+    pub territory_id: i32,
+    pub owner_id: i32,
+    pub capital: i32,
+}
 ```
 
 This schema is the game's conceptual model. "Who controls Central America militarily?" is a query against the military table. "Where am I economically dominant?" is a query against the economic table. The player is not playing a game that happens to use a database. The player is interacting with dimension tables that happen to be rendered as a map.

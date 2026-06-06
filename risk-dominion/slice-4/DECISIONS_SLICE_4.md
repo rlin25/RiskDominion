@@ -1,7 +1,7 @@
 # RISK: DOMINION — SLICE 4 DESIGN DECISIONS
 
 ## Version 1.0
-## Scope: Query System, Event Ticker, Complete Game
+## Scope: Query System, Event Ticker (Slice 4 of 7)
 ## Relationship: Extends DECISIONS_SLICE_3.md
 
 ---
@@ -82,7 +82,7 @@ Every significant action in the game writes an event. Here is what the ticker re
 - **Cultural spread:** "Consortium's cultural influence spread to Southern Africa, displacing Prophet."
 - **Territory unified:** "Player unified North America — 2 of 5 toward victory."
 - **Victory:** "Player wins! All five territories unified."
-- **AI timeout:** "Zhao's command appears to be in disarray."
+- **AI failure:** "Zhao's command appears to be in disarray." (the AI's Claude call errored or timed out)
 
 Each event is color-coded. If Zhao takes a territory, the event text has a red indicator. If the Consortium invests, orange. If culture spreads, the event uses the cultural owner's color. A small icon sits before each event — a sword for military, a coin for economic, a book for cultural, an eye for covert, a trophy for victory, a gear for system messages.
 
@@ -98,7 +98,7 @@ The ticker is not decoration. It is the spectator-facing interface. In a 48-hour
 
 **The ticker displays the last 50 events.** This is a display choice, not a data limit. The server stores every event for the entire game session. The ticker scrolls to show the newest events. Older events scroll off the left side of the screen. Nothing is lost — the display is a window, not a cutoff.
 
-**The ticker touches nearly every reducer.** Adding event writes means modifying the code that handles military attacks, economic investments, agent deployments, cultural spread ticks, unification checks, AI reasoning cycles, and game start. This is the most widespread change in any slice. The events are fire-and-forget — writing to the event feed must not block or break the reducer's primary job. If an event write fails, the attack should still succeed. The game state is the priority. The narrative is a faithful recorder, never an obstacle.
+**The ticker touches nearly every game-state change.** Adding event writes means modifying the code that handles military attacks, economic investments, agent deployments, cultural spread ticks, unification checks, the AI reasoning cycle, and game start. This is the most widespread change in any slice. Each event write is a pure side effect of the action's transaction: it is the last operation, appended after the state change, sharing the same atomic transaction. The narrative is a faithful recorder of what actually committed, never an obstacle to it. (Player and AI actions both flow through the shared action helpers, so a single event write per helper narrates both.)
 
 ---
 
@@ -126,18 +126,18 @@ Slice 4 adds sight and story. It does not change the game.
 | Query system | Natural language query bar at screen top |
 | Canned queries | 10 pre-built buttons covering all dimensions and strategic concerns |
 | Query result format | Summary text, data table (columns + rows), highlighted territory IDs |
-| Query mechanism | All queries — freeform and canned — use Claude to translate natural language against live tables |
-| Event feed | `event_feed` table stores all events. Server retains full history. |
+| Query mechanism | All queries (freeform and canned) are procedures that call Claude over ctx.http and return structured data; the client invokes them via useProcedure |
+| Event feed | `event_feed` is a public event/log table that the server writes as a side effect. Server retains full history. |
 | Event ticker | Scrolling bar at screen bottom. Last 50 events displayed. Color-coded by player. Icons by dimension. |
 | Event click | Clicking an event highlights the referenced territory on the map |
-| Event types | 10 event types: start, military success, military failure, economic flip, economic invest, agent deploy, cultural flip, unification, victory, AI timeout |
-| Fire-and-forget | Event writes must not block or break reducer logic |
+| Event types | 10 event types: start, military success, military failure, economic flip, economic invest, agent deploy, cultural flip, unification, victory, AI failure |
+| Event writes | A side effect of the action's transaction; last operation, atomic with the state change, never an obstacle to it |
 
 ---
 
 ## 5. AFTER SLICE 4
 
-Slice 4 completes the core feature set. After Slice 4, Risk: Dominion has all four dimensions, three AI opponents, cultural spread, natural language queries, and a live event ticker. Slice 5 subsequently adds multi-agent orchestration, keyboard controls, and the human Strategist advisor.
+Slice 4 adds the query and narrative layer. After Slice 4, Risk: Dominion has all four dimensions, three AI opponents, cultural spread, natural language queries, and a live event ticker. Slices 5 through 7 still follow: Slice 5 adds multi-agent orchestration, keyboard controls, and the human Strategist advisor; Slice 6 adds chat with deception and trust; Slice 7 adds the spectator and replay layer.
 
 The player can:
 - Drag cards to attack, invest, and deploy agents across four dimensions

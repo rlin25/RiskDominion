@@ -1,61 +1,70 @@
-You are in the slice-1/ directory. You are modifying the working Slice 1 codebase to add Slice 2 features. Generate all changes relative to this directory.
+You are growing the single Risk: Dominion codebase at risk-dominion/app/ from Slice 1 into Slice 2. The canonical code is ONE evolving application at app/server and app/client; each completed slice is tagged slice-N-complete in git. Slice 1 is tagged slice-1-complete. Modify that codebase in place. Generate all changes relative to the app/ directory.
 
-You are implementing Slice 2 of Risk: Dominion — adding AI opponents, the Covert dimension, and the intel system on top of the existing two-player game.
+You are implementing Slice 2 of 7 of Risk: Dominion on SpacetimeDB 2.4.1 — adding three Claude-powered AI opponents, the Covert dimension, and the intel system on top of the existing two-player game.
 
-Before generating any changes, read every file in the existing Slice 1 codebase:
-- slice-1/server/Cargo.toml
-- slice-1/server/src/lib.rs
-- slice-1/client/src/App.tsx
-- slice-1/client/src/constants.ts
-- slice-1/client/src/types.ts
-- slice-1/client/src/hooks/useSubscriptions.ts
-- slice-1/client/src/utils/territoryHelpers.ts
-- slice-1/client/src/components/Map.tsx
-- slice-1/client/src/components/Territory.tsx
-- slice-1/client/src/components/CardHand.tsx
-- slice-1/client/src/components/ActionCard.tsx
-- slice-1/client/src/components/ActionBar.tsx
-- slice-1/client/src/components/VictoryScreen.tsx
-- slice-1/client/src/components/PlayerIndicator.tsx
+Before generating any changes, read every file in the existing app/ codebase:
+- app/server/Cargo.toml
+- app/server/src/lib.rs
+- app/client/src/App.tsx
+- app/client/src/constants.ts
+- app/client/src/types.ts
+- app/client/src/hooks/useSubscriptions.ts
+- app/client/src/utils/territoryHelpers.ts
+- app/client/src/components/Map.tsx
+- app/client/src/components/Territory.tsx
+- app/client/src/components/CardHand.tsx
+- app/client/src/components/ActionCard.tsx
+- app/client/src/components/ActionBar.tsx
+- app/client/src/components/VictoryScreen.tsx
+- app/client/src/components/PlayerIndicator.tsx
 
 Understand the current code before making any changes.
 
 Read these files in full before generating:
-- MASTERPLAN_SLICE_2.md (your authoritative spec — all modifications, new tables, new reducers, LLM prompt templates, seed data, component changes)
+- MASTERPLAN_SLICE_2.md (your authoritative spec — all modifications, new tables, new reducers and procedures, the AI cycle, LLM prompt templates, seed data, component changes)
 - ../AESTHETIC.md (visual design system — Covert card icon is concentric circles SVG, Section 13.3)
 
-Modify the existing Slice 1 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED, NEW, or REMOVED at the top.
+Modify the existing app/ codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED, NEW, or REMOVED at the top.
 
-If a file listed as MODIFIED does not exist in the Slice 1 codebase, create it as NEW and note the discrepancy.
+If a file listed as MODIFIED does not exist in the app/ codebase, create it as NEW and note the discrepancy.
 
 Key constraints:
-- Server: add reqwest crate with blocking and json features to Cargo.toml. Use std::thread::spawn + reqwest::blocking::Client for LLM calls. Do not use async Rust.
-- Use the model specified in the ANTHROPIC_MODEL environment variable. Use the key from ANTHROPIC_API_KEY.
+- SpacetimeDB 2.4.1 idioms. Tables are pub structs with #[spacetimedb::table(accessor = name, public)] and column attributes (#[primary_key], #[auto_inc]). Reducers are #[spacetimedb::reducer] fn f(ctx: &ReducerContext, ...) -> Result<(), String> and CANNOT return data to clients (clients observe outcomes via subscriptions). Procedures are #[spacetimedb::procedure] fn f(ctx: &mut ProcedureContext, ...) -> Ret; they return data to the caller and are the ONLY function type that can make HTTP calls.
+- Cargo.toml is unchanged: spacetimedb = { version = "2.4.1", features = ["unstable"] }, plus log, serde, serde_json. The unstable feature is REQUIRED for procedures and ctx.http. Do NOT add reqwest, tokio, or any HTTP/async crate.
+- The AI reasoning cycle is a SCHEDULED PROCEDURE that calls Claude via ctx.http. A scheduled table (ai_cycle_schedule, with scheduled(ai_reasoning_cycle)) drives it. Pattern: tx1 snapshots the board, re-arms the next cycle, and marks the AI pending under a pending guard; then the HTTP call runs with no transaction held open; then tx2 applies the actions, logs, and returns the AI to idle. Do NOT use std::thread::spawn, reqwest, async Rust, a queue table, or cross-thread reducer calls.
+- get_intel is a PROCEDURE (it returns a structured IntelResult). It is not a reducer. It makes no HTTP call; all DB access is inside ctx.with_tx.
+- deploy_agent is a REDUCER (the player drops a Covert card).
+- There is no ai_submit_actions reducer. The AI's actions are applied by a private apply_ai_actions fn inside the cycle procedure's second ctx.with_tx, reusing the shared do_military_attack / do_economic_invest / do_deploy_agent fns the human's reducers also use (so the AI is validated identically — no cheating).
+- The Anthropic API key comes from a private (non-public) module_config table, seeded once via a set_config reducer (spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'). Never read it from environment variables and never expose it to clients. Model defaults to claude-sonnet-4-6; header anthropic-version: 2023-06-01; max_tokens 1500.
+- Use ctx.timestamp for all time (deterministic). Store *_at fields as i64 millis via ctx.timestamp.to_micros_since_unix_epoch() / 1000. Do NOT use SystemTime::now().
+- After modifying the server, regenerate bindings: spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server. Field names are camelCase (territory_id becomes territoryId).
+- Client uses the spacetimedb npm package with hooks: useTable(tables.x) -> [rows, isReady], useReducer(reducers.x) -> (args) => Promise<void>, useProcedure(procedures.x) -> (args) => Promise<Ret>. Reducer/procedure calls take a single named-args object, e.g. deployAgent({ territoryId, playerId: 1 }) and getIntel({ aiPlayerId }).
 - The human player is always player_id 1. Remove all ?player= URL parameter logic.
 - Covert ownership does NOT count toward unification. Victory is still 3 territories with Military AND Economic owned by the same player.
 - Three card types: Military, Economic, Covert (purple left border, concentric circles SVG icon, "DEPLOY").
 - Territory hexagons now show 3 X-split quadrants (Military, Economic, Covert). Bottom-right wedge is neutral (reserved for Cultural in Slice 3).
 - Agents persist on ownership flip: new owner inherits existing agents + 1.
 - Intel threshold: 3 agents in a territory where the AI has military or economic presence.
-- AI cycles fire every 60s, staggered 20s apart (Zhao at 0s, Consortium at 20s, Prophet at 40s). 30s LLM timeout. Skip cycle if previous still pending.
+- AI cycles fire roughly every 60s, staggered 20s apart at first fire (Zhao at +0s, Consortium at +20s, Prophet at +40s), self-pacing via the schedule chain. 30s LLM timeout. Skip a cycle if the previous one is still pending.
 - Delete PlayerIndicator.tsx. No other file imports it.
+- The IntelPanel uses useProcedure(procedures.getIntel) and calls await getIntel({ aiPlayerId }).
 - No emojis. No em dashes. No custom CSS files. All styling via Tailwind using AESTHETIC.md tokens.
 
 Scope boundary:
 - This is Slice 2 of 7. Add ONLY what is specified in the masterplan.
-- Do NOT add: Cultural dimension, cultural_spread_tick, cross-dimension bonuses, query bar, event ticker.
+- Do NOT add: Cultural dimension, cultural_spread_tick, cross-dimension bonuses, query bar, event ticker, or any feature from Slices 3 through 7.
 - The game is three dimensions (Military, Economic, Covert) and single-player against AI. Nothing more.
 
 If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_2.md and INTERFACE_CONTRACT_SLICE_2.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
 
 Success criteria. After applying all modifications:
-1. Compile without errors (cargo build, npm run build).
+1. Compile without errors (spacetime build for the server with the unstable feature, npm run build for the client).
 2. Load as single-player with no URL parameter. Player is blue.
 3. Render 3-quadrant hexes matching seed data (Player blue, Zhao red, Consortium orange, Prophet purple).
 4. Offer three card types in hand rotation (Military, Economic, Covert).
 5. Deploy agents via Covert card. Agent count increments. Inherits on ownership flip.
-6. All three AIs execute actions within 60 seconds of game start.
-7. Player with 3+ agents in AI territory sees reasoning text and territory highlights from get_intel.
+6. All three AIs execute actions within roughly 60 seconds of game start (once the API key is seeded via set_config).
+7. Player with 3+ agents in AI territory sees reasoning text and territory highlights from the getIntel procedure.
 8. Player without agents sees "Insufficient intel" message.
 
 Generate now. Output every changed file. Mark each as MODIFIED, NEW, or REMOVED.

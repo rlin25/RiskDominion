@@ -8,13 +8,13 @@
 
 ## Principle 0: This Is the Advanced Capabilities Slice
 
-Slice 5 is the final slice. After this, Risk: Dominion is not just complete — it is exceptional. The AI opponents now reason through a council of specialist subordinates. The player commands the battlefield from the keyboard. An AI Strategist watches the game and offers proactive advice.
+Slice 5 is the advanced capabilities slice (Slice 5 of 7). After this, the AI opponents reason through a council of specialist subordinates, the player commands the battlefield from the keyboard, and an AI Strategist watches the game and offers proactive advice. Slices 6 (global chat with AI deception) and 7 (spectator mode and replay) still follow.
 
-This slice restructures the most complex reducer in the project — `ai_reasoning_cycle` — from a single Claude call to five parallel calls with thread synchronization. It adds keyboard event handling across multiple components. It introduces a new scheduled reducer for the Strategist.
+This slice restructures the most complex procedure in the project, `ai_reasoning_cycle`, from a single Claude call into five sequential Claude calls (four specialists, then one commander) made over `ctx.http` inside one scheduled procedure. There are no threads: SpacetimeDB has no `std::thread`, no `join()`, no `reqwest`, and no `tokio`. The slice also adds keyboard event handling across multiple client components and introduces a new scheduled procedure for the Strategist.
 
 The rule: Slice 5 must pass every regression check and every new feature test before the game is considered demo-ready. No exceptions.
 
-This document tells you how to validate Slice 5, how to debug it when validation fails, and what to fix before the final demo.
+This document tells you how to validate Slice 5, how to debug it when validation fails, and what to fix before moving on.
 
 ---
 
@@ -34,10 +34,10 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 ### Prerequisites
 
-- SpacetimeDB server is running.
+- The SpacetimeDB module is published and running (`spacetime publish`, version 2.4.1).
 - Frontend dev server is running.
 - One browser tab open to `http://localhost:5173`.
-- Anthropic API key configured in `.env`.
+- Anthropic API key seeded into the non-public `module_config` table via the `set_config` reducer (e.g. `spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'`). The key never appears in source and is not exposed to clients.
 
 ---
 
@@ -66,16 +66,16 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 **Action:** Wait for AI cycles. Observe the map and ticker.
 
 **Expected Result:**
-- First orchestrated AI cycle may take up to 120 seconds due to parallel Claude calls (4 specialists + 1 commander). This is expected. Subsequent cycles should complete faster due to connection reuse, typically within 90 seconds.
-- All three AIs execute actions. Zhao near 0s/60s/120s, Consortium near 20s/80s/140s, Prophet near 40s/100s/160s.
+- The first orchestrated AI cycle may take up to ~120 seconds because the five Claude calls (4 specialists + 1 commander) run sequentially within the single `ai_reasoning_cycle` procedure. This is expected. Subsequent cycles are similar in duration.
+- All three AIs execute actions. Zhao near 0s/60s/120s, Consortium near 20s/80s/140s, Prophet near 40s/100s/160s (each cycle self-re-schedules ~60s after it starts).
 - AI actions appear in the ticker with correct colors.
-- No server crashes. No thread leaks (server memory should remain stable).
+- No server crashes. Memory should remain stable (there are no threads to leak).
 
-**If AI doesn't act after 120 seconds:** Check server logs for specialist timeout messages. Check thread synchronization — `join()` calls should have timeouts. Check Anthropic API connectivity.
+**If AI doesn't act after 120 seconds:** Check server logs for specialist or commander error messages. Each `anthropic_call` has its own timeout (15s specialists, 30s commander); a failed call returns `Err` rather than hanging. Check that the `module_config` Anthropic key is set and Anthropic connectivity is good.
 
-**If AI acts but actions seem random:** The commander may not be synthesizing specialist recommendations correctly. Check commander prompt and JSON parsing.
+**If AI acts but actions seem random:** The commander may not be synthesizing specialist recommendations correctly. Check the commander prompt and JSON parsing (`parse_actions` / `last_balanced_array`).
 
-**If server crashes during AI cycle:** Check thread panic handling. Each specialist thread should catch errors internally and return empty results on failure.
+**If a cycle gets stuck "pending":** The procedure should always reach tx2 and set `cycle_status = "idle"` on both success and commander failure. Verify the error branch resets status. The next cycle is armed in tx1 regardless, so the chain should not stall.
 
 ---
 
@@ -124,9 +124,9 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - Territories referenced in the deliberation are highlighted on the map.
 - The deliberation chain is scrollable if it exceeds the panel height.
 
-**If intel shows old format (single text):** Check `get_intel` reducer — it should return the new `deliberation` array structure. Check `ai_reasoning_log` for subordinate rows — if they're all 'commander', the orchestration isn't logging subordinates.
+**If intel shows old format (single text):** Check the `get_intel` procedure — it should return the new `deliberation` array structure. Check `ai_reasoning_log` for subordinate rows — if they're all "commander", the orchestration isn't logging subordinates.
 
-**If some subordinates are missing:** Check thread results collection. Timed-out specialists should still write a row with an empty reasoning note. If they're entirely absent, the logging in `ai_submit_actions` may be skipping them.
+**If some subordinates are missing:** Check the specialist results collection in `ai_reasoning_cycle`. Timed-out specialists should still produce a `SubordinateResult` (with empty reasoning) so `apply_ai_actions` writes a row for them. If they're entirely absent, the logging in `apply_ai_actions` may be skipping them.
 
 **If deliberation chain is present but reasoning is generic:** Specialist prompts may need tuning. This is a quality issue, not a validation failure. Note for manual iteration.
 
@@ -143,7 +143,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - Each alert has a small "×" dismiss button.
 - Critical alerts may have a subtle pulse animation on the border.
 
-**If no alerts appear after 50s:** Check `strategist_cycle` scheduled reducer registration. Check server logs for Strategist Claude call errors. Check `subscribe_strategist_log` in `useSubscriptions.ts`.
+**If no alerts appear after 50s:** Check that `start_game` seeds the `strategist_schedule` row (one-shot at +50s) and that `strategist_cycle` re-arms it each run. Check server logs for Strategist Claude call errors. Check the `useTable(tables.strategistLog)` subscription in `useSubscriptions.ts`.
 
 **If alerts appear but are generic or unhelpful:** The Strategist prompt may need tuning. Note for manual iteration.
 
@@ -271,13 +271,13 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 | Step | Symptom | Most Likely Cause | Check |
 |------|---------|-------------------|-------|
-| A3 | AI doesn't act within 120s | Specialist threads hanging | Check `join()` calls have timeouts. Check Anthropic API latency. |
+| A3 | AI doesn't act within 120s | An `anthropic_call` is slow or erroring | Each call has its own timeout (15s/30s) and returns `Err`. Check Anthropic latency and the `module_config` key. |
 | A3 | AI acts but erratically | Commander not synthesizing correctly | Check commander prompt. Check specialist output parsing. |
-| A3 | Server memory grows | Thread leak | Verify each thread terminates after response or timeout. |
-| B1 | Intel shows old single-text format | `get_intel` not updated | Check return structure — should be `deliberation` array |
-| B1 | Some subordinates missing from intel | Specialist timed out and wasn't logged | Check `ai_submit_actions` — log all subordinates even on timeout |
+| A3 | Cycle stuck "pending" | tx2 not reached / status not reset | Verify both success and failure branches set `cycle_status = "idle"`. |
+| B1 | Intel shows old single-text format | `get_intel` not updated | Check return structure - should be `deliberation` array |
+| B1 | Some subordinates missing from intel | Specialist result not built on failure | Check `apply_ai_actions` - log all subordinates even on timeout |
 | B1 | Commander reasoning is generic | Commander prompt lacks specialist context | Check that specialist recommendations are passed to commander prompt |
-| B2 | No Strategist alerts | `strategist_cycle` not firing | Check scheduled reducer registration. Check offset timing. |
+| B2 | No Strategist alerts | `strategist_cycle` not firing | Check the `strategist_schedule` seed (+50s) and re-arm. Check `module_config` key. |
 | B2 | Strategist alerts are low quality | Prompt needs tuning | Note for manual iteration. Not a validation failure. |
 | B3 | Dismiss doesn't work | Reducer not called or not updating | Check `dismiss_strategist_alert` reducer. Check frontend filters for `dismissed`. |
 | B5 | Hotkeys don't respond at all | Event listener not attached | Check `useEffect` with `addEventListener` in `App.tsx` |
@@ -294,10 +294,10 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 ### Priority 1: Showstopper Bugs
 
-- AI cycle hangs indefinitely (thread leak, deadlock).
-- Server crashes during parallel Claude calls.
+- AI cycle never completes (an `anthropic_call` never returns, or tx2 is never reached and status stays "pending").
+- Server crashes during the sequential Claude calls.
 - Hotkeys break mouse interactions.
-- Strategist cycle crashes server.
+- Strategist cycle crashes the server.
 - Any regression that breaks Slice 4 gameplay.
 
 ### Priority 2: Orchestration Quality
@@ -344,7 +344,7 @@ Before the game is shown to judges, all of the following must be true:
 6. **All 13 hotkeys function correctly** (1, 2, 3, W, A, S, D, ↑, ←, ↓, →, Enter, Space, Escape, Q, I, C, H).
 7. **Game can be played entirely from keyboard** — from card selection to action execution to panel navigation.
 8. **Mouse interactions still work** — hotkeys are an accelerator, not a replacement.
-9. **Server compiles** with `cargo build` — zero errors.
+9. **Server module builds** with `spacetime build` (or `cargo build`) — zero errors. Bindings regenerated with `spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server`.
 10. **Client compiles** with `npm run build` — zero errors.
 11. **No known showstopper bugs.**
 12. **Game can be demoed in under 5 minutes** — a judge can see the map, actions, AI orchestration intel, Strategist alerts, and keyboard controls in a short session.
@@ -356,30 +356,32 @@ If any condition is not met, fix it before the demo.
 ## 7. MANUAL ITERATION NOTES
 
 - **Orchestration stress test:** Play a full game. Check the intel panel after every AI cycle. Verify the deliberation chain is complete and readable. If subordinates are consistently timing out, consider reducing specialist prompts or increasing timeout.
-- **Thread monitoring:** Keep an eye on server memory and thread count during extended play. Use system tools (`top`, `htop`, Activity Monitor) to verify threads are being cleaned up after each cycle.
+- **Cycle latency monitoring:** Keep an eye on how long each orchestrated cycle takes during extended play (server logs around `ai_reasoning_cycle`). Because the five Claude calls run sequentially, total latency is the sum of the call latencies. If cycles consistently exceed the 60s cadence, shorten specialist prompts, lower their token limits, or consider the fan-out-via-scheduled-rows fallback noted in the masterplan.
 - **Strategist tuning:** The Strategist's first cycle fires at 50s. If the game has barely started, alerts may be generic. The Strategist improves as the game state becomes more complex. Test it at mid-game and late-game to evaluate quality.
 - **Hotkey discovery:** Ask someone unfamiliar with the game to try the hotkeys. Do they find the hints? Do they understand what `1`, `2`, `3` mean? The hints should be discoverable without reading documentation.
 - **Keyboard-only playthrough:** Do one full playthrough using only the keyboard. Note any action that requires reaching for the mouse. If there's a gap, consider adding a hotkey for it.
 
 ---
 
-## 8. FINAL NOTE
+## 8. CLOSING NOTE
 
-This is the last implementation strategy document. Slice 5 is the final slice. After validation, Risk: Dominion is complete and exceptional.
+Slice 5 is the advanced capabilities slice (Slice 5 of 7). After validation, the game showcases multi-agent AI coordination on top of everything built so far. Slices 6 and 7 still follow.
 
-The journey from Slice 1 to Slice 5:
-- Slice 1: Two players, two dimensions, hex map, card-driven actions.
-- Slice 2: AI opponents, Covert dimension, intel system.
-- Slice 3: Cultural dimension, cross-dimension bonuses, four-dimension victory.
+The journey so far:
+- Slice 1: Two players, two dimensions (Military, Economic), hex map, card-driven actions, win by unifying 3 territories across 2 dimensions.
+- Slice 2: AI opponents, Covert dimension, intel system, the AI reasoning cycle as a scheduled procedure calling Claude via `ctx.http`.
+- Slice 3: Cultural dimension, cross-dimension bonuses, win by unifying 5 territories across all 4 dimensions.
 - Slice 4: Natural language queries, canned queries, autocomplete, event ticker.
-- Slice 5: Multi-agent orchestration, human Strategist, full keyboard control.
+- Slice 5: Multi-agent orchestration (commander + 4 specialists, sequential `ctx.http` calls), human Strategist, full keyboard control.
+- Slice 6 (next): Global chat with AI deception and trust.
+- Slice 7: Spectator mode and the replay system.
 
-What began as a two-player board game is now a showcase of multi-agent AI coordination, live database interrogation, and real-time strategic depth. The AI thinks in councils. The player commands at the speed of thought. The database narrates its own story.
+What began as a two-player board game is becoming a showcase of multi-agent AI coordination, live database interrogation, and real-time strategic depth. The AI thinks in councils. The player commands at the speed of thought. The database narrates its own story.
 
-Validate. Polish. Demo. Win.
+Validate. Polish. Move to Slice 6.
 
 ---
 
 ## End of Slice 5 Implementation Strategy
 
-This is the final validation document. After this, the game is ready for judges.
+This is the Slice 5 validation document. After this slice passes, proceed to Slice 6 (global chat with AI deception).

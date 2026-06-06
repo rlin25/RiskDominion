@@ -2,39 +2,41 @@
 
 ## Version 1.0
 ## Scope: Counter-Intel, Global Chat, Direct Messages, Deception System
-## Target: Claude Code Generation — Modifying the Slice 5 Codebase
+## Slice 6 of 7. Target: Claude Code Generation — Extending the single `risk-dominion/app/` codebase (Slice 5 state)
 
 ---
 
 ## 0. DOCUMENT PURPOSE
 
-This document specifies how to modify the working Slice 5 codebase to add the counter-intel and global chat system. Read this document in full. Read the existing Slice 5 codebase. Apply the changes specified here.
+This document specifies how to extend the working `risk-dominion/app/` codebase (as it stands after Slice 5, tagged `slice-5-complete`) to add the counter-intel and global chat system. Read this document in full. Read the existing `app/` codebase. Apply the changes specified here.
 
-Do not regenerate Slice 5. Do not create a new project. Modify the existing files in place. Mark each output file as MODIFIED or NEW.
+The canonical code is one evolving application at `risk-dominion/app/{server,client}` that grows each slice; each completed slice is tagged `slice-N-complete` in git. Do not create a new project or a per-slice copy. Modify the existing files in place. Mark each output file as MODIFIED or NEW.
+
+This is Slice 6 of 7. It is not the final slice; Slice 7 (spectator and replay) follows.
 
 ---
 
 ## 1. BEFORE YOU BEGIN
 
-Read every existing file in the Slice 5 codebase:
-- `slice-1/server/Cargo.toml`
-- `slice-1/server/src/lib.rs`
-- `slice-1/client/src/App.tsx`
-- `slice-1/client/src/constants.ts`
-- `slice-1/client/src/types.ts`
-- `slice-1/client/src/hooks/useSubscriptions.ts`
-- `slice-1/client/src/utils/territoryHelpers.ts`
-- `slice-1/client/src/components/Map.tsx`
-- `slice-1/client/src/components/Territory.tsx`
-- `slice-1/client/src/components/CardHand.tsx`
-- `slice-1/client/src/components/ActionCard.tsx`
-- `slice-1/client/src/components/IntelPanel.tsx`
-- `slice-1/client/src/components/QueryBar.tsx`
-- `slice-1/client/src/components/ResultsPanel.tsx`
-- `slice-1/client/src/components/EventTicker.tsx`
-- `slice-1/client/src/components/StrategistAlerts.tsx`
-- `slice-1/client/src/components/ActionBar.tsx`
-- `slice-1/client/src/components/VictoryScreen.tsx`
+Read every existing file in the `app/` codebase (Slice 5 state):
+- `app/server/Cargo.toml`
+- `app/server/src/lib.rs`
+- `app/client/src/App.tsx`
+- `app/client/src/constants.ts`
+- `app/client/src/types.ts`
+- `app/client/src/hooks/useSubscriptions.ts`
+- `app/client/src/utils/territoryHelpers.ts`
+- `app/client/src/components/Map.tsx`
+- `app/client/src/components/Territory.tsx`
+- `app/client/src/components/CardHand.tsx`
+- `app/client/src/components/ActionCard.tsx`
+- `app/client/src/components/IntelPanel.tsx`
+- `app/client/src/components/QueryBar.tsx`
+- `app/client/src/components/ResultsPanel.tsx`
+- `app/client/src/components/EventTicker.tsx`
+- `app/client/src/components/StrategistAlerts.tsx`
+- `app/client/src/components/ActionBar.tsx`
+- `app/client/src/components/VictoryScreen.tsx`
 
 Understand the current code before making any changes. Then apply the modifications in this document in the order specified.
 
@@ -59,7 +61,7 @@ Output each file in the order specified in Section 3. Mark every file as MODIFIE
 
 ## 3. GENERATION ORDER
 
-Generate changes in this sequence. Each file must only reference types and components that already exist in the Slice 5 codebase or were generated earlier in this sequence.
+Generate changes in this sequence. Each file must only reference types and components that already exist in the `app/` codebase (Slice 5 state) or were generated earlier in this sequence.
 
 1. `server/src/lib.rs` (MODIFIED)
 2. `client/src/constants.ts` (MODIFIED)
@@ -75,87 +77,132 @@ Generate changes in this sequence. Each file must only reference types and compo
 
 ### 4.1 New Tables
 
-Add to the TABLES section:
+Add to the TABLES section. NOTE the table split for chat privacy: SpacetimeDB has no per-subscriber column projection on a `public` table, so secret fields live in a separate non-`public` table that clients never subscribe to.
 
-**`chat_log`:**
+**`chat_log`** (public, client-facing — contains NO secret fields):
 ```rust
-#[spacetimedb(table)]
-struct ChatLog {
-    id: i32,
-    timestamp: i64,
-    sender_id: i32,
-    recipient_id: Option<i32>,  // NULL = global, Some(id) = DM
-    message_text: String,
-    territory_id: Option<i32>,
-    is_deception: bool,          // NEVER exposed to clients
-    claimed_fact: Option<String>, // NEVER exposed to clients
+#[spacetimedb::table(accessor = chat_log, public)]
+pub struct ChatLog {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub timestamp: i64,        // i64 millis: ctx.timestamp.to_micros_since_unix_epoch() / 1000
+    pub sender_id: i32,
+    pub recipient_id: i32,     // 0 = global broadcast; 1-4 = DM to that player
+    pub message_text: String,
+    pub territory_id: i32,     // 0 = none; otherwise the referenced territory
 }
 ```
+
+**`chat_secret`** (NOT `public`; server logic and the Strategist procedure only; clients NEVER subscribe to this):
+```rust
+#[spacetimedb::table(accessor = chat_secret)]
+pub struct ChatSecret {
+    #[primary_key]
+    pub chat_id: u64,            // same value as the matching chat_log.id
+    pub is_deception: bool,      // whether the sender intentionally lied
+    pub claimed_fact: String,    // structured factual claim ("" if none)
+}
+```
+
+Use `i32`/`u64` sentinels (`recipient_id == 0` for global, `territory_id == 0` for none, `claimed_fact == ""` for no claim) rather than `Option`, matching the Slice 1-5 reference idioms. `id` is `#[primary_key] #[auto_inc] u64`. `chat_secret.chat_id` is a non-`auto_inc` `#[primary_key]` set equal to the freshly inserted `chat_log.id`.
 
 **`ai_trust`:**
 ```rust
-#[spacetimedb(table)]
-struct AiTrust {
-    ai_player_id: i32,       // the AI doing the trusting
-    target_player_id: i32,   // the player being evaluated
-    trust_score: i32,        // 0-100, default 50
-    messages_evaluated: i32, // default 0
-    truths_confirmed: i32,   // default 0
-    lies_caught: i32,        // default 0
-    last_updated: i64,
+// SpacetimeDB has no native composite primary key. Use a surrogate auto-inc id
+// plus a multi-column btree index for lookups by (ai_player_id, target_player_id).
+#[spacetimedb::table(
+    accessor = ai_trust,
+    public,
+    index(accessor = by_pair, btree(columns = [ai_player_id, target_player_id]))
+)]
+pub struct AiTrust {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub ai_player_id: i32,       // the AI doing the trusting (2, 3, or 4)
+    pub target_player_id: i32,   // the player being evaluated (1-4, not self)
+    pub trust_score: i32,        // 0-100, starts at 50
+    pub messages_evaluated: i32, // default 0
+    pub truths_confirmed: i32,   // default 0
+    pub lies_caught: i32,        // default 0
+    pub last_updated: i64,       // i64 millis
 }
 ```
 
-Composite primary key: (`ai_player_id`, `target_player_id`). Use `#[primarykey]` or equivalent if supported.
+Look up a relationship via the index, e.g. `tx.db.ai_trust().by_pair().filter((ai_player_id, target_player_id))` and update the returned row by its `id`. `ai_trust` may be `public` (it holds no message secrets and is useful for intel display); the privacy-critical fields live only in `chat_secret`.
 
 ### 4.2 New Reducer: `send_chat_message`
 
 ```rust
-#[spacetimedb(reducer)]
+#[spacetimedb::reducer]
 fn send_chat_message(
+    ctx: &ReducerContext,
     sender_id: i32,
     message_text: String,
-    recipient_id: Option<i32>,
+    recipient_id: i32,   // 0 = global, 1-4 = DM
     is_deception: bool,
-    claimed_fact: Option<String>,
+    claimed_fact: String, // "" = no claim
 ) -> Result<(), String> {
-    // Validate: game active, sender_id valid (1-4), message non-empty (max 500 chars)
-    // Extract territory_id: parse message_text for [Territory Name] patterns
-    //   Match against territory names. If found, set territory_id.
-    // Insert into chat_log with timestamp = now
-    // Return { "success": true, "message_id": id }
+    // Validate: game active, sender_id in 1..=4, message non-empty (max 500 chars),
+    //   recipient_id in {0,1,2,3,4} and != sender_id when non-zero.
+    //   On any failure return Err("msg".into()).
+    // Extract territory_id by parsing message_text for [Territory Name] patterns
+    //   against known territory names; 0 if none.
+    // Insert into chat_log (id = 0 to auto-inc) with timestamp from ctx.timestamp.
+    // Read back the inserted row's id, then insert the matching ChatSecret
+    //   { chat_id: id, is_deception, claimed_fact }.
+    // Return Ok(()).
 }
 ```
 
+Reducers cannot return data to the caller. The client does not receive a message id; it observes the new row via its `chat_log` subscription. Success is `Ok(())`; validation failure is `Err("msg".into())`.
+
 Bracket parsing: iterate over territory names. For each name, check if `[name]` appears in `message_text`. If multiple, use the first one found.
 
-### 4.3 Internal Function: `evaluate_chat_messages`
+This reducer is the ONLY way a chat message reaches `chat_log`. The human client calls it for player messages. AI chat is NOT produced by calling this reducer (see 4.4); it is written directly inside the AI reasoning cycle procedure's commit transaction.
+
+### 4.3 Private Function: `evaluate_chat_messages`
+
+`evaluate_chat_messages` is a private Rust function called inside the AI reasoning cycle procedure's transaction (via `ctx.with_tx`). It is NOT a reducer and NOT a procedure. It reads `chat_log` and `chat_secret`, cross-references against the AI's covert agents, and updates `ai_trust` rows in the same transaction.
 
 ```rust
-fn evaluate_chat_messages(ai_player_id: i32) -> ChatEvaluationSummary {
-    // 1. Query chat_log for unevaluated messages (since ai_trust.last_updated per sender)
+// Called as: tx-scoped fn(tx, ai_player_id) -> ChatEvaluationSummary
+// where tx is the &mut transaction handle from ctx.with_tx inside ai_reasoning_cycle.
+fn evaluate_chat_messages(tx: &TxHandle, ai_player_id: i32) -> ChatEvaluationSummary {
+    // 1. Query chat_log for unevaluated messages (timestamp > ai_trust.last_updated per sender).
+    //    For each message, read its ChatSecret by chat_id to get claimed_fact / is_deception.
     // 2. Group by sender_id. Apply rate limit: max 3 messages per sender.
-    // 3. For each message with non-NULL claimed_fact:
-    //    a. Extract territory_id from the claim if possible
-    //    b. Query covert table: agent_count > 0 where owner_id = ai_player_id 
-    //       and territory_id matches the claimed territory
+    // 3. For each message with a non-empty claimed_fact:
+    //    a. Extract territory_id from the claim if possible.
+    //    b. Read covert table: agent_count > 0 where owner_id = ai_player_id
+    //       and territory_id matches the claimed territory.
     //    c. Determine verification:
     //       - Verified true: agents confirm. trust_score += 3 (cap 100). truths_confirmed += 1.
     //       - Proven false: agents contradict. trust_score -= 15 (floor 0). lies_caught += 1.
     //       - Unverifiable: no agents in territory. No trust change.
-    //    d. Handle contradictions: if sender sent conflicting public and private claims,
+    //    d. Handle contradictions: if a sender sent conflicting public and private claims,
     //       evaluate each independently. Net trust reflects both.
     //    e. messages_evaluated += 1
-    // 4. Apply decay: for senders with no messages, trust_score -= 1 (floor 25)
-    // 5. Apply spam penalty: if sender had >3 messages, trust_score -= 2
-    // 6. Update last_updated = now
-    // 7. Return ChatEvaluationSummary with formatted results
+    // 4. Apply decay: for senders with no messages, trust_score -= 1 (floor 25).
+    // 5. Apply spam penalty: if sender had >3 messages, trust_score -= 2.
+    // 6. Update last_updated = now (ctx.timestamp in millis, threaded into the fn).
+    // 7. Return ChatEvaluationSummary with formatted results (a string for the prompt).
 }
 ```
 
-### 4.4 Modified AI Commander Prompt
+`ChatEvaluationSummary` is a plain Rust struct (no `#[derive(SpacetimeType)]` needed; it never crosses the wire). It is built in tx1 of the cycle and folded into the commander system prompt. All arithmetic is integer arithmetic.
 
-In the AI reasoning cycle, after building the game state snapshot and specialist results, add these sections to the commander prompt:
+### 4.4 Modified AI Commander Prompt and AI Chat Generation
+
+AI chat is generated INSIDE the AI reasoning cycle procedure. There is no separate chat endpoint and no reducer involved. The commander's single Claude response (already produced by the existing `ai_reasoning_cycle` procedure via `ctx.http`) carries an optional `chat_message` field alongside its `actions`. When the procedure parses that response in its commit transaction (tx2, the same `ctx.with_tx` that applies actions), it writes the AI's chat directly into `chat_log` plus `chat_secret` (exactly the rows `send_chat_message` would write, but inserted in-procedure rather than via the reducer). Reducers (and `send_chat_message` specifically) are NOT used for AI chat.
+
+Concretely, in `ai_reasoning_cycle`:
+- tx1 (snapshot): call `evaluate_chat_messages(tx, ai_id)` to update trust and produce the summary, then build the commander system prompt including chat history and trust scores.
+- HTTP: the existing `anthropic_call(ctx, ...)` sends the prompt and returns the response text (procedures only; `ctx.http`).
+- tx2 (commit): parse the response. Apply actions as today. If `chat_message` is non-null and passes the same validation as `send_chat_message`, insert the `chat_log` + `chat_secret` rows (extract `territory_id` the same way, stamp `timestamp` from `ctx.timestamp`).
+
+In the AI reasoning cycle, after building the game state snapshot, specialist results, and chat evaluation summary, add these sections to the commander prompt:
 
 **New input sections** (insert before "Your available action points"):
 
@@ -193,6 +240,8 @@ Your current intel from agent network:
 - `claimed_fact`: concise statement of the factual claim. `null` for threats or banter.
 - `territory_id`: set if the message references a specific territory.
 
+This is the Claude response shape. When tx2 of `ai_reasoning_cycle` parses it, map the LLM's nullable fields onto the storage sentinels before inserting: `recipient_id` null -> `0`, `claimed_fact` null -> `""`, `territory_id` null/absent -> `0` (and re-derive `territory_id` from bracket parsing if the model omitted it). Write the `chat_log` row plus the matching `chat_secret` row directly in this transaction.
+
 **Chat strategy guidance** (add to persona descriptions):
 
 - **Zhao:** "You communicate through threats and bluster. Use global chat to intimidate. Use DMs to make deals or issue ultimatums. Lie aggressively to provoke other players into fighting each other. Your lies are bold and direct."
@@ -217,7 +266,7 @@ Player's current intel from agent network:
 {agent_intel_summary}
 ```
 
-The Strategist only sees messages the player can see — global messages and DMs involving the player. DMs between AI opponents are NOT included.
+The Strategist cycle is a procedure (it calls Claude via `ctx.http`). It reads `chat_log` AND `chat_secret` inside its snapshot transaction, but it only feeds the Strategist messages the player can see: global messages and DMs involving the player. DMs between AI opponents are NOT included. The Strategist procedure may read `chat_secret` server-side (for example to ground its analysis), but it must never echo `is_deception` or `claimed_fact` back to the client; only the analysis text and verification verdict are surfaced.
 
 **New output field** (add to the expected JSON response):
 
@@ -244,22 +293,26 @@ The Strategist only sees messages the player can see — global messages and DMs
 - `verification`: `"confirmed"`, `"contradicted"`, or `"unverifiable"`.
 - `recommended_action`: `"believe"`, `"investigate"`, `"ignore"`, or `"counter"`.
 
-### 4.6 Modified `subscribe_chat_log`
+### 4.6 Chat Privacy: Table Split + Subscription Query
 
-The subscription for `chat_log` must apply server-side filtering:
+SpacetimeDB has NO per-subscriber column projection on a `public` table, and a `public` table is fully readable by any subscriber. There is no way to "strip columns" or hide a column per client. Privacy is therefore enforced structurally by the table split from 4.1:
 
-1. **Strip columns:** The `is_deception` and `claimed_fact` columns MUST be removed from all rows before delivery to any client. These fields exist only for server-side trust evaluation.
-2. **Filter DMs:** Only include rows where:
-   - `recipient_id IS NULL` (global message), OR
-   - `sender_id = {client_player_id}` (message sent by this client), OR
-   - `recipient_id = {client_player_id}` (message addressed to this client).
-3. The client never sees DMs between other players.
+1. **Secret fields live in a separate non-`public` table.** `is_deception` and `claimed_fact` are in `chat_secret`, which is NOT `public`. Clients cannot and do not subscribe to it; only server-side procedure/fn logic (the AI cycle, the Strategist procedure) reads it. There is nothing to "strip" because the secret columns are never in the client-facing table.
+2. **DM scoping is done with a subscription query, not column projection.** The client subscribes to `chat_log` with a row filter so it only receives global rows and DMs it is part of:
+   ```sql
+   SELECT * FROM chat_log
+   WHERE recipient_id = 0
+      OR sender_id = :client_player_id
+      OR recipient_id = :client_player_id
+   ```
+   (`recipient_id = 0` means global.) The client never receives DM rows between other players because those rows never match its subscription query.
+3. The client never sees DMs between other players, and never sees any deception or claimed-fact data.
 
 ### 4.7 Retroactive Trust Update
 
-In `ai_submit_actions`, after processing action results:
-- If any action was influenced by an accepted (unverified) claim from chat, and the action outcome was negative (attack failed, territory lost), apply retroactive penalty: `trust_score -= 10` for the sender whose claim led to the bad outcome.
-- Track which actions were influenced by which messages using a temporary map during the cycle.
+Retroactive trust adjustment happens inside `apply_ai_actions` (the private fn invoked within the AI reasoning cycle procedure's tx2), after processing action results:
+- If any action was influenced by an accepted (unverified) claim from chat, and the action outcome was negative (attack failed, territory lost), apply retroactive penalty: `trust_score -= 10` (floor 0) for the sender whose claim led to the bad outcome.
+- Track which actions were influenced by which messages using a temporary map built during this cycle's reasoning (in-procedure, not a table).
 
 ---
 
@@ -285,38 +338,43 @@ export const TRUST_SPAM_PENALTY = 2;
 
 Add:
 
+Note: generated TypeScript bindings use camelCase field names (Rust `sender_id` becomes `senderId`). The interfaces below mirror the wire shape; align names with the generated bindings from `spacetime generate`.
+
 ```typescript
 export interface ChatLogRow {
   id: number;
   timestamp: number;
-  sender_id: number;
-  recipient_id: number | null;
-  message_text: string;
-  territory_id: number | null;
-  // is_deception and claimed_fact are NEVER present in client data
+  senderId: number;
+  recipientId: number;   // 0 = global, 1-4 = DM
+  messageText: string;
+  territoryId: number;    // 0 = none
+  // is_deception and claimed_fact live in the non-public chat_secret table
+  // and are NEVER part of client data
 }
 
 export interface ChatAnalysisAlert {
-  message_id: number;
-  sender_name: string;
+  messageId: number;
+  senderName: string;
   channel: 'global' | 'dm';
   claim: string;
   verification: 'confirmed' | 'contradicted' | 'unverifiable';
   analysis: string;
-  recommended_action: 'believe' | 'investigate' | 'ignore' | 'counter';
-  territory_id: number | null;
+  recommendedAction: 'believe' | 'investigate' | 'ignore' | 'counter';
+  territoryId: number;   // 0 = none
 }
 ```
 
 ### 5.3 `useSubscriptions.ts` (MODIFIED)
 
-Add:
+Subscribe to `chat_log` with a row filter so the client only receives global rows and DMs it is part of (privacy is enforced by this query plus the table split; there is no column stripping). Using the generated bindings and React hooks:
 
 ```typescript
-const chatLog = useSubscription<ChatLogRow[]>('subscribe_chat_log');
+const [chatLog, chatReady] = useTable(tables.chatLog, {
+  filter: `recipient_id = 0 OR sender_id = ${currentPlayerId} OR recipient_id = ${currentPlayerId}`,
+});
 ```
 
-Include `chatLog` in the returned object.
+Include `chatLog` in the returned object. The non-public `chat_secret` table has no generated client binding and is never subscribed.
 
 ### 5.4 `ChatPanel.tsx` (NEW)
 
@@ -327,16 +385,16 @@ Include `chatLog` in the returned object.
 **Layout:**
 - **Tab bar:** Four tabs — "Global", "Zhao", "Consortium", "Prophet". Active tab highlighted with that player's color from `playerColors`. Inactive tabs in `text-secondary`.
 - **Message area:** Scrollable container. Messages filtered by active tab:
-  - Global tab: `recipient_id === null`.
-  - Player-specific tab: DMs between current player and that AI (`sender_id` or `recipient_id` matches).
+  - Global tab: `recipientId === 0`.
+  - Player-specific tab: DMs between current player and that AI (`senderId` or `recipientId` matches).
   - Each message rendered as a row:
-    - Sender name in Orbitron, 10px, colored by `playerColors[sender_id]`.
+    - Sender name in Orbitron, 10px, colored by `playerColors[senderId]`.
     - Timestamp in JetBrains Mono, 9px, `text-secondary`.
     - Message text in JetBrains Mono, 11px, `text-primary`.
-    - If `territory_id` is set, the territory name is rendered as a clickable link in gold (#FFD700) with underline on hover. Click calls `onTerritoryClick(territory_id)`.
-    - Player's own messages (`sender_id === currentPlayerId`) aligned right. Others aligned left.
+    - If `territoryId` is non-zero, the territory name is rendered as a clickable link in gold (#FFD700) with underline on hover. Click calls `onTerritoryClick(territoryId)`.
+    - Player's own messages (`senderId === currentPlayerId`) aligned right. Others aligned left.
     - Auto-scroll to bottom on new message.
-- **Input area:** Bottom of panel. Text input (JetBrains Mono, 12px, max 500 chars) + "Send" button. Placeholder changes based on active tab: "Type a message..." for Global, "DM Zhao..." for Zhao tab. Enter key sends. Button calls `onSendMessage(text, recipientId)` where `recipientId` is `null` for Global or the AI's ID for DM tabs.
+- **Input area:** Bottom of panel. Text input (JetBrains Mono, 12px, max 500 chars) + "Send" button. Placeholder changes based on active tab: "Type a message..." for Global, "DM Zhao..." for Zhao tab. Enter key sends. Button calls `onSendMessage(text, recipientId)` where `recipientId` is `0` for Global or the AI's ID for DM tabs.
 - **Unread indicators:** If a tab receives new messages while not active, show a small colored dot (8px) on that tab. Clear when tab becomes active.
 
 **Hotkey hints:** Small rounded squares (same style as Slice 5 hotkey hints) showing "Ctrl+1" through "Ctrl+4" near each tab label. "T" hint near the input field.
@@ -357,7 +415,7 @@ Include `chatLog` in the returned object.
   - Body: "{analysis}" in JetBrains Mono, 11px, `text-primary`.
   - Recommended action badge: small pill with text "BELIEVE" / "IGNORE" / "INVESTIGATE" / "COUNTER". Colors: believe=green, ignore=red, investigate=gray, counter=gold.
 - Dismissable like all other Strategist alerts (calls `onDismiss`).
-- If `territory_id` is set, clicking the alert body calls `onAlertClick(territory_id)` for map highlight.
+- If `territoryId` is non-zero, clicking the alert body calls `onAlertClick(territoryId)` for map highlight.
 
 ### 5.6 `App.tsx` (MODIFIED)
 
@@ -368,7 +426,7 @@ const [chatPanelOpen, setChatPanelOpen] = useState(true);
 ```
 
 **New handlers:**
-- `handleSendMessage(text: string, recipientId: number | null)`: calls `send_chat_message(1, text, recipientId, false, null)`. Human messages default to `is_deception = false` and `claimed_fact = null`.
+- `handleSendMessage(text: string, recipientId: number)`: calls the `send_chat_message` reducer via the `useReducer(reducers.sendChatMessage)` hook with a single named-args object: `sendChatMessage({ senderId: 1, messageText: text, recipientId, isDeception: false, claimedFact: '' })`. Human messages default to `isDeception = false` and `claimedFact = ''` (recipientId 0 = global). The call returns a `Promise<void>`; the new message appears via the `chatLog` subscription, not from a return value.
 - `handleChatTerritoryClick(territoryId: number)`: sets a territory highlight on the map (similar to ticker click, gold glow for 3 seconds).
 
 **New hotkeys** (add to existing `keydown` handler in the `useEffect`):
@@ -400,7 +458,7 @@ The `focusChatInput` function calls `.focus()` on the chat input element (using 
 - ChatPanel visibility controlled by `chatPanelOpen` state. Add a small toggle button in the top-right area to open/close chat.
 - Layout order (left to right): IntelPanel, Map (center), ChatPanel.
 
-**Subscriptions:** Add `chatLog` from `useSubscriptions`.
+**Subscriptions:** Add `chatLog` (the filtered `chat_log` subscription) from `useSubscriptions`.
 
 **Pass props:**
 - `ChatPanel`: `messages={chatLog}`, `currentPlayerId={1}`, `playerColors={PLAYER_COLORS}`, `onSendMessage={handleSendMessage}`, `onTerritoryClick={handleChatTerritoryClick}`, `activeTab={activeChatTab}`, `onTabChange={setActiveChatTab}`.
@@ -410,14 +468,14 @@ The `focusChatInput` function calls `.focus()` on the chat input element (using 
 
 ## 6. GENERATION RULES
 
-1. **Modify existing files in place.** Read each file before modifying. Preserve all Slice 5 functionality not explicitly changed.
+1. **Modify existing files in place** within `risk-dominion/app/`. Read each file before modifying. Preserve all Slice 5 functionality not explicitly changed.
 2. **Mark every output file** as MODIFIED or NEW at the top.
 3. **All arithmetic is integer arithmetic.** No floats.
-4. **SpacetimeDB macros:** `#[spacetimedb(table)]`, `#[spacetimedb(reducer)]`, `#[spacetimedb(scheduled)]`.
+4. **SpacetimeDB macros (2.4.1):** `#[spacetimedb::table(accessor = name, public)]` on a `pub struct` with column attrs `#[primary_key]`, `#[auto_inc]`, and table-level `index(accessor = ..., btree(columns = [...]))`; `#[spacetimedb::reducer] fn f(ctx: &ReducerContext, ...) -> Result<(), String>`; scheduled work uses a scheduled table `scheduled(target_fn)`. AI chat is written inside the `ai_reasoning_cycle` procedure (`#[spacetimedb::procedure]`, `ctx.http`, `ctx.with_tx`), never by a reducer.
 5. **Tailwind CSS for all styling.** Use design tokens from `../AESTHETIC.md`.
 6. **No emojis. No em dashes. No custom CSS files.**
-7. **The `is_deception` and `claimed_fact` columns MUST be stripped** from all `chat_log` subscription data before delivery to clients.
-8. **Chat messages respect privacy:** DMs are only visible to sender and recipient.
+7. **Chat privacy is enforced by a table split, not column stripping.** SpacetimeDB has no per-subscriber column projection on a `public` table. Secret fields (`is_deception`, `claimed_fact`) live in the non-`public` `chat_secret` table that clients never subscribe to; the public `chat_log` holds only non-secret fields.
+8. **DM scoping uses a subscription row filter:** `recipient_id = 0 OR sender_id = :client OR recipient_id = :client`. DMs are only visible to sender and recipient.
 9. **Claude safety filter mitigation:** Commander prompt includes game context framing and fallback-to-silence instruction.
 
 ---
@@ -452,4 +510,4 @@ After applying all modifications, the Slice 6 application must:
 
 ## End of Slice 6 Masterplan
 
-Read the existing Slice 5 codebase. Apply every modification specified above in the order specified. Output every changed file with MODIFIED or NEW at the top. Generate now.
+Read the existing `app/` codebase (Slice 5 state). Apply every modification specified above in the order specified. Output every changed file with MODIFIED or NEW at the top. Generate now.

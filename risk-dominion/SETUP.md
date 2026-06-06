@@ -59,8 +59,8 @@ bash setup.sh
 **What happens next:**
 
 The script will:
-1. Check for Rust, Node.js, Git, and SpacetimeDB CLI
-2. Install anything that's missing (asks for confirmation before installing)
+1. Check for Rust (with the `wasm32-unknown-unknown` target), Node.js 20+, Git, and the SpacetimeDB CLI (2.4.1 or newer)
+2. Install anything that's missing (asks for confirmation before installing). SpacetimeDB installs via the official installer (`curl -sSf https://install.spacetimedb.com | sh`); an existing but older CLI is upgraded with `spacetime version upgrade`
 3. Create the full project folder structure
 4. Ask for your Anthropic API key and create the `.env` file
 5. Run verification checks on all installed tools
@@ -81,6 +81,9 @@ risk-dominion
 ├── setup.sh
 ├── .env
 ├── .env.example
+├── app
+│   ├── server   (Rust SpacetimeDB module)
+│   └── client   (React + TypeScript)
 ├── prompts
 │   ├── generate_slice_1.txt
 │   ├── generate_slice_2.txt
@@ -124,9 +127,10 @@ You should see:
 ```
   [PASS] Bash version (5.1.16)
   [PASS] Rust v1.75.0
+  [PASS] Rust target wasm32-unknown-unknown
   [PASS] Node.js v20.11.0
   [PASS] npm v10.2.0
-  [PASS] SpacetimeDB CLI v1.0.0
+  [PASS] SpacetimeDB CLI v2.4.1
   [PASS] Git (2.43.0)
   [PASS] Project folders
   [PASS] .env file
@@ -142,13 +146,64 @@ All checks show "[PASS]"? You're ready.
 ## 5. NEXT STEPS
 
 1. Open `prompts/generate_slice_1.txt` in Claude Code
-2. Claude Code will generate the complete Slice 1 application into `slice-1/`
-3. Start the SpacetimeDB server: `spacetime start`
-4. Open `http://localhost:5173`
+2. Claude Code will generate the complete Slice 1 application into `app/server` (the Rust SpacetimeDB module) and `app/client` (the React client). The code is one evolving app at `risk-dominion/app/{server,client}`; each slice grows it in place and is tagged `slice-N-complete` in git.
+3. Start the SpacetimeDB server: `spacetime start`. It listens on port 3000 (the default `local` server).
+4. Publish the module to the local server:
+
+```
+spacetime publish risk-dominion --server local -y
+```
+
+5. Generate the TypeScript client bindings:
+
+```
+spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server
+```
+
+6. Start the client and open `http://localhost:5173`:
+
+```
+cd app/client && npm install && npm run dev
+```
 
 Slice 1 is a two-player game with no AI. The Anthropic key is not used yet. It will be needed for Slice 2 onward.
 
 After Slice 1 is generated and validated, open `prompts/generate_slice_2.txt` and repeat. Continue through `generate_slice_7.txt` in order.
+
+---
+
+## 5a. DEV WORKFLOW
+
+The canonical app lives at `risk-dominion/app/{server,client}`. Module name: `risk-dominion`. Local server port: 3000.
+
+**One-time per change cycle (manual):**
+
+```
+spacetime start                                            # run the local server (port 3000)
+spacetime publish risk-dominion --server local -y          # build + publish the module
+spacetime generate --lang typescript \
+    --out-dir client/src/module_bindings --module-path server   # regenerate TS bindings
+```
+
+**Auto-rebuild loop (recommended while developing):**
+
+```
+spacetime dev
+```
+
+`spacetime dev` watches the module, then rebuilds, republishes, and regenerates the bindings automatically whenever the server code changes.
+
+The client uses the **`spacetimedb`** npm package (with the `spacetimedb/react` subpath for hooks). Generated row and field names are camelCase.
+
+### Anthropic API key inside the module
+
+The AI features (Slices 2 onward) call Claude from **procedures** using `ctx.http`. The API key is not read from an environment variable inside the module. Instead it is stored in a private (non-public) `module_config` table via the `set_config` reducer, so it never appears in source or in client-visible tables:
+
+```
+spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'
+```
+
+The `.env` file still holds the key for tooling/reference and for seeding this call. The client connects using `VITE_SPACETIMEDB_URI` (ws://localhost:3000) and `VITE_MODULE_NAME` (risk-dominion).
 
 ---
 
@@ -178,6 +233,15 @@ bash setup.sh
 3. Check that you have credits in Billing
 4. Generate a new key if needed
 5. Update `.env` with the new key: open it in a text editor and replace the old key
+
+### SpacetimeDB CLI is missing or too old
+
+Install or upgrade the SpacetimeDB CLI directly (do not use `cargo install`):
+```
+curl -sSf https://install.spacetimedb.com | sh   # fresh install
+spacetime version upgrade                          # upgrade an existing install
+```
+This project requires SpacetimeDB 2.4.1 or newer. Check your version with `spacetime version`.
 
 ### SpacetimeDB won't start
 

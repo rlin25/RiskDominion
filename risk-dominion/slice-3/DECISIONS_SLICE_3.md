@@ -1,8 +1,8 @@
 # RISK: DOMINION — SLICE 3 DESIGN DECISIONS
 
-## Version 1.0
+## Version 2.0 (SpacetimeDB 2.4.1)
 ## Scope: Cultural Dimension, Cross-Dimension Bonuses, Full Four-Dimension Game
-## Relationship: Extends DECISIONS_SLICE_2.md
+## Relationship: Extends DECISIONS_SLICE_2.md (Slice 3 of 7)
 
 ---
 
@@ -71,14 +71,16 @@ A note on balance: the bonuses are intentionally modest because cycles can snowb
 
 ### Modified Principle 2: Dimensions Are Tables
 
-Slice 2 had three dimension tables. Slice 3 adds the fourth and final:
+Slice 2 had three dimension tables. Slice 3 adds the fourth and final dimension table, declared with the modern SpacetimeDB table macro, in the same shape as the existing `military` / `economic` / `covert` tables:
 
-```
-cultural (
-    territory_id   INT PRIMARY KEY,
-    owner_id       INT NOT NULL,
-    influence_pct  INT NOT NULL DEFAULT 0
-)
+```rust
+#[spacetimedb::table(accessor = cultural, public)]
+pub struct Cultural {
+    #[primary_key]
+    pub territory_id: i32,
+    pub owner_id: i32,
+    pub influence_pct: i32,
+}
 ```
 
 The Cultural table tracks two things: who owns the Cultural dimension in each territory, and how much foreign influence is accumulating toward a flip. `influence_pct` ranges from 0 to 100. When it passes 50, ownership flips and influence resets to zero.

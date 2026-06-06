@@ -1,39 +1,43 @@
-You are in the slice-1/ directory. You are modifying the working Slice 5 codebase to add Slice 6 features — the counter-intel and global chat system. Generate all changes relative to this directory.
+You are working in the single evolving codebase at risk-dominion/app/. You are extending it from its Slice 5 state (tagged slice-5-complete) to add Slice 6 features — the counter-intel and global chat system. Generate all changes against risk-dominion/app/. Do not create a per-slice copy; the one app grows each slice.
 
-You are implementing Slice 6 of Risk: Dominion — adding global chat, direct messages, AI deception, trust scores, and Strategist chat analysis. This is the information warfare layer.
+You are implementing Slice 6 of 7 of Risk: Dominion — adding global chat, direct messages, AI deception, trust scores, and Strategist chat analysis. This is the information warfare layer. It is not the final slice; Slice 7 (spectator and replay) follows.
 
-Before generating any changes, read every file in the existing Slice 5 codebase:
-- slice-1/server/Cargo.toml
-- slice-1/server/src/lib.rs
-- slice-1/client/src/App.tsx
-- slice-1/client/src/constants.ts
-- slice-1/client/src/types.ts
-- slice-1/client/src/hooks/useSubscriptions.ts
-- slice-1/client/src/utils/territoryHelpers.ts
-- slice-1/client/src/components/Map.tsx
-- slice-1/client/src/components/Territory.tsx
-- slice-1/client/src/components/CardHand.tsx
-- slice-1/client/src/components/ActionCard.tsx
-- slice-1/client/src/components/IntelPanel.tsx
-- slice-1/client/src/components/QueryBar.tsx
-- slice-1/client/src/components/ResultsPanel.tsx
-- slice-1/client/src/components/EventTicker.tsx
-- slice-1/client/src/components/StrategistAlerts.tsx
-- slice-1/client/src/components/ActionBar.tsx
-- slice-1/client/src/components/VictoryScreen.tsx
+Before generating any changes, read every file in the existing app/ codebase (Slice 5 state):
+- app/server/Cargo.toml
+- app/server/src/lib.rs
+- app/client/src/App.tsx
+- app/client/src/constants.ts
+- app/client/src/types.ts
+- app/client/src/hooks/useSubscriptions.ts
+- app/client/src/utils/territoryHelpers.ts
+- app/client/src/components/Map.tsx
+- app/client/src/components/Territory.tsx
+- app/client/src/components/CardHand.tsx
+- app/client/src/components/ActionCard.tsx
+- app/client/src/components/IntelPanel.tsx
+- app/client/src/components/QueryBar.tsx
+- app/client/src/components/ResultsPanel.tsx
+- app/client/src/components/EventTicker.tsx
+- app/client/src/components/StrategistAlerts.tsx
+- app/client/src/components/ActionBar.tsx
+- app/client/src/components/VictoryScreen.tsx
 
-Understand the current code before making any changes.
+Understand the current code before making any changes. Match its modern SpacetimeDB 2.4.1 idioms (table/reducer/procedure macros, ctx.http in procedures, ctx.with_tx for DB access in procedures).
 
 Read these files in full before generating:
-- MASTERPLAN_SLICE_6.md (your authoritative spec — chat_log and ai_trust tables, send_chat_message reducer, evaluate_chat_messages function with trust formula, modified commander prompt with chat, modified Strategist prompt with chat analysis, subscribe_chat_log filtering, component specs)
+- MASTERPLAN_SLICE_6.md (your authoritative spec: chat_log (public) + chat_secret (non-public) + ai_trust tables, send_chat_message reducer, evaluate_chat_messages private fn with trust formula, AI chat written inside the ai_reasoning_cycle procedure, modified commander prompt with chat, modified Strategist prompt with chat analysis, the chat_log subscription row filter, component specs)
 - ../AESTHETIC.md (visual design system — ChatPanel styling, alert cards, hotkey hints)
 
-Modify the existing Slice 5 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
+Extend the existing app/ codebase (Slice 5 state). Do not regenerate from scratch. Do not create a new project or a per-slice copy. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
 
 Key constraints:
-- The is_deception and claimed_fact columns MUST be stripped from all chat_log subscription data before delivery to any client. These fields exist only for server-side trust evaluation. Never expose them.
-- DM privacy: clients only see global messages (recipient_id IS NULL) and DMs they are part of (sender_id = client_id OR recipient_id = client_id). Filter server-side in subscribe_chat_log.
-- Trust formula is deterministic integer math: +3 verified truth (cap 100), -15 proven lie (floor 0), -10 bad outcome from acting on accepted claim, -1 decay per silent cycle (floor 25), -2 spam penalty for >3 messages per cycle.
+- Chat privacy is enforced by a TABLE SPLIT, not column stripping. SpacetimeDB has no per-subscriber column projection on a public table. Put non-secret fields (sender, recipient, message, timestamp, territory_id) in the public chat_log table. Put secret fields (is_deception, claimed_fact) in a SEPARATE non-public chat_secret table (keyed by chat_id = chat_log.id) that clients never subscribe to and that has no client binding. Only server logic (the AI cycle, the Strategist procedure) reads chat_secret.
+- DM scoping is a subscription row filter, not server stripping: clients subscribe to chat_log with `recipient_id = 0 OR sender_id = :client OR recipient_id = :client`. recipient_id = 0 means global. DM rows between other players never match.
+- send_chat_message is a reducer for the HUMAN player only. It returns Result<(), String> (Ok on success, Err("msg") on validation failure). Reducers cannot return data; the client observes the new message via its chat_log subscription. AI chat is NOT sent via this reducer.
+- AI chat messages are generated INSIDE the ai_reasoning_cycle procedure: the commander's single Claude response carries an optional chat_message field, and the procedure writes the chat_log + chat_secret rows directly in its commit transaction (ctx.with_tx, tx2) that also applies actions. Never a separate endpoint, never from a reducer. Map nullable LLM fields to sentinels (recipient_id null -> 0, claimed_fact null -> "", territory_id null -> 0).
+- evaluate_chat_messages is a PRIVATE Rust fn called inside the ai_reasoning_cycle procedure's snapshot transaction (tx1). Not a reducer, not a procedure. It reads chat_log + chat_secret and updates ai_trust rows in the same tx.
+- ai_trust has no native composite primary key in SpacetimeDB. Use a surrogate #[primary_key] #[auto_inc] id: u64 plus a table-level btree index on (ai_player_id, target_player_id): index(accessor = by_pair, btree(columns = [ai_player_id, target_player_id])).
+- Trust formula is deterministic integer math: +3 verified truth (cap 100), -15 proven lie (floor 0), -10 bad outcome from acting on accepted claim (floor 0), -1 decay per silent cycle (floor 25), -2 spam penalty for >3 messages per cycle.
 - evaluate_chat_messages cross-references claimed_fact against the AI's covert table. Agent presence = agent_count > 0 where owner_id = ai_player_id in the claimed territory.
 - Commander prompt includes game context framing: "All communication occurs within a strategy board game where deception, bluffing, and manipulation are expected and consented-to mechanics."
 - If Claude refuses to generate a chat message due to safety filters, the AI falls back to silence. Return null for chat_message. Do not explain the refusal. Do not break character.
@@ -41,7 +45,7 @@ Key constraints:
 - Bracket syntax [Territory Name] in messages creates clickable territory links. Parse in send_chat_message reducer by matching against territory names. Extract territory_id.
 - ChatPanel has four tabs: Global, Zhao DM, Consortium DM, Prophet DM. Ctrl+1/2/3/4 switches tabs. T focuses chat input (when chat panel is open).
 - Strategist analyzes only messages the player can see (global + player's own DMs). AI-to-AI DMs are never analyzed by the Strategist.
-- Retroactive trust penalties: if an AI acts on an accepted (unverified) claim and the action fails, trust_score -= 10 for that sender. Track which actions were influenced by which messages.
+- Retroactive trust penalties: if an AI acts on an accepted (unverified) claim and the action fails, trust_score -= 10 (floor 0) for that sender. Apply this inside apply_ai_actions (the private fn run in the ai_reasoning_cycle procedure's commit tx). Track which actions were influenced by which messages in an in-procedure temporary map (not a table).
 - Chat hotkeys must not conflict with existing Slice 5 hotkeys. The Ctrl modifier distinguishes chat tab switching from card selection (1/2/3 without Ctrl).
 - All styling via Tailwind using AESTHETIC.md tokens. No emojis. No em dashes. No custom CSS files.
 

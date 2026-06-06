@@ -16,7 +16,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 - Chat panel is visible and has at least one AI message in it
 - Intel panel is closed
 - No open results panels or active queries
-- Anthropic API key is configured in `.env` and verified working
+- Anthropic API key is seeded into the private `module_config` table (`spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'`) and verified working
 - A second browser tab is open at `http://localhost:5173?spectator=true` (minimized, ready to switch to)
 - Terminal showing the SpacetimeDB server logs is visible in a side window (optional but impressive)
 
@@ -71,7 +71,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 - Press Enter. Wait for results.
 
 **Say:**
-"That question just went to Claude -- the same LLM you know -- along with a snapshot of every table in the database right now. Troop counts, capital values, agent counts, influence percentages. Claude translated my English question into a structured answer: a summary, a data table, and a list of territories highlighted on the map. All from live data. Not a cached summary. Not a mock."
+"That question just went to Claude -- the same LLM you know -- through a SpacetimeDB procedure that calls the Anthropic API over HTTP, along with a snapshot of every table in the database right now. Troop counts, capital values, agent counts, influence percentages. Claude translated my English question into a structured answer -- a summary, a data table, and a list of territories -- and the procedure returned it straight to the client. All from live data. Not a cached summary. Not a mock."
 
 - Point at the highlighted territories on the map.
 - Press the X button to close the results panel.
@@ -95,7 +95,10 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 - Walk through them: "His military specialist -- Vanguard -- identified an attack target and justified it. His covert specialist -- Scout -- confirmed the intel. His economic and cultural specialists weighed in. Then Zhao, as commander, synthesized all four recommendations and made the final call."
 
 **Say:**
-"That's five separate Claude calls. Four specialists running in parallel, each seeing only their domain of the database. One commander synthesizing the output. All of it logged to a database table. Traceable. Queryable. And happening every 60 seconds for all three AI opponents."
+"That's five separate Claude calls, all issued from one scheduled SpacetimeDB procedure -- the AI reasoning cycle. Four specialists, each seeing only their domain of the database, then one commander synthesizing the output. A procedure is the only kind of function that's allowed to make HTTP calls, so every one of those calls fires from `ctx.http` straight to the Anthropic API. All of it logged to a database table. Traceable. Queryable. And happening every 60 seconds for all three AI opponents."
+
+**Do (optional):**
+- Point at the SpacetimeDB server log window: each cycle prints the outbound HTTP calls to `api.anthropic.com`. "You can watch the actual requests fire here."
 
 ---
 
@@ -116,7 +119,7 @@ Features marked **[Slice N]** depend on that slice being stable. If a slice is n
 - Dismiss one alert with the X button: "And I can dismiss them when I've acknowledged them."
 
 **Say:**
-"The Strategist isn't a separate program. It's another scheduled reducer, another Claude call, writing to another table in the same SpacetimeDB instance."
+"The Strategist isn't a separate program. It's another scheduled procedure, another Claude call over `ctx.http`, writing its alerts to another table in the same SpacetimeDB instance."
 
 ---
 
@@ -229,13 +232,16 @@ Drop any slice not yet validated and compress accordingly:
 ## Common Questions and Answers
 
 **"Is the AI actually calling Claude, or is it simulated?"**
-"Every AI reasoning cycle is a live Anthropic API call. You can see the SpacetimeDB server logs -- the HTTP request fires every 60 seconds. In Slice 5, that's five parallel API calls per AI per cycle."
+"Every AI reasoning cycle is a live Anthropic API call made from a SpacetimeDB procedure via `ctx.http`. You can see the SpacetimeDB server logs -- the HTTP request fires every 60 seconds. In Slice 5, that's five API calls per AI per cycle, all from the one reasoning procedure."
+
+**"Why a procedure and not a reducer for the AI?"**
+"Reducers in SpacetimeDB are deterministic and sandboxed -- they cannot make HTTP calls and cannot return data to clients. Anything that talks to Claude has to be a procedure, which is the only function type with HTTP access through `ctx.http`. The reasoning cycle snapshots the board in one transaction, makes the Claude call with no transaction held open, then commits the AI's actions in a second transaction. Player actions stay as plain deterministic reducers."
 
 **"What happens if the API is slow?"**
-"Each specialist call has a 15-second timeout. The commander has a 30-second timeout. On timeout, the AI misses that cycle and the ticker shows a timeout event. The game never freezes."
+"Each specialist call has a 15-second request timeout. The commander has a 30-second timeout. On timeout, the AI misses that cycle and the ticker shows a timeout event. The game never freezes."
 
 **"Why SpacetimeDB?"**
-"Because SpacetimeDB puts the database and server in the same process. There's no separate backend, no REST layer, no WebSocket middleware. The client subscribes directly to tables. That's what makes the real-time sync under one second -- the architecture has no extra hops."
+"Because SpacetimeDB puts the database and server in the same process. There's no separate backend, no REST layer, no WebSocket middleware. The client subscribes directly to tables, and procedures handle anything that needs an outbound call like Claude. That's what makes the real-time sync under one second -- the architecture has no extra hops."
 
 **"Can I see the AI reasoning?"**
 "Yes -- if you deploy at least 3 agents in a territory where the AI has military or economic presence, you can query its intel. In Slice 5, you see the full deliberation chain from every specialist and the commander."

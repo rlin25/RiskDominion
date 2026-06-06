@@ -1,36 +1,40 @@
 # RISK: DOMINION — SLICE 3 MASTERPLAN
 
-## Version 1.0
+## Version 2.0 (SpacetimeDB 2.4.1)
 ## Scope: Cultural Dimension, Cross-Dimension Bonuses, Four-Dimension Game
-## Target: Claude Code Generation — Modifying the Slice 2 Codebase
+## Target: Claude Code Generation — Extending the app/ Codebase (Slice 3 of 7)
 
 ---
 
 ## 0. DOCUMENT PURPOSE
 
-This document specifies how to modify the working Slice 2 codebase to add the Cultural dimension, cross-dimension bonuses, and the expanded four-dimension win condition. Read this document in full. Read the existing Slice 2 codebase. Apply the changes specified here.
+This document specifies how to extend the single evolving codebase at `risk-dominion/app/` to add the Cultural dimension, cross-dimension bonuses, and the expanded four-dimension win condition. The Slice 2 work is already committed (tagged `slice-2-complete`). Read this document in full. Read the existing `app/` codebase. Apply the changes specified here.
 
-Do not regenerate Slice 2. Do not create a new project. Modify the existing files in place. Mark each output file as MODIFIED.
+Slice 3 is not the final slice. The project is 7 slices; only Slice 7 is final. Do not regenerate prior slices. Do not create a new project. Modify the existing files in place.
+
+This masterplan is self-contained: the macros, reducer/procedure idioms, and version targets below are the authoritative ones for this slice. Target SpacetimeDB 2.4.1 throughout.
 
 ---
 
 ## 1. BEFORE YOU BEGIN
 
-Read every existing file in the Slice 2 codebase:
-- `slice-1/server/Cargo.toml`
-- `slice-1/server/src/lib.rs`
-- `slice-1/client/src/App.tsx`
-- `slice-1/client/src/constants.ts`
-- `slice-1/client/src/types.ts`
-- `slice-1/client/src/hooks/useSubscriptions.ts`
-- `slice-1/client/src/utils/territoryHelpers.ts`
-- `slice-1/client/src/components/Map.tsx`
-- `slice-1/client/src/components/Territory.tsx`
-- `slice-1/client/src/components/CardHand.tsx`
-- `slice-1/client/src/components/ActionCard.tsx`
-- `slice-1/client/src/components/IntelPanel.tsx`
-- `slice-1/client/src/components/ActionBar.tsx`
-- `slice-1/client/src/components/VictoryScreen.tsx`
+Read every relevant file in the existing `app/` codebase:
+- `app/server/Cargo.toml`
+- `app/server/src/lib.rs`
+- `app/client/src/App.tsx`
+- `app/client/src/constants.ts`
+- `app/client/src/types.ts`
+- `app/client/src/connection.ts`
+- `app/client/src/hooks/useSubscriptions.ts`
+- `app/client/src/utils/territoryHelpers.ts`
+- `app/client/src/components/Map.tsx`
+- `app/client/src/components/Territory.tsx`
+- `app/client/src/components/CardHand.tsx`
+- `app/client/src/components/ActionCard.tsx`
+- `app/client/src/components/IntelPanel.tsx`
+- `app/client/src/components/ActionBar.tsx`
+- `app/client/src/components/PlayerIndicator.tsx`
+- `app/client/src/components/VictoryScreen.tsx`
 
 Understand the current code before making any changes. Then apply the modifications in this document in the order specified.
 
@@ -38,33 +42,33 @@ Understand the current code before making any changes. Then apply the modificati
 
 ## 2. FILE LIST
 
-Output each file in the order specified in Section 3. Mark every file as MODIFIED.
+These existing files in `app/` are modified in the order specified in Section 3.
 
-1. `server/src/lib.rs` (MODIFIED)
-2. `client/src/constants.ts` (MODIFIED)
-3. `client/src/types.ts` (MODIFIED)
-4. `client/src/utils/territoryHelpers.ts` (MODIFIED)
-5. `client/src/hooks/useSubscriptions.ts` (MODIFIED)
-6. `client/src/components/Territory.tsx` (MODIFIED)
-7. `client/src/components/Map.tsx` (MODIFIED)
-8. `client/src/App.tsx` (MODIFIED)
+1. `app/server/src/lib.rs` (modified)
+2. `app/client/src/constants.ts` (modified)
+3. `app/client/src/types.ts` (modified)
+4. `app/client/src/utils/territoryHelpers.ts` (modified)
+5. `app/client/src/hooks/useSubscriptions.ts` (modified)
+6. `app/client/src/components/Territory.tsx` (modified)
+7. `app/client/src/components/Map.tsx` (modified)
+8. `app/client/src/App.tsx` (modified)
 
-No NEW files. No REMOVED files.
+No new files. No removed files. The client subscribes to the new `cultural` table through the generated bindings; regenerate bindings with `spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server` after the server change.
 
 ---
 
 ## 3. GENERATION ORDER
 
-Generate changes in this sequence. Each file must only reference types and components that already exist in the Slice 2 codebase or were modified earlier in this sequence.
+Apply changes in this sequence. Each file must only reference types and components that already exist in the `app/` codebase or were modified earlier in this sequence.
 
-1. `server/src/lib.rs` (MODIFIED)
-2. `client/src/constants.ts` (MODIFIED)
-3. `client/src/types.ts` (MODIFIED)
-4. `client/src/utils/territoryHelpers.ts` (MODIFIED)
-5. `client/src/hooks/useSubscriptions.ts` (MODIFIED)
-6. `client/src/components/Territory.tsx` (MODIFIED)
-7. `client/src/components/Map.tsx` (MODIFIED)
-8. `client/src/App.tsx` (MODIFIED)
+1. `app/server/src/lib.rs`
+2. `app/client/src/constants.ts`
+3. `app/client/src/types.ts`
+4. `app/client/src/utils/territoryHelpers.ts`
+5. `app/client/src/hooks/useSubscriptions.ts`
+6. `app/client/src/components/Territory.tsx`
+7. `app/client/src/components/Map.tsx`
+8. `app/client/src/App.tsx`
 
 ---
 
@@ -83,23 +87,26 @@ const CULTURAL_PRESSURE_DIVISOR: i32 = 10;
 Update existing constant:
 
 ```rust
-const WIN_UNIFIED_TERRITORIES: i32 = 5; // Changed from 3
+const WIN_UNIFIED_TERRITORIES: i32 = 5; // Changed from 3 (Slices 1-2)
 ```
 
 ### 4.2 New Table
 
-Add to the TABLES section:
+Add to the TABLES section, following the exact shape of the existing `military`, `economic`, and `covert` tables (modern macro on a `pub struct`, column attributes for keys):
 
 ```rust
-#[spacetimedb(table)]
-struct Cultural {
-    territory_id: i32,
-    owner_id: i32,
-    influence_pct: i32,
+#[spacetimedb::table(accessor = cultural, public)]
+pub struct Cultural {
+    #[primary_key]
+    pub territory_id: i32,
+    pub owner_id: i32,
+    pub influence_pct: i32,
 }
 ```
 
-Constraint: `influence_pct` must stay between 0 and 100 inclusive. Enforce in reducer logic.
+The table is `public` so the client can subscribe to it. After publishing, regenerate the TypeScript bindings so `tables.cultural` and the `Cultural` row type (camelCase fields: `territoryId`, `ownerId`, `influencePct`) become available.
+
+Constraint: `influence_pct` must stay between 0 and 100 inclusive. SpacetimeDB has no CHECK constraints; enforce the clamp in the reducer logic (Section 4.7).
 
 ### 4.3 Modified `start_game` Reducer
 
@@ -120,60 +127,114 @@ Add Cultural table inserts alongside the existing military, economic, and covert
 | 11 (E Asia) | 2 | 0 |
 | 12 (Oceania) | 2 | 25 |
 
-Register the new scheduled reducer: start `cultural_spread_tick` with a 30-second interval.
-
-### 4.4 Modified `economic_invest` Reducer
-
-Add the Military→Economic bonus. After decrementing action points and before adding capital:
+Arm the new scheduled reducer the same way `regen_timer` is armed in `start_game`: insert a row into the `cultural_timer` scheduled table with a repeating interval. See Section 4.7 for the scheduled-table declaration.
 
 ```rust
-let mut invest_amount: i32 = 5; // ECONOMIC_INVEST_AMOUNT
-
-// Military→Economic bonus: +1 flat if player owns Military in target territory
-// Query military table for this territory_id
-// If military.owner_id == player_id: invest_amount += 1;
-
-// Add invest_amount to economic.capital
+ctx.db.cultural_timer().insert(CulturalTimer {
+    scheduled_id: 0,
+    scheduled_at: ScheduleAt::Interval(
+        std::time::Duration::from_secs(CULTURAL_TICK_SECONDS).into(),
+    ),
+});
 ```
 
-All other logic (ownership flip check, dimension_owner_change call) remains unchanged.
+### 4.4 Modified `economic_invest` Logic
 
-### 4.5 Modified `get_intel` Reducer
+The player action lives in `do_economic_invest` (the shared logic fn that both the `economic_invest` reducer and the AI cycle call). Add the Military to Economic bonus there. After decrementing action points and before adding capital:
 
-Add the Cultural→Covert bonus. When checking agent count against the intel threshold:
+```rust
+let mut invest_amount = ECONOMIC_INVEST_AMOUNT; // 5
+
+// Military->Economic bonus: +1 flat if player owns Military in the target territory.
+if let Some(m) = ctx.db.military().territory_id().find(territory_id) {
+    if m.owner_id == player_id {
+        invest_amount += 1;
+    }
+}
+
+target.capital += invest_amount;
+```
+
+All other logic (the ownership flip check and the `dimension_owner_change` call) remains unchanged.
+
+### 4.5 Modified `get_intel` Procedure
+
+`get_intel` is a procedure (it returns an `IntelResult` to the caller). Its DB reads happen inside `ctx.with_tx(|tx| { ... })`. Add the Cultural to Covert bonus where it computes effective agent count against the intel threshold:
 
 ```rust
 let mut effective_agents = agent_count;
 
-// Cultural→Covert bonus: +10% if player owns Cultural in this territory
-// Query cultural table for this territory_id
-// If cultural.owner_id == 1: effective_agents = agent_count + (agent_count * 10 / 100);
+// Cultural->Covert bonus: +10% if the player owns Cultural in this territory.
+if let Some(cul) = tx.db.cultural().territory_id().find(id) {
+    if cul.owner_id == 1 { // the human player is always id 1
+        effective_agents = agent_count + (agent_count * 10 / 100);
+    }
+}
 
-// Compare effective_agents >= INTEL_THRESHOLD (3)
+// Compare effective_agents against INTEL_THRESHOLD (3).
 ```
 
-All other logic (finding max agent count, returning intel or insufficient) remains unchanged.
+All other logic (finding the max agent count across this AI's territories, returning intel or insufficient) remains unchanged. Reducers and procedures never return ad-hoc success JSON to clients; `get_intel` returns its typed `IntelResult`, and all other observable state reaches the client through subscriptions.
 
 ### 4.6 Modified `dimension_owner_change` Function
 
-Update the win check to count all four dimensions:
+`dimension_owner_change` stays a private fn invoked inside the calling reducer's transaction (it takes `ctx: &ReducerContext`). Update the win check to require the same owner across all four dimensions:
 
 ```rust
-let unified_count = /* count territories where:
-    military.owner_id == new_owner
-    AND economic.owner_id == new_owner
-    AND cultural.owner_id == new_owner
-    AND covert.owner_id == new_owner
-*/;
+fn dimension_owner_change(ctx: &ReducerContext, new_owner: i32) {
+    let unified = ctx
+        .db
+        .military()
+        .iter()
+        .filter(|m| m.owner_id == new_owner)
+        .filter(|m| {
+            let eco = ctx.db.economic().territory_id().find(m.territory_id)
+                .map(|e| e.owner_id == new_owner).unwrap_or(false);
+            let cul = ctx.db.cultural().territory_id().find(m.territory_id)
+                .map(|c| c.owner_id == new_owner).unwrap_or(false);
+            let cov = ctx.db.covert().territory_id().find(m.territory_id)
+                .map(|c| c.owner_id == new_owner).unwrap_or(false);
+            eco && cul && cov
+        })
+        .count() as i32;
 
-if unified_count >= WIN_UNIFIED_TERRITORIES { // Now 5
-    // end game
+    if unified >= WIN_UNIFIED_TERRITORIES { // now 5
+        let winner_name = player_display_name(ctx, new_owner);
+        set_game_value(ctx, "status", "ended");
+        set_game_value(ctx, "winner", &winner_name);
+    }
 }
 ```
 
+Threshold changes from 3 to 5, and all four dimensions now count toward unification. `cultural_spread_tick` calls `dimension_owner_change` after a cultural flip, so a passive flip can complete a unification and end the game.
+
 ### 4.7 New Scheduled Reducer: `cultural_spread_tick`
 
-Schedule: every 30 seconds (30000ms). Use `#[spacetimedb(scheduled)]`.
+`cultural_spread_tick` is a deterministic **scheduled reducer** with no external I/O. It is driven by a scheduled table, exactly like `regenerate_action_points` is driven by `regen_timer`. It is a pure state tick, so it is a reducer (not a procedure): it makes no HTTP calls and returns nothing to clients.
+
+Declare the scheduled table in the SCHEDULED TABLES section:
+
+```rust
+/// Drives `cultural_spread_tick` on a fixed interval (deterministic reducer, no HTTP).
+#[spacetimedb::table(accessor = cultural_timer, scheduled(cultural_spread_tick))]
+pub struct CulturalTimer {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub scheduled_at: ScheduleAt,
+}
+```
+
+Declare the reducer in the SCHEDULED REDUCERS section. The target fn takes the scheduled row:
+
+```rust
+#[spacetimedb::reducer]
+pub fn cultural_spread_tick(ctx: &ReducerContext, _timer: CulturalTimer) {
+    // ... per-territory logic below ...
+}
+```
+
+Use `ctx.timestamp` for any timing; never wall-clock. The reducer is armed once in `start_game` via `ScheduleAt::Interval` (Section 4.3).
 
 **Transactional safety:** This reducer runs in its own transaction. SpacetimeDB serializes concurrent transactions. If a cultural tick and a player action target the same territory simultaneously, one executes first. No special handling required.
 
@@ -204,13 +265,15 @@ Schedule: every 30 seconds (30000ms). Use `#[spacetimedb(scheduled)]`.
    - If `cultural.influence_pct > INFLUENCE_FLIP_THRESHOLD` (50):
      - Set `cultural.owner_id = highest_player`.
      - Set `cultural.influence_pct = 0`.
-     - Call `dimension_owner_change(T, 'cultural', highest_player)`.
+     - Update the `cultural` row, then call `dimension_owner_change(ctx, highest_player)` (the modern 2-arg signature; the win check itself reads all four dimension tables).
 
-**No return value.** Clients receive updated `cultural` table via subscription.
+Read and write rows with the typed accessors, e.g. `ctx.db.cultural().territory_id().find(t)` to read and `ctx.db.cultural().territory_id().update(row)` to write, matching the existing dimension reducers.
+
+**No return value.** The reducer returns nothing; clients receive the updated `cultural` table via subscription.
 
 ### 4.8 Updated AI Prompt Construction
 
-In `ai_reasoning_cycle`, update the game state snapshot to include Cultural data. Update the territory list format:
+The AI system prompt is assembled in `build_system_prompt` (called from the `ai_reasoning_cycle` scheduled procedure, which is the only function type allowed to call Claude over `ctx.http`). Update the board snapshot it builds to include Cultural data. Update the territory list format:
 
 ```
 Territory {id} ({name}): Military owner={mil_owner}({troops}), Economic owner={eco_owner}({capital}), Cultural owner={cul_owner}({influence}%), Covert owner={cov_owner}({agents})
@@ -264,37 +327,35 @@ export const WIN_UNIFIED_TERRITORIES = 5; // Changed from 3
 
 ### 5.2 `types.ts` (MODIFIED)
 
-Add:
+Re-export the generated `Cultural` row type under the stable `CulturalRow` name, alongside the existing `MilitaryRow` / `EconomicRow` / `CovertRow` re-exports. The generated row uses camelCase fields (`territoryId`, `ownerId`, `influencePct`):
 
 ```typescript
-export interface CulturalRow {
-  territory_id: number;
-  owner_id: number;
-  influence_pct: number;
-}
+export type {
+  // ...existing dimension re-exports...
+  Cultural as CulturalRow,
+} from "./module_bindings/types";
 ```
 
 ### 5.3 `territoryHelpers.ts` (MODIFIED)
 
-Update `countUnifiedTerritories` to check all four dimensions:
+Update `countUnifiedTerritories` to check all four dimensions. Field names are camelCase, matching the generated bindings:
 
 ```typescript
 export function countUnifiedTerritories(
-  military: MilitaryRow[],
-  economic: EconomicRow[],
-  cultural: CulturalRow[],
-  covert: CovertRow[],
-  playerId: number
+  military: readonly MilitaryRow[],
+  economic: readonly EconomicRow[],
+  cultural: readonly CulturalRow[],
+  covert: readonly CovertRow[],
+  playerId: number,
 ): number {
   let count = 0;
   for (const m of military) {
-    if (m.owner_id === playerId) {
-      const e = economic.find(r => r.territory_id === m.territory_id);
-      const c = cultural.find(r => r.territory_id === m.territory_id);
-      const v = covert.find(r => r.territory_id === m.territory_id);
-      if (e && c && v && e.owner_id === playerId && c.owner_id === playerId && v.owner_id === playerId) {
-        count++;
-      }
+    if (m.ownerId !== playerId) continue;
+    const e = economic.find((r) => r.territoryId === m.territoryId);
+    const c = cultural.find((r) => r.territoryId === m.territoryId);
+    const v = covert.find((r) => r.territoryId === m.territoryId);
+    if (e && c && v && e.ownerId === playerId && c.ownerId === playerId && v.ownerId === playerId) {
+      count++;
     }
   }
   return count;
@@ -304,24 +365,24 @@ export function countUnifiedTerritories(
 Add helpers:
 
 ```typescript
-export function getCulturalOwner(cultural: CulturalRow[], territoryId: number): number {
-  return cultural.find(c => c.territory_id === territoryId)?.owner_id || 0;
+export function getCulturalOwner(cultural: readonly CulturalRow[], territoryId: number): number {
+  return cultural.find((c) => c.territoryId === territoryId)?.ownerId ?? 0;
 }
 
-export function getInfluencePct(cultural: CulturalRow[], territoryId: number): number {
-  return cultural.find(c => c.territory_id === territoryId)?.influence_pct || 0;
+export function getInfluencePct(cultural: readonly CulturalRow[], territoryId: number): number {
+  return cultural.find((c) => c.territoryId === territoryId)?.influencePct ?? 0;
 }
 ```
 
 ### 5.4 `useSubscriptions.ts` (MODIFIED)
 
-Add subscription:
+Subscribe to the new `cultural` table with the React hook, exactly like the existing dimension subscriptions:
 
 ```typescript
-const cultural = useSubscription<CulturalRow[]>('subscribe_cultural');
+const [cultural, culturalReady] = useTable(tables.cultural);
 ```
 
-Include `cultural` in the returned object.
+Include `cultural` (cast to `readonly CulturalRow[]`) in the returned object and add `culturalReady` to the `isReady` conjunction.
 
 ### 5.5 `Territory.tsx` (MODIFIED)
 
@@ -338,15 +399,15 @@ Include `cultural` in the returned object.
 
 ### 5.6 `Map.tsx` (MODIFIED)
 
-**Props:** Add `cultural: CulturalRow[]`.
+**Props:** Add `cultural: readonly CulturalRow[]`.
 
 **Pass to each Territory:**
-- `culturalOwner={getCulturalOwner(cultural, territory_id)}`
-- `influencePct={getInfluencePct(cultural, territory_id)}`
+- `culturalOwner={getCulturalOwner(cultural, territoryId)}`
+- `influencePct={getInfluencePct(cultural, territoryId)}`
 
 ### 5.7 `App.tsx` (MODIFIED)
 
-- Add `cultural` from `useSubscriptions` hook return.
+- Add `cultural` from the `useSubscriptions` hook return.
 - Pass `cultural` to `Map` component.
 - Update the call to `countUnifiedTerritories` to pass all four dimension arrays: `military`, `economic`, `cultural`, `covert`.
 - The victory tracker now shows unified count across all four dimensions (was two dimensions in Slice 2).
@@ -355,14 +416,16 @@ Include `cultural` in the returned object.
 
 ## 6. GENERATION RULES
 
-1. **Modify existing files in place.** Read each file before modifying. Preserve all Slice 2 functionality not explicitly changed.
-2. **Mark every output file** as MODIFIED at the top.
+1. **Modify existing `app/` files in place.** Read each file before modifying. Preserve all prior-slice functionality not explicitly changed.
+2. **Match the existing idioms** already present in `app/server/src/lib.rs` and `app/client/src/`.
 3. **All arithmetic is integer arithmetic.** No floats. Use `/` for truncating division.
-4. **SpacetimeDB macros:** `#[spacetimedb(table)]`, `#[spacetimedb(reducer)]`, `#[spacetimedb(scheduled)]`.
-5. **Tailwind CSS for all styling.** Use design tokens from `../AESTHETIC.md`.
-6. **No emojis. No em dashes. No custom CSS files.**
-7. **The cultural tick uses integer division.** `capital / 10`, `pressure * 15 / 100`, `agents * 10 / 100`. All truncate toward zero.
-8. **The fourth X-split quadrant** activates the bottom-right wedge. See AESTHETIC.md Section 4 for hex rendering details.
+4. **SpacetimeDB 2.4.1 macros (server):** tables use `#[spacetimedb::table(accessor = name, public)]` on a `pub struct` with column attributes `#[primary_key]`, `#[auto_inc]`; reducers use `#[spacetimedb::reducer] fn f(ctx: &ReducerContext, ...) -> Result<(), String>` (success = `Ok(())`, validation failure = `Err("msg".into())`); a scheduled reducer is driven by a scheduled table declared with `scheduled(target_fn)` and armed via `ScheduleAt::Interval(...)`. `cultural_spread_tick` is a scheduled reducer (deterministic, no HTTP), not a procedure.
+5. **Client SDK idioms:** npm package `spacetimedb` with the `spacetimedb/react` subpath; subscribe with `useTable(tables.cultural)` returning `[rows, isReady]`; generated row fields are camelCase. There are no client-side cultural actions (Cultural is passive).
+6. **Tailwind CSS for all styling.** Use design tokens from `../AESTHETIC.md`.
+7. **No emojis. No em dashes. No custom CSS files.**
+8. **The cultural tick uses integer division.** `capital / 10`, `pressure * 15 / 100`, `agents * 10 / 100`. All truncate toward zero.
+9. **The fourth X-split quadrant** activates the bottom-right wedge. See AESTHETIC.md Section 4 for hex rendering details.
+10. **Regenerate bindings** after the server change so `tables.cultural` and the `Cultural` row type exist before building the client.
 
 ---
 
@@ -392,4 +455,4 @@ After applying all modifications, the Slice 3 application must:
 
 ## End of Slice 3 Masterplan
 
-Read the existing Slice 2 codebase. Apply every modification specified above in the order specified. Output every changed file with MODIFIED at the top. Do not regenerate unchanged files. Do not add features from Slice 4.
+Read the existing `app/` codebase. Apply every modification specified above in the order specified, editing the files in place. Do not regenerate unchanged files. Do not add features from Slice 4. Slice 3 is one of 7 slices; only Slice 7 is final.

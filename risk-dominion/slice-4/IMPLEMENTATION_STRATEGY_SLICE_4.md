@@ -1,18 +1,18 @@
 # RISK: DOMINION — SLICE 4 IMPLEMENTATION STRATEGY
 
 ## Version 1.0
-## Scope: Query System, Event Ticker, Autocomplete — Final Slice
+## Scope: Query System, Event Ticker, Autocomplete (Slice 4 of 7)
 ## Target: Human Team — After Claude Code Generation
 
 ---
 
-## Principle 0: This Is the Final Gate
+## Principle 0: This Is a Stability Gate
 
-Slice 4 completes the core feature set. Every feature added here must work. Slice 5 subsequently adds multi-agent orchestration and keyboard controls — but each slice must be independently stable before the next is applied.
+Slice 4 adds the query and narrative layer. Every feature added here must work. Slice 5 subsequently adds multi-agent orchestration and keyboard controls, then Slices 6 and 7 add chat and the spectator/replay layer. Each slice must be independently stable before the next is applied.
 
-Slice 4 adds the query system (natural language bar, 10 canned queries, Tab autocomplete) and the event ticker (scrolling narrative feed with click-to-highlight). It modifies seven existing reducers to write events — the most widespread change in any slice.
+Slice 4 adds the query system (natural language bar, 10 canned queries, Tab autocomplete) and the event ticker (scrolling narrative feed with click-to-highlight). It adds event writes to every game-state change and introduces three Claude-backed query procedures.
 
-The rule: Slice 4 must pass every regression check and every new feature test before the game is considered demo-ready. No exceptions.
+The rule: Slice 4 must pass every regression check and every new feature test before it is considered stable and the team proceeds to Slice 5. No exceptions.
 
 This document tells you how to validate Slice 4, how to debug it when validation fails, and what to fix before the demo.
 
@@ -22,7 +22,7 @@ This document tells you how to validate Slice 4, how to debug it when validation
 
 Slice 4 validation has two parts:
 
-**Part A: Regression Check** — Condensed Slice 3 tests to confirm event writes didn't break gameplay. Approximately 5–10 minutes.
+**Part A: Regression Check** — Condensed prior-slice tests to confirm event writes didn't break gameplay. Approximately 5–10 minutes.
 
 **Part B: New Feature Test** — Tests for query system, autocomplete, and event ticker. Approximately 15 minutes.
 
@@ -34,10 +34,10 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 ### Prerequisites
 
-- SpacetimeDB server is running.
-- Frontend dev server is running.
+- SpacetimeDB server is running (the `app/server` module is published).
+- Frontend dev server is running (`app/client`).
 - One browser tab open to `http://localhost:5173`.
-- Anthropic API key configured in `.env`.
+- Anthropic API key seeded into the private `module_config` table via `spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'`.
 
 ---
 
@@ -65,7 +65,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
   - Agent deployment in purple-tinted text with covert icon.
 - Events appear in the ticker within 1 second of the action.
 
-**If actions work but no events:** Check event write logic in `military_attack`, `economic_invest`, and `deploy_agent`. Each should insert an `event_feed` row as its last operation. Check server logs for event insert errors.
+**If actions work but no events:** Check event write logic in the shared action helpers `do_military_attack`, `do_economic_invest`, and `do_deploy_agent`. Each should insert an `event_feed` row as its last operation. Check server logs for event insert errors.
 
 ---
 
@@ -75,7 +75,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **Expected Result:** Cultural spread still functions (influence changes, flips at >50%). When a flip occurs, the ticker shows: "{player}'s cultural influence spread to {territory}, displacing {old_owner}." with cultural icon and the new owner's color.
 
-**If cultural spread works but no event:** Check `cultural_spread_tick` reducer — event write should be inside the flip branch, after the ownership change.
+**If cultural spread works but no event:** Check the `cultural_spread_tick` scheduled reducer — event write should be inside the flip branch, after the ownership change.
 
 ---
 
@@ -85,7 +85,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **Expected Result:** AI actions appear in the ticker with the AI's player color. Zhao's actions in red, Consortium in orange, Prophet in purple. Events read like player events but with AI names.
 
-**If AI acts but no events:** Check `ai_submit_actions` — it calls the same reducers as the player, so events should be written automatically. If the AI cycle times out, check for the timeout event: "{ai_name}'s command appears to be in disarray."
+**If AI acts but no events:** Check that the AI cycle applies actions through the shared `do_*` helpers (the private `apply_ai_actions` fn inside the `ai_reasoning_cycle` procedure's commit tx), so events are written automatically by those helpers. If the AI's Claude call fails or times out, check for the failure event: "{ai_name}'s command appears to be in disarray."
 
 ---
 
@@ -113,7 +113,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 - Part A complete and passing.
 - Game is loaded and running.
-- Anthropic API key configured (queries require Claude).
+- Anthropic API key seeded in `module_config` (queries require Claude).
 
 ---
 
@@ -145,7 +145,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **If query returns error:** Check server logs for Claude API call. Check the prompt string for query_id 9. Check that the game state snapshot is being built correctly.
 
-**If query returns but table is empty:** The Claude response may not have been parsed correctly. Check the JSON parsing logic in `get_canned_query`.
+**If query returns but table is empty:** The Claude response may not have been parsed correctly. Check the JSON parsing logic in the `get_canned_query` procedure.
 
 ---
 
@@ -160,7 +160,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **If a specific button consistently fails:** Check its prompt string in the interface contract Section 4. The prompt may need tuning, but it should produce parseable JSON. If Claude returns unparseable output, the prompt needs clearer formatting instructions.
 
-**If all buttons fail:** Check the Claude API connection. Check that `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL` are set correctly.
+**If all buttons fail:** Check the Claude API connection. Check that `anthropic_api_key` (and optionally `anthropic_model`) are set in the `module_config` table via `set_config`.
 
 ---
 
@@ -188,7 +188,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - Data table is empty. No territories highlighted.
 - The game continues to function normally.
 
-**If the game crashes:** Check error handling in `query_database` — the JSON parsing failure and timeout branches must return the error fallback structure, not panic.
+**If the game crashes:** Check error handling in the `query_database` procedure — the JSON parsing failure and timeout branches must return the error-fallback `QueryResult`, not panic.
 
 ---
 
@@ -203,7 +203,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - Pressing Tab again cycles through suggestions. Pressing Escape closes the dropdown.
 - Clicking a suggestion fills the query bar with that text.
 
-**If dropdown doesn't appear:** Check that the Tab key event handler is correctly attached to the input. Check that `autocomplete_query` reducer is being called. Check the browser console for errors.
+**If dropdown doesn't appear:** Check that the Tab key event handler is correctly attached to the input. Check that the `autocomplete_query` procedure is being called via `useProcedure`. Check the browser console for errors.
 
 **If dropdown appears but is empty:** The partial text "Where is Z" is 10 characters — well above the 3-character minimum. Claude should return suggestions. Check the autocomplete prompt and timeout (5 seconds).
 
@@ -256,7 +256,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 ---
 
-**All 9 feature test steps pass?** Slice 4 is validated. The game is feature-complete.
+**All 9 feature test steps pass?** Slice 4 is validated and stable. Proceed to Slice 5.
 
 ---
 
@@ -265,15 +265,15 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 | Step | Symptom | Most Likely Cause | Check |
 |------|---------|-------------------|-------|
 | A1 | No "Game started" event | Event write missing in `start_game` | `start_game` reducer — add event insert as last operation |
-| A2 | Actions work, no events | Event writes missing in action reducers | `military_attack`, `economic_invest`, `deploy_agent` — add event inserts |
-| A2 | Events in table but not in ticker | Subscription not connected | `useSubscriptions.ts` — verify `subscribe_event_feed` is called |
+| A2 | Actions work, no events | Event writes missing in action helpers | `do_military_attack`, `do_economic_invest`, `do_deploy_agent` — add event inserts |
+| A2 | Events in table but not in ticker | Subscription not connected | `useSubscriptions.ts` — verify `useTable(tables.eventFeed)` is called |
 | A3 | Cultural flip but no event | Event write missing in tick loop | `cultural_spread_tick` — add event insert inside flip branch |
-| A4 | AI timeout but no event | Timeout event missing | `ai_reasoning_cycle` — add event insert in timeout branch |
+| A4 | AI failure but no event | Failure event missing | `ai_reasoning_cycle` procedure — add event insert in the Claude-error/commit branch |
 | B1 | Query bar doesn't render | Component not added to layout | `App.tsx` — verify `QueryBar` is imported and rendered |
-| B2 | Canned query returns error | Claude API call failing | Server logs — check API key, model name, network connectivity |
+| B2 | Canned query returns error | Claude API call failing | Server logs — check `module_config` API key, model name, network connectivity |
 | B2 | Canned query returns unparseable JSON | Prompt doesn't enforce format strictly enough | Check prompt string for that query_id — add stricter JSON format instructions |
 | B4 | Natural language returns nonsense | Prompt doesn't include enough game context | Check game state snapshot construction — are all four dimension tables included? |
-| B5 | Nonsense query crashes game | Error handling missing | `query_database` — wrap Claude call in try/catch, return error fallback |
+| B5 | Nonsense query crashes game | Error handling missing | `query_database` procedure — return the error-fallback `QueryResult` on any error, never panic |
 | B6 | Tab does nothing | Key event not bound | `QueryBar.tsx` — add onKeyDown handler for Tab key |
 | B6 | Autocomplete returns empty | Partial text too short or timeout | Partial must be >= 3 characters. Timeout is 5 seconds — check API latency. |
 | B7 | Icons are emojis | Icon rendering used wrong elements | `EventTicker.tsx` — use simple SVG shapes, not Unicode emoji characters |
@@ -287,9 +287,9 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 ### Priority 1: Showstopper Bugs
 
 - Event writes crash any reducer.
-- Query system causes server hangs (thread leak, API call blocking).
+- Query system causes server hangs (a procedure holding a tx open across the HTTP call, or an unhandled error path).
 - Ticker breaks page layout (overlapping content, scroll issues).
-- Any regression that breaks Slice 3 gameplay.
+- Any regression that breaks prior-slice gameplay.
 
 ### Priority 2: Query Reliability
 
@@ -300,7 +300,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
   - "Who is winning?"
   - "Where should I attack?"
   - "What is [player] planning?"
-- If any query type consistently fails, tune the prompt in `query_database`.
+- If any query type consistently fails, tune the prompt in the `query_database` procedure.
 
 ### Priority 3: Autocomplete Quality
 
@@ -335,14 +335,14 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 ## 6. DEMO READINESS GATE
 
-Before the game is shown to judges, all of the following must be true:
+Before the game is shown to judges (with Slices 1 through 4 in place), all of the following must be true:
 
 1. **All 5 regression steps pass** with no errors.
 2. **All 9 feature test steps pass** with no workarounds.
 3. **All 10 canned queries return useful results** — tested at least 3 times each.
 4. **Natural language queries handle at least 5 common question types** correctly.
 5. **Ticker shows events for all action types** without errors or missing events.
-6. **Server compiles** with `cargo build` — zero errors.
+6. **Server compiles** with `spacetime build` (or `cargo build`) — zero errors. Bindings regenerated with `spacetime generate`.
 7. **Client compiles** with `npm run build` — zero errors.
 8. **No known showstopper bugs.**
 9. **Game can be played from start to victory** without any human intervention (AI opponents provide complete gameplay).

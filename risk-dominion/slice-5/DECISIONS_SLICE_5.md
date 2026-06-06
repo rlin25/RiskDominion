@@ -1,8 +1,8 @@
 # RISK: DOMINION — SLICE 5 DESIGN DECISIONS
 
-## Version 1.0
+## Version 2.0 (SpacetimeDB 2.4.1)
 ## Scope: Subagent Orchestration, Hotkeys, Human Strategist
-## Relationship: Extends DECISIONS_SLICE_4.md — Advanced Capabilities Slice
+## Relationship: Extends DECISIONS_SLICE_4.md — Advanced Capabilities Slice (Slice 5 of 7)
 
 ---
 
@@ -78,9 +78,11 @@ The AI's thinking is transparent. The player understands not just what the AI is
 
 The Strategist can also be queried directly. Type "What should I do?" in the query bar, and the Strategist responds with contextual advice based on the current game state. The query system already exists from Slice 4. The Strategist adds a dedicated advisor endpoint.
 
-**A note on scale:** The orchestration increases LLM call volume. Each AI cycle now spawns 5 calls (commander + 4 specialists) instead of 1. With 3 AIs and the Strategist, that's 16 calls per 60-second window. Subordinates use smaller prompts and lower token limits (150 max tokens) than the commander (500 max tokens). The AI cycles are staggered by 20 seconds, which naturally spreads the load. If Anthropic rate limits are encountered during testing, subordinates can be called sequentially within the AI cycle rather than in parallel.
+**How the orchestration runs (and a note on scale).** Each AI cycle now makes 5 Claude calls (4 specialists + 1 commander) instead of 1. With 3 AIs and the Strategist, that is 16 calls per 60-second window. Subordinates use smaller prompts and lower token limits (150 max tokens) than the commander (500 max tokens). The AI cycles are staggered by 20 seconds, which naturally spreads the load.
 
-**The reasoning log changes.** Since Slice 2, the `ai_reasoning_log` table has stored one row per AI cycle. In Slice 5, it gains a `subordinate_id` column. Each subordinate writes its own row. The commander writes the final row with the action batch. The intel query returns all rows from the latest cycle, ordered by subordinate. The player sees the full chain of thought.
+A deliberate architectural decision: in SpacetimeDB, the AI reasoning cycle is **one scheduled procedure**, and the five Claude calls run **sequentially** inside it over `ctx.http` (four specialist calls, then one commander call), with all results committed in a single `ctx.with_tx`. There are no threads. SpacetimeDB has no `std::thread`, no `join()`, no `reqwest`, and no `tokio`; reducers cannot make HTTP calls at all, so only a procedure can do this work. The trade-off is latency: a cycle's wall-clock time is the sum of the call latencies, so the first orchestrated cycle can take up to ~120 seconds. This is acceptable because cycles are staggered and self-re-schedule. If sequential latency ever becomes a problem, the fallback is to fan the specialists out across separate scheduled-procedure rows (one per specialist, writing its result to a scratch table) with a follow-up commander row that reads them back. That fan-out is not implemented in Slice 5; the single sequential procedure is the chosen design.
+
+**The reasoning log changes.** Since Slice 2, the `ai_reasoning_log` table has stored one row per AI cycle. In Slice 5, it gains a `subordinate_id` column. A private fn (`apply_ai_actions`) running inside the cycle procedure's transaction writes one row per subordinate plus the final commander row (all sharing the same `cycle_at`); there is no cross-thread reducer and no queue table. The intel query (a procedure) returns all rows from the latest cycle, ordered by subordinate. The player sees the full chain of thought.
 
 ### New Principle 13: Command at the Speed of Thought
 
@@ -123,7 +125,7 @@ Slice 5 adds keyboard controls for every common action. The player can command t
 - Agent deployment: unchanged.
 - Cultural spread: unchanged.
 - Cross-dimension bonuses: unchanged.
-- Win condition: still 5 unified territories.
+- Win condition: still 5 unified territories across all 4 dimensions.
 - The map: still 12 hex territories.
 - Card types: still Military, Economic, Covert.
 - Action points: still 1 per 8 seconds, cap 10.
@@ -140,28 +142,28 @@ Slice 5 adds minds and speed. It does not change the game.
 | Decision | Outcome |
 |----------|---------|
 | AI architecture | Commander + 4 specialist subordinates per AI |
-| Specialist calls | Independent LLM calls with domain-specific prompts, 150 max tokens each |
+| Specialist calls | Independent Claude calls with domain-specific prompts, 150 max tokens each, made sequentially via `ctx.http` inside one procedure |
 | Commander role | Synthesizes recommendations, resolves conflicts, submits action batch |
 | Zhao's team | Vanguard (military), Paymaster (economic), Scout (covert), Adjutant (cultural) |
 | Consortium's team | Auditor (economic), Actuary (military), Courier (covert), Appraiser (cultural) |
 | Prophet's team | Whisper (cultural), Oracle (covert), Seer (economic), Warden (military) |
-| Human Strategist | Proactive advisor, 60s cycle, push notifications, queryable |
-| Strategist log | New table with priority levels (critical, warning, info), dismissable alerts |
+| Human Strategist | Proactive advisor, scheduled procedure (Claude via `ctx.http`), 60s cycle, queryable |
+| Strategist log | New public table with priority levels (critical, warning, info), dismissable alerts |
 | Reasoning log | Added `subordinate_id` column, one row per subordinate per cycle |
 | Intel visibility | Player sees full deliberation chain when querying AI intel |
+| Concurrency model | Sequential `ctx.http` calls in one scheduled procedure. No threads. Fan-out via scheduled rows only as a fallback. |
 | Hotkeys | 1-3 cards, WASD navigation, Enter/Space confirm, Escape cancel, Q/I/C/H panels |
 | Hotkey hints | Small rounded squares on UI elements, JetBrains Mono 9px, muted |
-| Rate limits | Subordinates use smaller prompts. Sequential fallback if needed. |
 
 ---
 
 ## 5. THE GAME AFTER SLICE 5
 
-After Slice 5, Risk: Dominion is not just complete. It is exceptional.
+After Slice 5, Risk: Dominion takes a major step toward its full vision. (Slices 6 and 7 still follow: global chat with AI deception, then spectator mode and replay.)
 
-The player faces AI opponents that reason through a council of specialists, each bringing domain expertise to a coordinated strategy. The player has an AI strategist on their side, watching the game and offering advice. The player commands the battlefield from the keyboard at the speed of thought. And through the intel system, the player can see the full chain of reasoning behind every AI decision — a transparent, traceable, multi-agent thought process rendered inside a live database.
+The player faces AI opponents that reason through a council of specialists, each bringing domain expertise to a coordinated strategy. The player has an AI strategist on their side, watching the game and offering advice. The player commands the battlefield from the keyboard at the speed of thought. And through the intel system, the player can see the full chain of reasoning behind every AI decision: a transparent, traceable, multi-agent thought process rendered inside a live database.
 
-This is the technical wow factor. This is what makes judges stop and say "wait, that's real?"
+This is the technical wow factor. This is what makes people stop and say "wait, that's real?"
 
 ---
 

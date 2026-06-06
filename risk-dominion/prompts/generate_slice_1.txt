@@ -1,16 +1,18 @@
-You are in the slice-1/ directory. Generate all files relative to this directory.
+You are generating Slice 1 into the single evolving application at risk-dominion/app/. The canonical code is ONE app at app/{server,client} that every slice grows in place; slice boundaries are git tags (slice-1-complete, ...). Generate all files under risk-dominion/app/.
 
 You are generating Slice 1 of Risk: Dominion — a two-player real-time strategy game built on SpacetimeDB where the battlefield is a live multidimensional database.
 
 Read these files in full before generating:
-- MASTERPLAN_SLICE_1.md (your authoritative spec — file tree, schemas, reducers, components, seed data, generation order)
-- ../AESTHETIC.md (visual design system — colors, fonts, territory hexagons with X-split quadrants, card design with geometric SVG icons, animations)
+- slice-1/MASTERPLAN_SLICE_1.md (your authoritative spec: file tree, schemas, reducers, components, seed data, generation order)
+- AESTHETIC.md (visual design system: colors, fonts, territory hexagons with X-split quadrants, card design with geometric SVG icons, animations)
 
 Generate the complete application as specified in the masterplan. Output every file in the file tree, in the generation order specified.
 
 Key constraints:
-- Server: single lib.rs with all tables, reducers, scheduled reducers. Use #[spacetimedb(table)], #[spacetimedb(reducer)], #[spacetimedb(scheduled)] macros.
-- Client: React 18 + TypeScript 5.3 + Vite + dnd-kit (@dnd-kit/core) + Tailwind CSS. No custom CSS files.
+- SpacetimeDB 2.4.1. Cargo: spacetimedb = { version = "2.4.1", features = ["unstable"] }, edition = "2024", crate-type = ["cdylib"]. CLI installed via curl -sSf https://install.spacetimedb.com | sh (min version 2.4.1).
+- Server: single app/server/src/lib.rs with all tables, the scheduled table, reducers, the scheduled reducer, and constants. Tables are pub structs with #[spacetimedb::table(accessor = name, public)] and column attributes (#[primary_key], #[auto_inc]). Reducers use #[spacetimedb::reducer], take ctx: &ReducerContext first, and return Result<(), String> (Ok(()) on success, Err("msg".into()) on validation failure). Reducers cannot return data to clients; clients observe outcomes via subscriptions. Use ctx.timestamp, never SystemTime. The action-point regen is a scheduled table (scheduled(regenerate_action_points)) armed with ScheduleAt::Interval, NOT a #[spacetimedb(scheduled)] attribute. Do NOT use the obsolete #[spacetimedb(table)] / #[spacetimedb(reducer)] / #[spacetimedb(scheduled)] forms.
+- After the module compiles, run: spacetime generate --lang typescript --out-dir app/client/src/module_bindings --module-path app/server. Generated row/field names are camelCase (territory_id -> territoryId).
+- Client: React 18 + TypeScript 5.3 + Vite + dnd-kit (@dnd-kit/core) + Tailwind CSS. Client SDK is the spacetimedb npm package (NOT @clockworklabs/spacetimedb-sdk), with hooks from spacetimedb/react. Connect via DbConnection.builder().withUri(VITE_SPACETIMEDB_URI).withDatabaseName(VITE_MODULE_NAME)...; wrap App in <SpacetimeDBProvider connectionBuilder={...}>. Subscribe with useTable(tables.x) -> [rows, isReady]; call reducers with useReducer(reducers.x) -> (args) => Promise<void>, passing a single named-args object, e.g. militaryAttack({ territoryId, playerId }). No custom CSS files.
 - All styling via Tailwind utility classes using the design tokens from AESTHETIC.md.
 - Territory hexagons use the X-split quadrant pattern. Card icons are geometric SVGs.
 - No emojis. No em dashes. No custom CSS files.
@@ -19,13 +21,13 @@ Key constraints:
 
 Scope boundary:
 - This is Slice 1 of 7. Generate ONLY what is specified in the masterplan.
-- Do NOT generate: AI opponents, Cultural dimension, Covert dimension, query bar, event ticker, intel panel, debug panel.
-- The game is two dimensions (Military, Economic) and two human players. Nothing more.
+- Do NOT generate: AI opponents, LLM/Anthropic calls, procedures, Cultural dimension, Covert dimension, query bar, event ticker, intel panel, debug panel.
+- The game is two dimensions (Military, Economic) and two human players. Win condition: unify 3 territories across the 2 dimensions. Nothing more.
 
-If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_1.md for design intent. If still ambiguous, choose the simpler implementation and note it in a comment.
+If the masterplan is ambiguous on a detail, use slice-1/DECISIONS_SLICE_1.md for design intent. If still ambiguous, choose the simpler implementation and note it in a comment.
 
 Success criteria. After generation, the application must:
-1. Compile without errors (cargo build for server, npm run build for client).
+1. Compile without errors (spacetime build / cargo build for server, npm run build for client).
 2. Render a hex map with 12 territories showing correct two-color X-split quadrants matching seed data.
 3. Accept drag-and-drop card actions that mutate the database and sync between two browser tabs in under 1 second.
 4. Regenerate action points at 1 per 8 seconds, capped at 10.

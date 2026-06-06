@@ -2,17 +2,19 @@
 
 ## Version 1.0
 ## Scope: Counter-Intel, Global Chat, Direct Messages, Deception System
-## Target: Human Team — After Claude Code Generation
+## Slice 6 of 7. Target: Human Team — After Claude Code Generation
 
 ---
 
-## Principle 0: This Is the Final Layer
+## Principle 0: The Information Warfare Layer
 
 Slice 6 adds information warfare. The chat is not a social feature — it is a battlefield. Every message is a potential weapon. Every DM is a private channel for deception. The AI opponents lie, manipulate, and try to turn enemies against each other. The human player can do the same.
 
-This slice modifies the AI commander prompt and the Strategist prompt — two of the most critical prompts in the system. It adds new tables, new reducers, and new frontend components. It introduces trust scores, cross-referencing logic, and DM privacy filtering.
+This is Slice 6 of 7. It is not the final slice; Slice 7 (spectator and replay) follows.
 
-The rule: Slice 6 must pass every regression check and every new feature test before the game is considered demo-ready. No exceptions.
+This slice modifies the AI commander prompt and the Strategist prompt — two of the most critical prompts in the system. It adds new tables, a new reducer, AI chat generation inside the reasoning cycle procedure, and new frontend components. It introduces trust scores, cross-referencing logic, and structural DM privacy (a public/secret table split plus a subscription row filter).
+
+The rule: Slice 6 must pass every regression check and every new feature test before it is tagged `slice-6-complete`. No exceptions.
 
 This document tells you how to validate Slice 6, how to debug it when validation fails, and what to fix before the final demo.
 
@@ -34,10 +36,10 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 ### Prerequisites
 
-- SpacetimeDB server is running.
-- Frontend dev server is running.
+- SpacetimeDB server is running (the `risk-dominion` module published from `app/server`).
+- Frontend dev server is running (`app/client`).
 - One browser tab open to `http://localhost:5173`.
-- Anthropic API key configured in `.env`.
+- Anthropic API key seeded into the private `module_config` table: `spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'`.
 
 ---
 
@@ -120,7 +122,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - Message aligned to the right (player's own messages).
 - Input field clears after sending.
 
-**If message doesn't appear:** Check `send_chat_message` reducer call. Check `subscribe_chat_log` subscription delivering data.
+**If message doesn't appear:** Check the `send_chat_message` reducer call (single named-args object). Check the filtered `chat_log` subscription is delivering data.
 
 ---
 
@@ -239,14 +241,15 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **Action:** This test verifies that DMs are truly private. Method: use browser developer tools or a second browser tab connected as a hypothetical second human player (if multiplayer is re-enabled for testing).
 
-**For single-client testing:** Inspect the network traffic or subscription data. Verify that `chat_log` rows with `recipient_id` set to a player other than yourself are NOT present in the client's data.
+**For single-client testing:** Inspect the network traffic or subscription data. Verify that `chat_log` rows with `recipient_id` set to a player other than yourself are NOT present in the client's data. Also verify no `is_deception` / `claimed_fact` data is present at all (those fields live in the non-public `chat_secret` table the client never subscribes to).
 
 **Expected Result:** The player only sees:
-- Global messages (recipient_id is NULL).
+- Global messages (`recipient_id = 0`).
 - DMs where the player is sender or recipient.
 - The player does NOT see DMs between Zhao and Consortium, Consortium and Prophet, etc.
+- No deception or claimed-fact fields appear anywhere in client data.
 
-**If DMs leak:** Check `subscribe_chat_log` filtering logic. The server must filter rows before delivering to each client. Check that the filter includes `recipient_id IS NULL OR sender_id = client_id OR recipient_id = client_id`.
+**If DMs leak:** Check the `chat_log` subscription row filter. Because privacy is enforced by the subscription query (not column stripping), the filter must be `recipient_id = 0 OR sender_id = client_id OR recipient_id = client_id`. If secret fields leak, the secret columns were wrongly placed on the public `chat_log` table instead of the non-public `chat_secret` table.
 
 ---
 
@@ -259,7 +262,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 | Step | Symptom | Most Likely Cause | Check |
 |------|---------|-------------------|-------|
 | B1 | ChatPanel doesn't render | Component not imported or state defaults closed | App.tsx — verify import and render |
-| B2 | Global messages don't appear | Reducer not called or subscription not connected | `send_chat_message`, `subscribe_chat_log` |
+| B2 | Global messages don't appear | Reducer not called or subscription not connected | `send_chat_message`, filtered `chat_log` subscription |
 | B3 | DM appears in Global tab | recipient_id filtering missing | Client tab filtering or server subscription filtering |
 | B3 | DM doesn't appear at all | recipient_id not passed to reducer | `send_chat_message` call — verify recipient_id parameter |
 | B4 | AI never sends chat messages | Chat output not in commander prompt | Check commander prompt for chat_message field. Check JSON parsing. |
@@ -270,9 +273,10 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 | B7 | No chat analysis alerts | Strategist prompt missing chat section | Check prompt for chat_analysis field. Check chat history passed correctly. |
 | B7 | Analysis contradicts known intel | Agent intel query wrong | `evaluate_chat_messages` cross-referencing logic |
 | B8 | Trust scores never change | evaluate_chat_messages not called | Check AI cycle start — function should run before commander prompt |
-| B8 | Retroactive penalties not applied | Bad outcome detection missing | `ai_submit_actions` — track which actions were influenced by messages |
+| B8 | Retroactive penalties not applied | Bad outcome detection missing | `apply_ai_actions` (in `ai_reasoning_cycle` tx2) — track which actions were influenced by messages |
 | B9 | Chat hotkeys don't work | Keydown handler conflict | Check Ctrl key modifier. Check T doesn't conflict. |
-| B10 | DMs visible to wrong players | Subscription filter incomplete | Server-side filtering: recipient_id IS NULL OR sender_id OR recipient_id |
+| B10 | DMs visible to wrong players | Subscription filter incomplete | `chat_log` subscription row filter: recipient_id = 0 OR sender_id OR recipient_id |
+| B10 | Secret fields leak to client | Secret columns on public table | Move `is_deception`/`claimed_fact` to non-public `chat_secret` table |
 
 ---
 
@@ -349,22 +353,23 @@ If any condition is not met, fix it before the demo.
 
 ---
 
-## 8. FINAL NOTE
+## 8. CLOSING NOTE
 
-Slice 6 is the final layer. After validation, Risk: Dominion is complete — four dimensions of territorial control, AI opponents that deliberate through councils of specialists, natural language queries against a live database, and now a chat system where every message is a potential weapon.
+Slice 6 is the information warfare layer, not the final slice. After validation, Risk: Dominion has four dimensions of territorial control (Military, Economic, Cultural, Covert; win condition is 5 unified territories across the 4 counting dimensions, Covert excluded), AI opponents that deliberate through councils of specialists, natural language queries against a live database, and now a chat system where every message is a potential weapon. Slice 7 (spectator and replay) still follows.
 
-The journey from Slice 1 to Slice 6:
-- Slice 1: Two players, two dimensions, hex map, card-driven actions.
+The journey from Slice 1 toward the full game:
+- Slice 1: Two players, two dimensions, hex map, card-driven actions (3 unified across 2 dimensions).
 - Slice 2: AI opponents, Covert dimension, intel system.
-- Slice 3: Cultural dimension, cross-dimension bonuses, four-dimension victory.
+- Slice 3: Cultural dimension, cross-dimension bonuses, the 5-unified-across-4-dimensions victory.
 - Slice 4: Natural language queries, canned queries, autocomplete, event ticker.
 - Slice 5: Multi-agent orchestration, human Strategist, full keyboard control.
 - Slice 6: Global chat, direct messages, AI deception, trust scores, counter-intel.
+- Slice 7: Spectator mode and replay (the final slice).
 
-Validate. Polish. Demo. Win.
+Validate. Polish. Then build Slice 7.
 
 ---
 
 ## End of Slice 6 Implementation Strategy
 
-This is the final validation document. After this, the game is ready for judges.
+This is the Slice 6 validation document. After this, proceed to Slice 7.

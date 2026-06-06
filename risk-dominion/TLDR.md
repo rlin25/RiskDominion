@@ -28,13 +28,13 @@ Current slice progress during the hackathon. Update as each slice is validated.
 
 - **The battlefield is a database you can query.** Type "Where am I weakest?" in plain English. The game translates your question into a live query across the dimension tables and returns highlighted territories with a data table. Ten pre-built query buttons give you instant strategic insights.
 
-- **Every action is a real-time database transaction.** Drag a card onto a territory. That triggers a reducer — a server-side function that validates your move, updates the tables, and pushes the change to every connected client via subscriptions. No polling. No REST APIs. No latency.
+- **Every action is a real-time database transaction.** Drag a card onto a territory. That triggers a reducer — a deterministic server-side function that validates your move and updates the tables. The reducer does not return data; instead the change is pushed to every connected client via subscriptions. No polling. No REST APIs. No latency.
 
 ---
 
 ## How It Works
 
-A React frontend connects to a SpacetimeDB server written in Rust. All game state lives in SpacetimeDB tables — military, economic, cultural, covert, players, events, and AI reasoning logs. The client subscribes to these tables and re-renders in real time whenever data changes. AI opponents and the query system call Claude through Anthropic's API, with parallel thread spawning for multi-agent orchestration.
+A React frontend (using the `spacetimedb` npm client) connects to a SpacetimeDB 2.4.1 server written in Rust. All game state lives in SpacetimeDB tables — military, economic, cultural, covert, players, events, and AI reasoning logs. The client subscribes to these tables and re-renders in real time whenever data changes. Player actions are reducers (deterministic, no HTTP); everything that calls Claude — AI reasoning cycles, multi-agent orchestration, the query system, and the Strategist — runs in procedures, the only function type allowed to make HTTP calls via `ctx.http`.
 
 ---
 
@@ -60,13 +60,13 @@ A React frontend connects to a SpacetimeDB server written in Rust. All game stat
 
 ## Tech Stack
 
-SpacetimeDB, Rust, React 18, TypeScript, Vite, dnd-kit, Tailwind CSS, Claude (Anthropic API)
+SpacetimeDB 2.4.1, Rust, `spacetimedb` (npm client), React 18, TypeScript, Vite, dnd-kit, Tailwind CSS, Claude (Anthropic API)
 
 ---
 
 ## Quick Start
 
-Clone the repo. Run `bash setup.sh`. Follow the prompts. Open `prompts/generate_slice_1.txt` in Claude Code to generate Slice 1. Start the server. Open `localhost:5173`. That's it.
+Clone the repo. Install the SpacetimeDB 2.4.1 CLI with `curl -sSf https://install.spacetimedb.com | sh`. Run `bash setup.sh`. The code is one evolving codebase at `app/` (`app/server` + `app/client`), tagged per slice. Publish the module (`spacetime publish --project-path app/server risk-dominion`), generate the TypeScript bindings, seed the Anthropic key into the private `module_config` table (`spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'`), then `cd app/client && npm run dev`. Open `localhost:5173`. That's it.
 
 ---
 

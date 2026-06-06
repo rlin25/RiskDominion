@@ -2,42 +2,44 @@
 
 ## Version 1.0
 ## Scope: Spectator Mode, Replay System, Complete Transparency — Final Slice
-## Target: Claude Code Generation — Modifying the Slice 6 Codebase
+## Target: Claude Code Generation — Modifying the `risk-dominion/app/` Codebase (Slice 7 of 7)
+## Platform: SpacetimeDB 2.4.1
 
 ---
 
 ## 0. DOCUMENT PURPOSE
 
-This document specifies how to modify the working Slice 6 codebase to add spectator mode and the replay system. Read this document in full. Read the existing Slice 6 codebase. Apply the changes specified here.
+This document specifies how to modify the existing `risk-dominion/app/` codebase (the single evolving app, at the `slice-6-complete` tag) to add spectator mode and the replay system. Read this document in full. Read the existing codebase. Apply the changes specified here, in place.
 
-Do not regenerate Slice 6. Do not create a new project. Modify the existing files in place. Mark each output file as MODIFIED or NEW.
+Do not create a new project or a per-slice copy. The canonical code is one app at `risk-dominion/app/{server,client}` that grows each slice; each completed slice is tagged `slice-N-complete` in git. Modify the existing files in place. Mark each output file as MODIFIED or NEW.
 
-This is the final slice. After this, Risk: Dominion is complete.
+This is Slice 7 of 7 and the final slice. After this, Risk: Dominion is complete.
 
 ---
 
 ## 1. BEFORE YOU BEGIN
 
-Read every existing file in the Slice 6 codebase:
-- `slice-1/server/Cargo.toml`
-- `slice-1/server/src/lib.rs`
-- `slice-1/client/src/App.tsx`
-- `slice-1/client/src/constants.ts`
-- `slice-1/client/src/types.ts`
-- `slice-1/client/src/hooks/useSubscriptions.ts`
-- `slice-1/client/src/utils/territoryHelpers.ts`
-- `slice-1/client/src/components/Map.tsx`
-- `slice-1/client/src/components/Territory.tsx`
-- `slice-1/client/src/components/CardHand.tsx`
-- `slice-1/client/src/components/ActionCard.tsx`
-- `slice-1/client/src/components/IntelPanel.tsx`
-- `slice-1/client/src/components/QueryBar.tsx`
-- `slice-1/client/src/components/ResultsPanel.tsx`
-- `slice-1/client/src/components/EventTicker.tsx`
-- `slice-1/client/src/components/StrategistAlerts.tsx`
-- `slice-1/client/src/components/ChatPanel.tsx`
-- `slice-1/client/src/components/ActionBar.tsx`
-- `slice-1/client/src/components/VictoryScreen.tsx`
+Read every existing file in the `risk-dominion/app/` codebase, including at least:
+- `app/server/Cargo.toml`
+- `app/server/src/lib.rs`
+- `app/client/src/App.tsx`
+- `app/client/src/constants.ts`
+- `app/client/src/types.ts`
+- `app/client/src/connection.ts`
+- `app/client/src/hooks/useSubscriptions.ts`
+- `app/client/src/utils/territoryHelpers.ts`
+- `app/client/src/components/Map.tsx`
+- `app/client/src/components/Territory.tsx`
+- `app/client/src/components/CardHand.tsx`
+- `app/client/src/components/ActionCard.tsx`
+- `app/client/src/components/IntelPanel.tsx`
+- `app/client/src/components/QueryBar.tsx`
+- `app/client/src/components/ResultsPanel.tsx`
+- `app/client/src/components/EventTicker.tsx`
+- `app/client/src/components/StrategistAlerts.tsx`
+- `app/client/src/components/ChatPanel.tsx`
+- `app/client/src/components/ActionBar.tsx`
+- `app/client/src/components/VictoryScreen.tsx`
 
 Understand the current code before making any changes. Then apply the modifications in this document in the order specified.
 
@@ -62,7 +64,7 @@ Output each file in the order specified in Section 3. Mark every file as MODIFIE
 
 ## 3. GENERATION ORDER
 
-Generate changes in this sequence. Each file must only reference types and components that already exist in the Slice 6 codebase or were generated earlier in this sequence.
+Generate changes in this sequence. Each file must only reference types and components that already exist in the `risk-dominion/app/` codebase (at `slice-6-complete`) or were generated earlier in this sequence.
 
 1. `server/src/lib.rs` (MODIFIED)
 2. `client/src/utils/replayEngine.ts` (NEW)
@@ -78,18 +80,25 @@ Generate changes in this sequence. Each file must only reference types and compo
 
 ### 4.1 `dimension_owner_change` — Add `ended_at`
 
-In the win condition block (where `unified_count >= WIN_UNIFIED_TERRITORIES`), add one line after setting `status` and `winner`:
+`dimension_owner_change` is a private Rust fn called inside the active reducer transaction (it is not itself a reducer). The win check fires when `unified >= WIN_UNIFIED_TERRITORIES` (5 unified territories, unified across all four dimensions: Military, Economic, Cultural, Covert; Covert never counts toward unification). The `game_state` table is a key-value table (`pub key: String` primary key, `pub value: String`) read/written through the `set_game_value` / `game_value` helpers. `started_at` is already stored as a millis-since-epoch string via `set_game_value(ctx, "started_at", &ts.to_string())`.
+
+Add one line inside the existing win block, after setting `status` and `winner`, using `ctx.timestamp` (via the existing `now_millis(ctx)` helper, which returns `ctx.timestamp.to_micros_since_unix_epoch() / 1000`):
 
 ```rust
-// Existing:
-game_state set key='status' to 'ended'
-game_state set key='winner' to player_name
-
-// NEW:
-game_state set key='ended_at' to current_timestamp_ms
+fn dimension_owner_change(ctx: &ReducerContext, new_owner: i32) {
+    // ... existing unification count across all four dimensions ...
+    if unified >= WIN_UNIFIED_TERRITORIES {
+        let winner_name = player_display_name(ctx, new_owner);
+        set_game_value(ctx, "status", "ended");
+        set_game_value(ctx, "winner", &winner_name);
+        // NEW: record the timeline end bound for replay (deterministic ctx.timestamp).
+        set_game_value(ctx, "ended_at", &now_millis(ctx).to_string());
+        log::info!("Game over: {winner_name} unified {unified} territories.");
+    }
+}
 ```
 
-Use the same timestamp function used elsewhere in the server. No other server changes.
+Use `ctx.timestamp` (never wall-clock / `SystemTime`). No other server changes. No new reducers, procedures, or tables.
 
 ---
 
@@ -131,7 +140,7 @@ function buildSnapshot(state: ReplaySnapshot, timestamp: number): void
 2. Clone that snapshot as the starting state.
 3. Collect all events with `timestamp > snapshotTime && timestamp <= targetTimestamp`, sorted by timestamp.
 4. For each event:
-   - Apply AI actions from `aiActions` where `cycle_at` falls in this time window. Use `actions_taken` JSON to update the reconstructed dimension tables.
+   - Apply AI actions from `aiActions` where `cycleAt` falls in this time window. Use the `actionsTaken` JSON to update the reconstructed dimension tables.
    - Apply player actions from `events`. Ownership changes are extracted from event text and `territory_id`/`player_id` fields. Numerical values are approximated (troop counts reset to defaults on ownership change, capital incremented by approximate amounts).
    - Apply cultural flips from events with `event_type === 'cultural'`.
 5. Recalculate `unifiedCounts` from the reconstructed dimension tables.
@@ -142,7 +151,7 @@ function buildSnapshot(state: ReplaySnapshot, timestamp: number): void
 - Stores the current reconstructed state in the `snapshots` Map keyed by timestamp.
 - The Map is passed by reference and mutated in place.
 
-**Approximation note:** Player-caused numerical changes (exact troop counts, capital values) are approximated because `event_feed` stores narrative text, not numerical deltas. AI-caused changes are exact from `ai_reasoning_log.actions_taken`. This is an acceptable tradeoff. Full player action logging is a future enhancement.
+**Approximation note:** Player-caused numerical changes (exact troop counts, capital values) are approximated because `event_feed` stores narrative text, not numerical deltas. AI-caused changes are exact from `ai_reasoning_log` (the `actionsTaken` JSON in TS). This is an acceptable tradeoff. Full player action logging is a future enhancement.
 
 ---
 
@@ -178,22 +187,22 @@ interface SpectatorOverlayProps {
 - Header: "DIMENSION CONTROL" in Orbitron, 11px, `text-accent`.
 - Per dimension: dimension name + horizontal bar showing each player's percentage.
 - Bar segments colored by player color, widths proportional to `(count / 12) * 100`.
-- Data: count `owner_id` per dimension table.
+- Data: count `ownerId` per dimension table (camelCase TS field).
 
 **Trust Score Summary:**
 - Header: "TRUST SCORES" in Orbitron, 11px, `text-accent`.
 - Per AI (players 2, 3, 4): AI name + for each other player, show trust score as a small bar (0-100).
-- Data: `aiTrust` filtered by `ai_player_id`.
+- Data: `aiTrust` filtered by `aiPlayerId`.
 
 **Cultural Hotspots:**
 - Header: "CULTURAL HOTSPOTS" in Orbitron, 11px, `text-accent`.
-- Top 3 territories by `influence_pct` where `cultural.owner_id !== military.owner_id`.
+- Top 3 territories by `influencePct` where `cultural.ownerId !== military.ownerId`.
 - Each: territory name, influence %, cultural owner name.
 - Data: `cultural` joined with `military`.
 
 **AI Cycle Status:**
 - Header: "AI STATUS" in Orbitron, 11px, `text-accent`.
-- Per AI: name + status ("idle" or "thinking..." when `cycle_status === 'pending'`).
+- Per AI: name + status ("idle" or "thinking..." when `cycleStatus === 'pending'`).
 - Data: `aiState`.
 
 **Recent Events:**
@@ -226,8 +235,8 @@ interface ReplayControlsProps {
 - Full width horizontal track. Background: `bg-surface`. Border: 1px `#334455`. Border-radius: 4px.
 - Time markers: small ticks every 30 seconds. Labels in JetBrains Mono, 8px, `text-secondary`.
 - Event markers: small circles (6px diameter) at each event's timestamp position. Position calculated as `((event.timestamp - startedAt) / (endedAt - startedAt)) * 100` percent from left.
-  - Colors by event_type: military=#FF6666, economic=#FFCC44, cultural=#44DDAA, covert=#AA44FF, chat=#44CC66, victory/system=#FFD700.
-  - Hover: tooltip showing `event_text` in JetBrains Mono, 10px, dark background.
+  - Colors by `eventType` (camelCase TS field): military=#FF6666, economic=#FFCC44, cultural=#44DDAA, covert=#AA44FF, chat=#44CC66, victory/system=#FFD700.
+  - Hover: tooltip showing `eventText` in JetBrains Mono, 10px, dark background.
   - Click: calls `onSeek(event.timestamp)`.
 - Playhead: vertical white line (2px) with a small triangle handle at top (8px). Position calculated same as event markers. Draggable — on mousedown, track mouse movement, calculate timestamp from position, call `onSeek`.
 
@@ -248,7 +257,7 @@ interface ReplayControlsProps {
 **New optional prop:** `currentTimestamp: number | null`. Default `null`.
 
 **When `currentTimestamp` is provided (replay mode):**
-- Query `ai_reasoning_log` for rows with `cycle_at <= currentTimestamp`, grouped by `ai_player_id` and `cycle_at`.
+- Query the `ai_reasoning_log` rows (camelCase fields in TS, e.g. `cycleAt`, `aiPlayerId`, `actionsTaken`) for rows with `cycleAt <= currentTimestamp`, grouped by `aiPlayerId` and `cycleAt`.
 - For each AI button, when clicked, show the most recent complete cycle before `currentTimestamp`.
 - If `currentTimestamp` falls between cycles, show the last completed cycle.
 - The deliberation chain display rendering is unchanged.
@@ -293,9 +302,11 @@ const [replayState, setReplayState] = useState<ReplaySnapshot | null>(null);
 ```
 
 **Replay initialization (useEffect, runs once when mode === 'replay'):**
-- Read `startedAt` and `endedAt` from `gameState`.
-- If `gameState.status !== 'ended'`: set a flag `replayUnavailable = true`.
+- `game_state` is key-value, surfaced as `gameState` rows from `useTable(tables.game_state)`. Read values with `gameState.find((r) => r.key === 'started_at')?.value` etc. The stored value is a millis-since-epoch string; parse with `Number(...)`.
+- Read `startedAt` (`started_at`) and `endedAt` (`ended_at`) this way.
+- If the `status` value is not `'ended'`: set a flag `replayUnavailable = true`.
 - If ended: build initial snapshot from seed data at `startedAt`. Set `currentTimestamp = startedAt`. Build initial replay state.
+- The replay timeline reads from `event_feed` (subscribed via `useTable(tables.event_feed)`), ordered by `timestamp`. Generated TS row/field names are camelCase (e.g. `playerId`, `territoryId`, `eventType`, `cycleAt`); use the names emitted in `module_bindings`.
 
 **Replay unavailable render:**
 ```typescript
@@ -372,15 +383,15 @@ useEffect(() => {
 
 ## 8. GENERATION RULES
 
-1. **Modify existing files in place.** Read each file before modifying. Preserve all Slice 6 functionality not explicitly changed.
+1. **Modify existing files in place** in the `risk-dominion/app/` codebase. Read each file before modifying. Preserve all functionality from prior slices not explicitly changed.
 2. **Mark every output file** as MODIFIED or NEW at the top.
-3. **All arithmetic is integer arithmetic.** No floats in Rust.
-4. **SpacetimeDB macros:** `#[spacetimedb(table)]`, `#[spacetimedb(reducer)]`, `#[spacetimedb(scheduled)]`.
-5. **Tailwind CSS for all styling.** Use design tokens from `../AESTHETIC.md`.
+3. **All server-side arithmetic is integer arithmetic.** No floats in Rust.
+4. **SpacetimeDB 2.4.1 macros (server side):** tables are `#[spacetimedb::table(accessor = name, public)]` on a `pub struct` with column attrs (`#[primary_key]`, `#[auto_inc]`, `#[unique]`, `#[index(btree)]`); reducers are `#[spacetimedb::reducer] fn f(ctx: &ReducerContext, ...) -> Result<(), String>`. Slice 7 changes no table or reducer signatures; it only adds one `set_game_value(ctx, "ended_at", ...)` line inside the existing `dimension_owner_change` private fn.
+5. **Tailwind CSS for all styling.** Use design tokens from `../AESTHETIC.md` (relative to the slice docs; the app lives at `risk-dominion/app/client`).
 6. **No emojis. No em dashes. No custom CSS files.**
-7. **Replay state reconstruction is client-side only.** No new server endpoints.
+7. **Replay state reconstruction is client-side only.** No new server endpoints, reducers, or procedures. The client uses the `spacetimedb` npm package, `useTable` hooks, and reads `event_feed` for the replay timeline.
 8. **Player action numerical values are approximated** in replay. Acknowledge this in code comments.
-9. **This is the final slice.** Generate everything specified. No placeholders.
+9. **This is Slice 7 of 7, the final slice.** Generate everything specified. No placeholders.
 
 ---
 
@@ -413,4 +424,4 @@ After applying all modifications, the Slice 7 application must:
 
 ## End of Slice 7 Masterplan
 
-Read the existing Slice 6 codebase. Apply every modification specified above in the order specified. Output every changed file with MODIFIED or NEW at the top. This is the final slice. After generation, Risk: Dominion is complete. Generate now.
+Read the existing `risk-dominion/app/` codebase (at `slice-6-complete`). Apply every modification specified above in the order specified. Output every changed file with MODIFIED or NEW at the top. This is Slice 7 of 7, the final slice. After generation, Risk: Dominion is complete. Generate now.

@@ -8,7 +8,7 @@
 
 ## Principle 0: Validate Before You Build On It
 
-Slice 1 is the foundation for Slices 2, 3, and 4. Every subsequent slice adds systems to this codebase. If Slice 1 has a bug — a miswired subscription, a reducer that returns the wrong shape, a territory that renders the wrong color — that bug will compound. A broken military attack in Slice 1 becomes a broken AI opponent in Slice 2 becomes a broken query system in Slice 4.
+Slice 1 is the foundation for Slices 2 through 7. Every subsequent slice grows this same codebase in place (the single `risk-dominion/app/` application). If Slice 1 has a bug, a miswired subscription, a reducer that returns the wrong `Err`, a territory that renders the wrong color, that bug will compound. A broken military attack in Slice 1 becomes a broken AI opponent in Slice 2 becomes a broken query system in Slice 4.
 
 The rule: Slice 1 must pass every test step, compile cleanly, and have zero known showstopper bugs before Slice 2 generation begins. No exceptions.
 
@@ -164,20 +164,20 @@ When a test step fails, find the symptom below. Check the listed files and cause
 
 | Step | Symptom | Most Likely Cause | Check |
 |------|---------|-------------------|-------|
-| 1 | Server won't start | Rust compilation error | `server/src/lib.rs` — syntax, missing imports, SpacetimeDB macro usage |
-| 1 | Frontend white screen | JavaScript error, import failure | Browser console. Check `App.tsx`, `main.tsx`, `package.json` dependencies |
-| 1 | No WebSocket connection | Wrong SpacetimeDB URI | Environment variable `SPACETIMEDB_URI`. Check `useSubscriptions.ts` connection config |
-| 2 | Map is blank | Subscriptions not delivering data | `useSubscriptions.ts` — are subscribe calls correct? Server logs — are tables populated? |
+| 1 | Server won't start | Rust compilation error | `app/server/src/lib.rs`: syntax, missing imports, `#[spacetimedb::table]` / `#[spacetimedb::reducer]` macro usage |
+| 1 | Frontend white screen | JavaScript error, import failure | Browser console. Check `App.tsx`, `main.tsx`, `connection.ts`, `package.json` dependencies, and that `module_bindings` was generated |
+| 1 | No WebSocket connection | Wrong SpacetimeDB URI | `VITE_SPACETIMEDB_URI` / `VITE_MODULE_NAME` env vars. Check `connection.ts` builder config |
+| 2 | Map is blank | Subscriptions not delivering data | `useSubscriptions.ts`: are the `useTable(tables.x)` calls correct and is `isReady` true? Server logs: are tables populated? |
 | 2 | Territory colors wrong | Seed data mismatch | `start_game` reducer — compare inserted values against Interface Contract Section 3 |
 | 2 | Victory tracker shows 0/3 | Client unified count calculation | `territoryHelpers.ts` — `countUnifiedTerritories` function logic |
 | 2 | Card hand empty | Action points not 5 | `players` table subscription — is action_points = 5 after start_game? |
 | 3 | Player 2 sees different state | Two tabs on different SpacetimeDB instances | Check both tabs use same URI. Check `start_game` not re-seeding |
-| 3 | Player 2 has no cards | Player 2 subscription filtered incorrectly | `useSubscriptions.ts` — is player_id filter working? |
-| 4 | Attack doesn't change territory | Reducer validation failed silently | Server logs — is reducer returning error? Check browser console for reducer response |
-| 4 | Attack succeeds but map doesn't update | Subscription not triggering re-render | `useSubscriptions.ts` — is state being set on update? React rendering — is Map re-rendering? |
+| 3 | Player 2 has no cards | Player 2 not selecting its own row | `App.tsx`: is the current player picked by `playerId` from the URL (the `players` table is subscribed in full, not server-filtered)? |
+| 4 | Attack doesn't change territory | Reducer validation failed silently | Server logs: is the reducer returning `Err(..)`? Check the browser console for the rejected `useReducer` promise message |
+| 4 | Attack succeeds but map doesn't update | Subscription not triggering re-render | `useSubscriptions.ts`: are the `useTable` rows flowing into props? React rendering: is Map re-rendering? |
 | 4 | Second tab doesn't see change | Subscription latency or missed update | Wait 2 seconds. If still not visible, check both tabs' WebSocket connections |
 | 5 | Capital doesn't increase | Reducer not applying invest amount | `economic_invest` reducer — is +5 being added? Check for integer overflow |
-| 6 | Points don't regenerate | Scheduled reducer not firing | Server logs — is `regenerate_action_points` on an 8-second timer? Check `#[spacetimedb(scheduled)]` interval |
+| 6 | Points don't regenerate | Scheduled reducer not firing | Server logs: is `regenerate_action_points` firing? Check the `regen_timer` scheduled table was inserted in `start_game` with `ScheduleAt::Interval` of 8 seconds |
 | 6 | Points regenerate too fast | Interval misconfigured | Check `ACTION_REGEN_SECONDS` constant value (should be 8) |
 | 7 | Victory doesn't trigger at 3 | Win check logic error | `dimension_owner_change` — is it counting unified territories correctly? Check query logic |
 | 7 | Victory triggers but overlay doesn't show | game_state subscription not updating | `App.tsx` — is it subscribed to `game_state`? Is the VictoryScreen component conditionally rendering on `status === 'ended'`? |
@@ -193,9 +193,9 @@ After the test script passes completely, address issues in this order before pro
 
 Anything that would prevent Slice 2 from building on this codebase:
 - Server crashes under any condition.
-- Reducers return unexpected shapes.
+- Reducers do not return `Result<(), String>` correctly (a validation failure must be an `Err`, not a silent no-op).
 - Subscriptions fail to deliver updates reliably.
-- The codebase does not compile cleanly (`cargo build` and `npm run build` must succeed with zero errors).
+- The codebase does not compile cleanly (`spacetime build` / `cargo build` and `npm run build` must succeed with zero errors).
 
 ### Priority 2: Visual and UX Issues
 
@@ -229,10 +229,10 @@ Visual improvements that make the demo look finished:
 Before generating Slice 2, all of the following must be true:
 
 1. **All 7 test steps pass** with no workarounds or manual interventions.
-2. **Server compiles** with `cargo build` — zero errors, zero warnings preferred.
+2. **Server compiles** with `spacetime build` (or `cargo build`): zero errors, zero warnings preferred.
 3. **Client compiles** with `npm run build` — zero errors.
 4. **No known showstopper bugs** remain. Any bug discovered during testing is either fixed or documented with a plan to fix before Slice 2 generation.
-5. **The codebase is committed** to version control. Slice 2 generation modifies this codebase. A clean rollback point exists.
+5. **The codebase is committed** to version control and tagged `slice-1-complete`. Slice 2 generation modifies this same `risk-dominion/app/` codebase in place, so a clean tagged rollback point must exist.
 
 If any condition is not met, do not proceed to Slice 2. Fix the issue, re-run the test script, and re-evaluate.
 

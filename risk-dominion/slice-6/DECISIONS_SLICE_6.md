@@ -74,9 +74,11 @@ The Strategist is not omniscient. If the player has no agents in the relevant te
 
 ### Chat Messages
 
-Every message is stored in a `chat_log` table. The table records who sent it, when, what they said, and whether it was truthful. The truth value is stored server-side but never exposed to any client. It exists only for AI trust evaluation and for post-game analysis.
+Every message is stored across two tables. The public `chat_log` table records who sent it, when, what they said, and which territory it references. A separate non-public `chat_secret` table records whether the message was truthful (`is_deception`) and its structured `claimed_fact`. The truth value is never exposed to any client: it is not a column of the public table at all, and clients cannot subscribe to the secret table. It exists only for AI trust evaluation, the Strategist's server-side analysis, and post-game review.
 
-A `recipient_id` field distinguishes public messages (NULL, visible to all) from direct messages (set to the target player's ID, visible only to sender and recipient). The Strategist can only analyze DMs the player sends or receives. The player cannot see DMs between AI opponents.
+This table split is deliberate. SpacetimeDB has no per-subscriber column projection on a public table and no way to hide a column from some subscribers. Privacy must be structural: public-safe fields in the public table, secrets in a separate server-only table.
+
+A `recipient_id` field distinguishes public messages (0, visible to all) from direct messages (set to the target player's ID, visible only to sender and recipient). DM scoping is enforced by the client's subscription row filter, which only matches rows where the client is the sender or recipient (or the message is global). The Strategist can only analyze DMs the player sends or receives. The player cannot see DMs between AI opponents.
 
 ### Trust Scores
 
@@ -88,17 +90,17 @@ Every AI maintains a trust score for every other player in an `ai_trust` table. 
 
 The AI's 60-second reasoning cycle already handles action selection. In Slice 6, it also handles communication.
 
-At the start of each cycle, before the commander prompt is built, the AI evaluates any new chat messages. It cross-references claims against its agent network. It updates trust scores accordingly.
+The reasoning cycle is a scheduled procedure (the only function type allowed to make HTTP calls to Claude, via `ctx.http`). At the start of each cycle, before the commander prompt is built, the AI evaluates any new chat messages inside the snapshot transaction. It cross-references claims against its agent network. It updates trust scores accordingly.
 
 The commander prompt — which already includes the full game state, specialist recommendations, and persona context — now also includes the last ten chat messages and the AI's current trust scores. The commander decides not just what actions to take, but what to say. The output includes an optional chat message. If the AI has nothing useful to say, it stays silent.
 
-A chat message is not a separate Claude call. It is one more decision in the existing cycle. What the AI says should align with what it is about to do. If the Consortium is preparing an economic takeover, it should be sending false reassurances in the same breath.
+A chat message is not a separate Claude call and not a reducer. It is one more field in the commander's single response, written directly into the chat tables in the same commit transaction that applies the AI's actions. What the AI says should align with what it is about to do. If the Consortium is preparing an economic takeover, it should be sending false reassurances in the same breath.
 
 ---
 
 ## 5. HOW THE STRATEGIST CYCLE CHANGES
 
-The Strategist's 60-second cycle already analyzes the game state for threats, opportunities, and weaknesses. In Slice 6, it also analyzes the chat.
+The Strategist's 60-second cycle (a procedure, since it calls Claude via `ctx.http`) already analyzes the game state for threats, opportunities, and weaknesses. In Slice 6, it also analyzes the chat. It may read the non-public `chat_secret` table server-side to ground its analysis, but never echoes those secret fields to the client.
 
 The Strategist prompt now includes the last ten chat messages and the player's current intel. For each message from an AI that contains a factual claim, the Strategist evaluates whether the player's agents confirm or contradict it. It generates chat analysis alerts alongside its existing notifications.
 
@@ -122,7 +124,7 @@ The player sees these as Strategist alerts with a new category: "Chat Analysis."
 | Strategist chat role | Proactively evaluates AI claims, flags likely deceptions, generates chat analysis alerts |
 | AI cycle change | Commander prompt extended with chat history, trust scores, and chat message output |
 | Strategist cycle change | Prompt extended with chat history and chat analysis output |
-| New tables | `chat_log`, `ai_trust` |
+| New tables | `chat_log` (public), `chat_secret` (non-public, holds is_deception/claimed_fact), `ai_trust` (surrogate id + btree index on (ai_player_id, target_player_id)) |
 | New component | `ChatPanel` |
 | Modified components | `StrategistAlerts` (new alert type), `App` (chat integration) |
 | DM system | Private one-to-one messages. recipient_id distinguishes public from private. |
@@ -139,7 +141,7 @@ The player sees these as Strategist alerts with a new category: "Chat Analysis."
 - Agent deployment: unchanged.
 - Cultural spread: unchanged.
 - Cross-dimension bonuses: unchanged.
-- Win condition: still 5 unified territories.
+- Win condition: still 5 unified territories across the 4 counting dimensions (Covert excluded).
 - AI action selection: unchanged. Chat is an additional output, not a replacement.
 - Query system: unchanged.
 - Event ticker: unchanged.
@@ -150,4 +152,4 @@ The player sees these as Strategist alerts with a new category: "Chat Analysis."
 
 ## End of Slice 6 Decisions Document
 
-This document, combined with DECISIONS_SLICE_1.md through DECISIONS_SLICE_5.md, contains the complete design philosophy for Risk: Dominion. All principles from prior slices not explicitly modified here remain in full effect. The next document is the Slice 6 Interface Contract.
+This document, combined with DECISIONS_SLICE_1.md through DECISIONS_SLICE_5.md, carries the design philosophy for Risk: Dominion through Slice 6 of 7. Slice 7 (spectator and replay) adds the final layer. All principles from prior slices not explicitly modified here remain in full effect. The next document is the Slice 6 Interface Contract.

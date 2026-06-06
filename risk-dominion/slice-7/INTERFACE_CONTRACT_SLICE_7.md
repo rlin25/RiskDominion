@@ -1,14 +1,15 @@
 # RISK: DOMINION — SLICE 7 INTERFACE CONTRACT
 
 ## Version 1.0
-## Scope: Spectator Mode, Replay System, Complete Transparency
-## Target: Claude Code Generation — Modifying the Slice 6 Codebase
+## Scope: Spectator Mode, Replay System, Complete Transparency (Slice 7 of 7)
+## Target: Claude Code Generation — Modifying the `risk-dominion/app/` Codebase
+## Platform: SpacetimeDB 2.4.1
 
 ---
 
 ## 0. HOW TO READ THIS DOCUMENT
 
-This document specifies every table modification, component, and URL routing pattern that is **new or modified** in Slice 7. It does not repeat Slice 1–6 specifications.
+This document specifies every table modification, component, and URL routing pattern that is **new or modified** in Slice 7. It does not repeat Slice 1–6 specifications. The canonical code is the single evolving app at `risk-dominion/app/{server,client}` (at the `slice-6-complete` tag); modify it in place.
 
 **All prior tables, reducers, subscriptions, and constants remain in effect unless this document explicitly modifies them.** If a component is not mentioned here, it is unchanged from Slice 6.
 
@@ -20,18 +21,19 @@ Slice 7 adds no new gameplay. It adds visibility — spectator mode for live obs
 
 ### 1.1 `dimension_owner_change` — Add `ended_at`
 
-When the win check triggers (unified count >= 5), add one line:
+`dimension_owner_change` is a private Rust fn invoked inside the active reducer transaction (not a reducer itself). When the win check triggers (unified count >= 5, unified across all four dimensions), add one line using `ctx.timestamp`:
 
 ```rust
-// Existing:
-game_state set key='status' to 'ended'
-game_state set key='winner' to player_name
-
-// NEW:
-game_state set key='ended_at' to current_timestamp_ms
+if unified >= WIN_UNIFIED_TERRITORIES {
+    let winner_name = player_display_name(ctx, new_owner);
+    set_game_value(ctx, "status", "ended");
+    set_game_value(ctx, "winner", &winner_name);
+    // NEW: timeline end bound for replay.
+    set_game_value(ctx, "ended_at", &now_millis(ctx).to_string());
+}
 ```
 
-The `game_state` table is key-value. No schema change. Just one new row inserted.
+The `game_state` table is key-value (`pub key: String` primary key, `pub value: String`). No schema change. Just one new key-value pair written via the existing `set_game_value` helper, with the value being millis-since-epoch derived from `ctx.timestamp` (`now_millis` = `ctx.timestamp.to_micros_since_unix_epoch() / 1000`), matching how `started_at` is stored.
 
 ---
 
@@ -51,7 +53,7 @@ Spectator mode uses existing subscriptions. Replay mode reconstructs state clien
 | `?spectator=true` | Spectator | Read-only. No card dragging. No chat input. Stats overlay visible. |
 | `?replay=true` | Replay | Read-only. Timeline visible. No chat input. Requires game to have ended. |
 
-If `?replay=true` is accessed while `game_state.status !== 'ended'`, show a message: "Replay will be available after the game ends." Do not render replay controls.
+If `?replay=true` is accessed while the `game_state` `status` value is not `'ended'`, show a message: "Replay will be available after the game ends." Do not render replay controls. (`game_state` is key-value; read the status with `gameState.find((r) => r.key === 'status')?.value`.)
 
 ---
 
@@ -62,10 +64,10 @@ The replay reconstructs game state at any timestamp by starting from the initial
 ### 4.1 Data Sources
 
 - **Initial state:** Same seed data as `start_game` (all four dimension tables, player data, game_state).
-- **AI actions:** From `ai_reasoning_log.actions_taken` JSON. These are exact — the replay can reproduce AI-caused state changes precisely.
-- **Player actions:** From `event_feed`. Ownership changes are accurate (the event names the territory and dimension). Exact numerical values (troop counts, capital amounts) are approximated. This is a known limitation — player action logging at the same fidelity as AI logging is a future enhancement.
+- **AI actions:** From the `ai_reasoning_log` rows (the `actionsTaken` JSON in TS bindings). These are exact — the replay can reproduce AI-caused state changes precisely.
+- **Player actions:** From `event_feed` (subscribed via `useTable(tables.event_feed)`). Ownership changes are accurate (the event names the territory and dimension). Exact numerical values (troop counts, capital amounts) are approximated. This is a known limitation — player action logging at the same fidelity as AI logging is a future enhancement.
 - **Cultural spread:** From `event_feed` cultural flip events. The replay knows when flips occurred.
-- **Timeline events:** From `event_feed`, ordered by `timestamp`.
+- **Timeline events:** From `event_feed`, ordered by `timestamp`. Generated TS row/field names are camelCase (`eventType`, `eventText`, `playerId`, `territoryId`, `cycleAt`).
 
 ### 4.2 Snapshot Caching
 
@@ -106,20 +108,20 @@ function reconstructState(targetTimestamp):
 **Dimension Dominance:**
 - Per dimension: percentage each player controls.
 - Display as horizontal bar chart or percentage numbers.
-- Data: count `owner_id` per dimension table, divide by 12.
+- Data: count `ownerId` per dimension table (camelCase TS field), divide by 12.
 
 **Trust Score Summary:**
 - Per AI (players 2, 3, 4): show trust scores for each other player.
 - Display as small bar or number: "Zhao trusts Player: 45/100".
-- Data: `aiTrust` filtered by `ai_player_id`.
+- Data: `aiTrust` filtered by `aiPlayerId`.
 
 **Cultural Hotspots:**
-- Top 3 territories by `influence_pct` where `cultural.owner_id !== military.owner_id`.
+- Top 3 territories by `influencePct` where `cultural.ownerId !== military.ownerId`.
 - Display territory name, influence percentage, cultural owner.
 - Data: `cultural` joined with `military`.
 
 **AI Cycle Status:**
-- Per AI: "idle" or "thinking..." (when `cycle_status === 'pending'`).
+- Per AI: "idle" or "thinking..." (when `cycleStatus === 'pending'`).
 - Data: `aiState`.
 
 **Recent Events:**
@@ -128,7 +130,7 @@ function reconstructState(targetTimestamp):
 
 **Styling:** Semi-transparent dark background (`bg-surface` at 90% opacity). Sections separated by thin dividers. Headers in Orbitron, 11px, `text-accent`. Data in JetBrains Mono, 10px, `text-primary`. Compact layout to fit alongside the map.
 
-**In replay mode:** All data filtered to `currentTimestamp`. Trust scores show the most recent `ai_trust` update before `currentTimestamp`. Cultural hotspots show the state at `currentTimestamp`. AI cycle status shows the state at `currentTimestamp`.
+**In replay mode:** All data filtered to `currentTimestamp`. Trust scores show the most recent `aiTrust` update before `currentTimestamp`. Cultural hotspots show the state at `currentTimestamp`. AI cycle status shows the state at `currentTimestamp`.
 
 ### 5.2 `ReplayControls.tsx` (NEW)
 
@@ -141,8 +143,8 @@ function reconstructState(targetTimestamp):
 - Background: `bg-surface` (#1A1A2E). Border: 1px `#334455`. Border-radius: 4px.
 - Time markers: small ticks at 30-second intervals with labels in JetBrains Mono, 8px, `text-secondary`.
 - Event markers: small colored dots (6px diameter) positioned along the timeline at each event's timestamp.
-  - Colors: military=#FF6666, economic=#FFCC44, cultural=#44DDAA, covert=#AA44FF, chat=#44CC66, victory/system=#FFD700.
-  - Hovering a dot: show tooltip with `event_text` in JetBrains Mono, 10px, on a dark background.
+  - Colors by `eventType` (camelCase TS field): military=#FF6666, economic=#FFCC44, cultural=#44DDAA, covert=#AA44FF, chat=#44CC66, victory/system=#FFD700.
+  - Hovering a dot: show tooltip with `eventText` in JetBrains Mono, 10px, on a dark background.
   - Clicking a dot: calls `onSeek(event.timestamp)`.
 - Playhead: a vertical white line (2px) with a triangle handle at the top. Positioned at `currentTimestamp` proportional to the timeline width. Draggable — on drag, calls `onSeek` with the calculated timestamp.
 
@@ -181,8 +183,9 @@ const [replaySnapshotCache] = useState<Map<number, ReplaySnapshot>>(new Map());
 ```
 
 **Replay initialization (on mount, if mode === 'replay'):**
-- Verify `gameState.status === 'ended'`. If not, set `replayUnavailable = true`.
-- Set `currentTimestamp = gameState.started_at`.
+- `game_state` is key-value; read values from the `gameState` rows returned by `useTable(tables.game_state)`, e.g. `gameState.find((r) => r.key === 'status')?.value`. The `started_at`/`ended_at` values are millis-since-epoch strings; parse with `Number(...)`.
+- Verify the `status` value is `'ended'`. If not, set `replayUnavailable = true`.
+- Set `currentTimestamp` to the parsed `started_at`.
 - Build initial snapshot cache from seed data at `started_at`.
 
 **Conditional rendering:**
@@ -192,7 +195,8 @@ const [replaySnapshotCache] = useState<Map<number, ReplaySnapshot>>(new Map());
 
 **Replay unavailable state:**
 ```typescript
-if (mode === 'replay' && gameState.status !== 'ended') {
+const status = gameState.find((r) => r.key === 'status')?.value ?? 'active';
+if (mode === 'replay' && status !== 'ended') {
   return <div>Replay will be available after the game ends.</div>;
 }
 ```
@@ -202,7 +206,7 @@ if (mode === 'replay' && gameState.status !== 'ended') {
 **New optional prop:** `currentTimestamp: number | null`. Default `null`.
 
 **When `currentTimestamp` is provided (replay mode):**
-- Query `ai_reasoning_log` for rows with `cycle_at <= currentTimestamp`, grouped by `ai_player_id` and `cycle_at`.
+- Filter the `ai_reasoning_log` rows (camelCase TS fields) for `cycleAt <= currentTimestamp`, grouped by `aiPlayerId` and `cycleAt`.
 - For each AI, show the most recent complete cycle before `currentTimestamp`.
 - If `currentTimestamp` falls between cycles, show the last completed cycle.
 - The deliberation chain display is unchanged — it renders whatever data is passed to it.
@@ -224,9 +228,9 @@ if (mode === 'replay' && gameState.status !== 'ended') {
 - `mode === 'player'`: Show input field and Send button.
 - `mode === 'spectator'` or `mode === 'replay'`: Hide input field and Send button.
 
-### 6.4 `useSubscriptions.ts` (MODIFIED)
+### 6.4 `useSubscriptions.ts` (UNCHANGED)
 
-No changes needed. Spectator mode uses the same subscriptions as player mode. Replay mode uses subscription data captured at load time.
+No changes needed. Spectator mode uses the same subscriptions as player mode. Replay mode uses subscription data captured at load time. The hook already exposes the tables Slice 7 reads (`military`, `economic`, `cultural`, `covert`, `players`, `game_state`, `event_feed`, `ai_reasoning_log`, `ai_state`, `ai_trust`, `chat_log`) via `useTable(tables.x)` from the `spacetimedb/react` package.
 
 ---
 
@@ -234,8 +238,8 @@ No changes needed. Spectator mode uses the same subscriptions as player mode. Re
 
 ### 7.1 Server
 
-- Modify `dimension_owner_change`: add `game_state` insert for `key='ended_at'` when the game ends.
-- No other server changes.
+- Modify `dimension_owner_change` (a private fn in the reducer tx): add `set_game_value(ctx, "ended_at", &now_millis(ctx).to_string())` when the game ends, using `ctx.timestamp`.
+- No other server changes. No new reducers, procedures, or tables.
 
 ### 7.2 Client
 
@@ -283,4 +287,4 @@ After applying all modifications, the Slice 7 application must:
 
 ## End of Slice 7 Interface Contract
 
-Modify the Slice 6 codebase as specified. Output every new and modified file. Indicate NEW or MODIFIED at the top of each file.
+Modify the `risk-dominion/app/` codebase (at `slice-6-complete`) as specified. Output every new and modified file. Indicate NEW or MODIFIED at the top of each file.

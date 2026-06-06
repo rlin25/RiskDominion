@@ -1,8 +1,9 @@
 # RISK: DOMINION — SLICE 2 DESIGN DECISIONS
 
-## Version 1.0
+## Version 2.0
 ## Scope: AI Opponents and Intel System
 ## Relationship: Extends DECISIONS_SLICE_1.md
+## Platform: SpacetimeDB 2.4.1
 
 ---
 
@@ -32,14 +33,16 @@ Slice 1 gave us a working two-player game. Two humans competed across Military a
 
 ### Modified Principle 2: Dimensions Are Tables
 
-Slice 1 had two dimension tables: `military` and `economic`. Slice 2 adds a third:
+Slice 1 had two dimension tables: `military` and `economic`. Slice 2 adds a third, a public SpacetimeDB table keyed by territory:
 
-```
-covert (
-    territory_id   INT PRIMARY KEY,
-    owner_id       INT NOT NULL,
-    agent_count    INT NOT NULL DEFAULT 0
-)
+```rust
+#[spacetimedb::table(accessor = covert, public)]
+pub struct Covert {
+    #[primary_key]
+    pub territory_id: i32,
+    pub owner_id: i32, // 0 means no agents present
+    pub agent_count: i32,
+}
 ```
 
 The Covert dimension represents your intelligence network. Agents deployed in a territory gather information about what the AI opponents are planning there. In a future slice, Covert will also provide combat bonuses. For Slice 2, its sole purpose is intel gathering.
@@ -76,11 +79,11 @@ This proves a core architectural claim: any faction in the game is just a player
 
 ### New Principle 5: AI as First-Class Database Citizens
 
-The three AI opponents live inside SpacetimeDB. They do not sit outside the system making API calls. They subscribe to the same live tables as the human. They write to the same reducer endpoints. Their reasoning — the actual text of what they are thinking — is stored in a database table called `ai_reasoning_log`. That table is queryable.
+The three AI opponents live inside SpacetimeDB. There is no external service polling the game and pushing moves in. Each AI's turn is driven by a scheduled procedure inside the module itself: the procedure reads the live board, calls Claude over HTTP via `ctx.http` (procedures are the only function type allowed to make HTTP calls), and applies the validated moves through the same action logic the human uses. Their reasoning — the actual text of what they are thinking — is stored in a database table called `ai_reasoning_log`. That table is queryable.
 
 Each AI has a distinct personality that shapes how it plays. A personality is not a special ability. It is a preference. Given the same board state, Zhao will reach for a military attack. The Consortium will reach for an economic investment. The Prophet will deploy an agent to see what everyone else is doing. They all have access to the same actions. They all pay the same costs. They just prioritize differently.
 
-The AI does not cheat. It does not get extra action points. It does not bypass adjacency rules. It submits actions to the same reducers the human uses, and those reducers validate the AI's actions exactly as they would validate a human's. If an AI tries to attack a non-adjacent territory, the reducer rejects it. If an AI runs out of action points, it must wait for regeneration like everyone else.
+The AI does not cheat. It does not get extra action points. It does not bypass adjacency rules. Its moves run through the exact same action logic the human's reducers use (the shared `do_military_attack` / `do_economic_invest` / `do_deploy_agent` fns), so they are validated identically. If an AI tries to attack a non-adjacent territory, the action is rejected. If an AI runs out of action points, it must wait for regeneration like everyone else.
 
 The AI's reasoning is persistent. Every 60 seconds, each AI writes its full thought process to the database. This is not a log file on a server somewhere. It is a live table row that the human can query — if they have earned the right to see it.
 
@@ -102,13 +105,13 @@ The AI does not think continuously. It thinks in cycles. Every 60 seconds, each 
 - The Consortium thinks at 20 seconds, 80 seconds, 140 seconds...
 - The Prophet thinks at 40 seconds, 100 seconds, 160 seconds...
 
-When an AI's cycle fires, the server sends its current view of the game to Claude (the LLM), along with the AI's persona description. The server does not wait for a response. It sets the AI's status to "thinking" and immediately returns control to the game. The human can keep playing. Other AIs can keep thinking. Nothing freezes.
+When an AI's cycle fires, the scheduled procedure does three things in order. First, in one short transaction, it snapshots the current board into a persona-flavored prompt, marks the AI "pending", and re-arms the next cycle. Then, with no transaction held open, it sends that prompt to Claude and waits for the reply. Because no transaction is held during the call, the database is never locked while an AI is thinking. The human can keep playing. Other AIs can keep thinking. Nothing freezes.
 
-When Claude responds, the AI's proposed actions are validated against the current board state. If the AI proposed attacking a territory it no longer borders (because the human took it while the AI was thinking), that action is rejected. Valid actions are applied. Results are written to the reasoning log.
+When Claude responds, the procedure opens a second transaction and validates the proposed actions against the current board state. If the AI proposed attacking a territory it no longer borders (because the human took it while the AI was thinking), that action is rejected. Valid actions are applied. Results are written to the reasoning log.
 
-If Claude takes more than 30 seconds to respond, the cycle times out. The AI misses that turn. The game announces: "Zhao's command appears to be in disarray." The next cycle proceeds normally. The AI does not get to bank extra actions.
+If Claude takes more than 30 seconds to respond, the call times out and returns an error. The AI misses that turn, its status is reset to idle, and the next cycle proceeds normally. The AI does not get to bank extra actions.
 
-If a new cycle fires while the previous one is still thinking, the new cycle is skipped. No queue builds up. No cascading delays. The AI simply waits for the next scheduled cycle.
+If a new cycle fires while the previous one is still thinking, the "pending" guard makes the new cycle skip. No queue builds up. No cascading delays. The AI simply waits for the next scheduled cycle.
 
 The AI has the same action point regeneration as the human: 1 point every 8 seconds, capped at 10. When the AI submits actions, it can only spend points it actually has. It cannot go into debt. It cannot borrow from future cycles.
 
@@ -157,7 +160,7 @@ Notice that each AI starts with 1 agent in its home territory. You start with 1 
 
 Unchanged from Slice 1: first to unify 3 territories wins. A territory is unified when the same player owns both Military and Economic. Covert ownership does not count toward unification — it is a support dimension, not a victory dimension.
 
-This will change in Slice 3 when Cultural arrives and the threshold increases to 5 territories across all four dimensions. For Slice 2, the win condition stays at 3.
+This will change in Slice 3 when Cultural arrives and the threshold increases to 5 territories unified across all four dimensions. For Slices 1 and 2, the win condition stays at 3 territories unified across the 2 victory dimensions (Military + Economic). Covert never counts toward unification, in this slice or any later one. This is Slice 2 of 7.
 
 ---
 
@@ -182,14 +185,17 @@ This will change in Slice 3 when Cultural arrives and the threshold increases to
 | AI identity | `is_ai` boolean on players table |
 | New dimension | Covert (agent_count per territory) |
 | New card | Deploy Agent (purple, no adjacency restriction) |
-| AI cycle interval | 60 seconds per AI |
-| AI stagger | 20 seconds between AIs |
+| AI execution | Scheduled procedure per AI, calls Claude via `ctx.http` |
+| AI cycle interval | ~60 seconds per AI (self-pacing chain) |
+| AI stagger | 20 seconds between AIs (seeded first-fire) |
 | AI LLM timeout | 30 seconds |
-| AI overlap | Skip cycle if previous still pending |
-| AI action budget | Same 1pt/8sec regen as human |
+| AI overlap | Skip cycle if previous still pending (pending guard) |
+| AI action budget | Same 1pt/8sec regen as human; shared `do_*` action logic |
+| API key storage | Private `module_config` table, seeded via `set_config` |
+| AI model | `claude-sonnet-4-6` |
 | AI reasoning storage | `ai_reasoning_log` table, queryable |
 | Intel threshold | 3 agents in a territory where AI has presence |
-| Intel query | `get_intel(ai_player_id)` returns reasoning or "insufficient" |
+| Intel query | `get_intel(ai_player_id)` procedure returns reasoning or "insufficient" |
 | AI personas | Zhao (military), Consortium (economic), Prophet (agent-focused) |
 | Home territories | 4 total (one per player), each with 1 agent |
 | Win condition | Unchanged: 3 unified territories |
@@ -202,7 +208,7 @@ The AI architecture in Slice 2 uses a single reasoning agent per opponent. One A
 
 In a future slice, each AI opponent could be expanded into a small team of specialist subordinates. A military advisor. An economic forecaster. An intel analyst. Multiple agents per faction, coordinated by a commander agent. The human player could also receive an AI strategist subordinate — an advisor that watches the game state and warns of threats.
 
-The database schema already supports this. The `ai_reasoning_log` table can track which subordinate produced which reasoning. The orchestration layer would be a new reducer that spawns multiple LLM calls and synthesizes their output.
+The database schema already supports this. The `ai_reasoning_log` table can track which subordinate produced which reasoning. The orchestration layer would be a new procedure that makes multiple Claude calls (each via `ctx.http`) and synthesizes their output.
 
 This is not in scope for Slice 2. But everything we build now is designed to support it later.
 

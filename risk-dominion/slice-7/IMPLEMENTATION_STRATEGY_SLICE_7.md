@@ -1,8 +1,9 @@
 # RISK: DOMINION — SLICE 7 IMPLEMENTATION STRATEGY
 
 ## Version 1.0
-## Scope: Spectator Mode, Replay System, Complete Transparency
+## Scope: Spectator Mode, Replay System, Complete Transparency (Slice 7 of 7)
 ## Target: Human Team — After Claude Code Generation
+## Platform: SpacetimeDB 2.4.1
 
 ---
 
@@ -34,10 +35,10 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 ### Prerequisites
 
-- SpacetimeDB server is running.
-- Frontend dev server is running.
+- SpacetimeDB server is running (2.4.1; the `risk-dominion` module published from `app/server`).
+- Frontend dev server is running (`app/client`, Vite).
 - One browser tab open to `http://localhost:5173` (no URL parameters — player mode).
-- Anthropic API key configured in `.env`.
+- Anthropic API key seeded into the private `module_config` table via `spacetime call risk-dominion set_config '"anthropic_api_key"' '"sk-ant-..."'` (the key never appears in source and is not exposed to clients).
 
 ---
 
@@ -123,12 +124,12 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - Dimension dominance percentages add up to approximately 100% per dimension.
 - Trust scores appear as numbers or small bars for each AI relationship.
 - Cultural hotspots list territories with the highest foreign influence.
-- AI cycle status shows "idle" or "thinking..." for each AI. When an AI is mid-cycle, its status should show "thinking..." or "pending."
+- AI cycle status shows "idle" or "thinking..." for each AI. When an AI is mid-cycle, its `cycleStatus` should be `'pending'`.
 - Recent events match the last few lines in the player's ticker.
 
-**If stats are wrong:** Check the data sources in `SpectatorOverlay.tsx`. Verify the subscription data is being passed correctly. In replay mode, check that time filtering is applied.
+**If stats are wrong:** Check the data sources in `SpectatorOverlay.tsx`. Verify the `useTable` subscription data is being passed correctly. In replay mode, check that time filtering is applied.
 
-**If AI cycle status never shows "thinking":** The `ai_state` table may not be subscribed. Check `useSubscriptions.ts`.
+**If AI cycle status never shows "thinking":** The `ai_state` table may not be subscribed. Check `useSubscriptions.ts` (`useTable(tables.ai_state)`).
 
 ---
 
@@ -156,13 +157,13 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **Action:** In the player tab, play until victory (or temporarily lower win threshold). Note that the game ends and victory screen appears.
 
-**Expected Result:** Victory screen appears in player tab. Spectator tabs show the victory state. The `game_state` table now has `ended_at` set.
+**Expected Result:** Victory screen appears in player tab. Spectator tabs show the victory state. The `game_state` table now has an `ended_at` key set (written by `dimension_owner_change` from `ctx.timestamp`).
 
 **Action:** Open a new tab to `http://localhost:5173/?replay=true`.
 
 **Expected Result:** Replay mode loads. Timeline bar visible at the bottom. ReplayControls visible. Map shows the initial seed state (or the start of game state). No "Replay unavailable" message.
 
-**If "Replay unavailable" appears:** Check that `game_state.status` is `'ended'` and `ended_at` key exists. Check the conditional in `App.tsx`.
+**If "Replay unavailable" appears:** Check that the `game_state` `status` value is `'ended'` and the `ended_at` key exists (read via `gameState.find((r) => r.key === 'status')?.value`). Check the conditional in `App.tsx`.
 
 ---
 
@@ -177,9 +178,9 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - Hovering a dot shows a tooltip with the event text.
 - Clicking a dot moves the playhead to that position and updates the map.
 
-**If timeline is empty:** Check `event_feed` data. Check that `started_at` and `ended_at` timestamps are valid. Check that events are sorted by timestamp.
+**If timeline is empty:** Check `event_feed` data. Check that the `started_at` and `ended_at` values parse to valid millis. Check that events are sorted by `timestamp`.
 
-**If dots are all one color:** Check the `event_type` field mapping to colors.
+**If dots are all one color:** Check the `eventType` field mapping to colors (camelCase TS field).
 
 **If clicking a dot doesn't jump:** Check `onSeek` handler in `ReplayControls`. Check that `currentTimestamp` state updates in `App.tsx`.
 
@@ -195,7 +196,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 - If you scrub to a point between cycles, it shows the last completed cycle.
 - The deliberation chain matches what the AI actually did at that moment in the game.
 
-**If intel shows current data instead of historical:** Check that `currentTimestamp` prop is passed to `IntelPanel`. Check the time filtering logic — it must query `ai_reasoning_log` with `cycle_at <= currentTimestamp`.
+**If intel shows current data instead of historical:** Check that `currentTimestamp` prop is passed to `IntelPanel`. Check the time filtering logic — it must filter the `ai_reasoning_log` rows with `cycleAt <= currentTimestamp` (camelCase TS field).
 
 **If deliberation is empty:** The `ai_reasoning_log` may not have rows for that time period. Scrub to a later timestamp after the AI's first cycle completed.
 
@@ -245,7 +246,7 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 
 **Expected Result:** A message appears: "Replay will be available after the game ends." No timeline. No replay controls. No map reconstruction.
 
-**If replay loads anyway:** Check the conditional in `App.tsx` — `if (mode === 'replay' && gameState.status !== 'ended')`.
+**If replay loads anyway:** Check the conditional in `App.tsx` — it must read the key-value status (`const status = gameState.find((r) => r.key === 'status')?.value`) and gate on `mode === 'replay' && status !== 'ended'`.
 
 ---
 
@@ -265,12 +266,12 @@ Execute Part A first. If any step fails, stop and fix before proceeding to Part 
 | B3 | Spectator doesn't update live | Different server instance or broken subscription | Check both tabs use same SpacetimeDB URI. |
 | B5 | Replay shows "unavailable" after game ended | ended_at not set | Check dimension_owner_change for ended_at insertion. Check game_state table. |
 | B6 | Timeline empty | event_feed has no data or timestamps invalid | Check event_feed table. Check started_at/ended_at values. |
-| B6 | Event dots all one color | event_type mapping wrong | ReplayControls — check color map for each event_type. |
+| B6 | Event dots all one color | eventType mapping wrong | ReplayControls — check color map for each eventType. |
 | B7 | Intel shows current data in replay | currentTimestamp not passed or not used | IntelPanel — verify prop received. Check time filtering query. |
 | B8 | All chat messages visible in replay | currentTimestamp not filtering | ChatPanel — verify messages filtered by timestamp. |
 | B9 | Playback doesn't advance | Animation loop not running | App.tsx — check isPlaying triggers setInterval or requestAnimationFrame. |
 | B9 | Speed has no effect | playbackSpeed not applied | Check timestamp increment formula: delta * playbackSpeed. |
-| B10 | Replay loads during active game | Conditional check missing | App.tsx — add check for gameState.status === 'ended'. |
+| B10 | Replay loads during active game | Conditional check missing | App.tsx — gate on the key-value status: `gameState.find(r => r.key === 'status')?.value === 'ended'`. |
 
 ---
 

@@ -20,9 +20,12 @@ set -euo pipefail
 MIN_RUST_VERSION="1.75.0"
 MIN_NODE_VERSION="20.0.0"
 MIN_NPM_VERSION="10.0.0"
-MIN_SPACETIMEDB_VERSION="1.0.0"
+MIN_SPACETIMEDB_VERSION="2.4.1"
 MIN_GIT_VERSION="2.0.0"
 MIN_BASH_VERSION="4.0"
+
+# Rust target required to compile SpacetimeDB modules to WebAssembly.
+WASM_TARGET="wasm32-unknown-unknown"
 
 REQUIRED_FOLDERS=(
     "prompts"
@@ -170,13 +173,26 @@ install_rust() {
     print_section "Installing Rust"
     if check_command_exists "rustc" && version_greater_or_equal "$(extract_version "$(rustc --version 2>&1)")" "$MIN_RUST_VERSION"; then
         echo -e "  ${OK} Rust already installed"
-        return 0
+    else
+        echo "  Downloading and installing Rust via rustup..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        # shellcheck source=/dev/null
+        source "$HOME/.cargo/env" 2>/dev/null || true
+        echo -e "  ${OK} Rust installed"
     fi
-    echo "  Downloading and installing Rust via rustup..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    # shellcheck source=/dev/null
-    source "$HOME/.cargo/env" 2>/dev/null || true
-    echo -e "  ${OK} Rust installed"
+
+    # SpacetimeDB modules compile to WebAssembly, so the wasm target is required.
+    if check_command_exists "rustup"; then
+        if rustup target list --installed 2>/dev/null | grep -q "^${WASM_TARGET}$"; then
+            echo -e "  ${OK} Rust target ${WASM_TARGET} already installed"
+        else
+            echo "  Adding Rust target ${WASM_TARGET}..."
+            rustup target add "$WASM_TARGET"
+            echo -e "  ${OK} Rust target ${WASM_TARGET} installed"
+        fi
+    else
+        echo -e "  ${WARN} rustup not found; ensure the ${WASM_TARGET} target is installed manually"
+    fi
 }
 
 install_node() {
@@ -222,18 +238,21 @@ install_node() {
 
 install_spacetimedb() {
     print_section "Installing SpacetimeDB CLI"
-    if check_command_exists "spacetime" && version_greater_or_equal "$(extract_version "$(spacetime version 2>&1)")" "$MIN_SPACETIMEDB_VERSION"; then
-        echo -e "  ${OK} SpacetimeDB CLI already installed"
+    if check_command_exists "spacetime"; then
+        local installed_version
+        installed_version=$(extract_version "$(spacetime version 2>&1)")
+        if version_greater_or_equal "$installed_version" "$MIN_SPACETIMEDB_VERSION"; then
+            echo -e "  ${OK} SpacetimeDB CLI already installed (v${installed_version})"
+            return 0
+        fi
+        echo "  SpacetimeDB CLI v${installed_version:-unknown} is below v${MIN_SPACETIMEDB_VERSION}. Upgrading..."
+        spacetime version upgrade
+        echo -e "  ${OK} SpacetimeDB CLI upgraded"
         return 0
     fi
 
-    if ! check_command_exists "cargo"; then
-        echo -e "  ${FAIL} Rust/Cargo must be installed first"
-        return 1
-    fi
-
-    echo "  Installing SpacetimeDB CLI via cargo..."
-    cargo install spacetimedb-cli
+    echo "  Installing SpacetimeDB CLI via the official installer..."
+    curl -sSf https://install.spacetimedb.com | sh
     echo -e "  ${OK} SpacetimeDB CLI installed"
 }
 
@@ -272,7 +291,7 @@ install_git() {
 
 install_all_tools() {
     print_section "Installing Dependencies"
-    echo "  This will install Rust, Node.js, SpacetimeDB CLI, and Git if needed."
+    echo "  This will install Rust (with the ${WASM_TARGET} target), Node.js, SpacetimeDB CLI, and Git if needed."
     echo ""
 
     if ! confirm "Continue with installation?"; then
@@ -684,10 +703,13 @@ main() {
     echo ""
     echo "  Next steps:"
     echo "  1. Open prompts/generate_slice_1.txt in Claude Code"
-    echo "  2. Claude Code will generate the Slice 1 application into slice-1/"
-    echo "  3. Start the SpacetimeDB server: spacetime start"
-    echo "  4. Open http://localhost:5173"
-    echo "  5. For each subsequent slice, open prompts/generate_slice_N.txt"
+    echo "  2. Claude Code will generate the application into risk-dominion/app/{server,client}"
+    echo "  3. Start the SpacetimeDB server: spacetime start   (listens on port 3000)"
+    echo "  4. Publish the module:  spacetime publish risk-dominion --server local -y"
+    echo "  5. Generate TypeScript bindings:"
+    echo "       spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server"
+    echo "  6. Start the client (npm run dev) and open http://localhost:5173"
+    echo "  7. For each subsequent slice, open prompts/generate_slice_N.txt"
     echo ""
     echo "  For help: bash setup.sh --help"
     echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"

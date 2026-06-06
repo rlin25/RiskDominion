@@ -8,6 +8,8 @@
 
 ## 1. TABLE SCHEMAS
 
+Each table is a `pub struct` declared with `#[spacetimedb::table(accessor = <snake_name>, public)]`; the column constraints below map to field attributes (`#[primary_key]`, `#[auto_inc]`, `#[unique]`, `#[index(btree)]`). All four tables are `public` so the client can subscribe to them. The Rust types are `i32` for INT, `i64` for BIGINT, and `String` for STRING. Rust fields are `snake_case`; the generated TypeScript bindings expose them as `camelCase` (`territory_id` -> `territoryId`).
+
 ### 1.1 `military`
 
 | Column | Type | Constraints | Description |
@@ -142,106 +144,83 @@
 
 ### 4.1 Client-Facing Reducers
 
-#### 4.1.1 `start_game()`
+All client-callable reducers use `#[spacetimedb::reducer]`, take `ctx: &ReducerContext` as the first parameter, and return `Result<(), String>`. Success is `Ok(())`; a validation failure is `Err("message".into())`. Reducers cannot return data to the caller. The client observes the outcome through its table subscriptions; on failure, the reducer-call promise rejects with the `Err` message. There is no `{ success: true }` JSON return shape.
+
+#### 4.1.1 `start_game(ctx: &ReducerContext) -> Result<(), String>`
 
 **Called by:** Frontend on first load (by whichever player connects first).
 
-**Returns:**
-```json
-{
-    "success": true
-}
-```
-
 **Behavior:**
-1. If `game_state` table already has a row where `key = 'status'`, return `{ success: true }` immediately (game already started — idempotent).
+1. If `game_state` table already has a row where `key = 'status'`, return `Ok(())` immediately (game already started; idempotent).
 2. Insert 2 player rows into `players` (see Section 3.1).
 3. Insert 3 rows into `game_state` (see Section 3.2).
 4. Insert 12 rows into `military` (see Section 3.3).
 5. Insert 12 rows into `economic` (see Section 3.3).
-6. Start the `regenerate_action_points` scheduled reducer (8-second interval).
+6. Arm the `regen_timer` scheduled table with `ScheduleAt::Interval(Duration::from_secs(ACTION_REGEN_SECONDS).into())` so SpacetimeDB invokes `regenerate_action_points` every 8 seconds.
+7. Return `Ok(())`.
 
 ---
 
-#### 4.1.2 `military_attack(territory_id: INT, player_id: INT)`
+#### 4.1.2 `military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String>`
 
 **Called by:** Frontend when a player drops a Military card onto a territory.
 
-**Validation (in order, return first failure):**
-1. `game_state.status` must be `active`. Else return `{ success: false, error: "Game has ended." }`.
-2. `player_id` must be 1 or 2.
-3. `territory_id` must be 1–12. Else return `{ success: false, error: "Invalid territory." }`.
-4. Player must have `action_points >= 1`. Else return `{ success: false, error: "Insufficient action points." }`.
-5. Player must own Military in at least one territory adjacent to `territory_id`. Else return `{ success: false, error: "No adjacent territory controlled." }`.
+**Validation (in order, return first failure as `Err(..)`):**
+1. `game_state.status` must be `active`. Else `Err("Game has ended.".into())`.
+2. `player_id` must be 1 or 2. Else `Err("Invalid player.".into())`.
+3. `territory_id` must be 1-12. Else `Err("Invalid territory.".into())`.
+4. Player must have `action_points >= 1`. Else `Err("Insufficient action points.".into())`.
+5. Player must own Military in at least one territory adjacent to `territory_id`. Else `Err("No adjacent territory controlled.".into())`.
 
 **Behavior on success:**
 1. Decrement player's `action_points` by 1.
 2. Find the adjacent territory where the player owns Military with the highest `troop_count`. Let `attacker_troops` = that troop count.
 3. Let `defender_troops` = `military.troop_count` for `territory_id`.
 4. If `attacker_troops > defender_troops`:
-   - `old_owner` = `military.owner_id` for this territory.
    - Set `military.owner_id` = `player_id`.
-   - Set `military.troop_count` = `attacker_troops - defender_troops`. If result < 1, set to 1.
-   - Call `dimension_owner_change(territory_id, 'military', player_id)`.
+   - Set `military.troop_count` = `max(attacker_troops - defender_troops, MIN_TROOPS)`.
+   - Call `dimension_owner_change(ctx, player_id)`.
 5. If `attacker_troops <= defender_troops`:
-   - Set `military.troop_count` = `defender_troops - (attacker_troops / 2)`. Integer division. If result < 1, set to 1.
+   - Set `military.troop_count` = `max(defender_troops - (attacker_troops / 2), MIN_TROOPS)`. Integer division.
    - (Ownership does not change.)
-
-**Returns on success:**
-```json
-{
-    "success": true
-}
-```
+6. Return `Ok(())`.
 
 ---
 
-#### 4.1.3 `economic_invest(territory_id: INT, player_id: INT)`
+#### 4.1.3 `economic_invest(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> Result<(), String>`
 
 **Called by:** Frontend when a player drops an Economic card onto a territory.
 
-**Validation (in order, return first failure):**
-1. `game_state.status` must be `active`. Else return `{ success: false, error: "Game has ended." }`.
-2. `player_id` must be 1 or 2.
-3. `territory_id` must be 1–12. Else return `{ success: false, error: "Invalid territory." }`.
-4. Player must have `action_points >= 1`. Else return `{ success: false, error: "Insufficient action points." }`.
+**Validation (in order, return first failure as `Err(..)`):**
+1. `game_state.status` must be `active`. Else `Err("Game has ended.".into())`.
+2. `player_id` must be 1 or 2. Else `Err("Invalid player.".into())`.
+3. `territory_id` must be 1-12. Else `Err("Invalid territory.".into())`.
+4. Player must have `action_points >= 1`. Else `Err("Insufficient action points.".into())`.
 
 **Behavior on success:**
 1. Decrement player's `action_points` by 1.
-2. Let `current_capital` = `economic.capital` for `territory_id`.
-3. Let `current_owner` = `economic.owner_id` for `territory_id`.
-4. Set `economic.capital` = `current_capital + 5`.
-5. If `player_id != current_owner` AND `(current_capital + 5) > current_capital`:
-   - This is always true when investing in a territory you don't own (you just added 5, which exceeds the previous capital that you didn't own). Clarified logic:
-   - If `player_id != current_owner` AND `economic.capital > (the capital value before your investment)`:
-     - `old_owner` = `current_owner`.
-     - Set `economic.owner_id` = `player_id`.
-     - Call `dimension_owner_change(territory_id, 'economic', player_id)`.
-   - Simplified: If `player_id != current_owner`: after adding 5, if `economic.capital` is strictly greater than what `current_owner` had before (which is always true since you just added 5 to a value that wasn't yours), flip ownership. **Implementation note:** Compare `economic.capital` (after adding 5) against the capital value that existed before the invest. Since the previous owner's capital is unchanged and you just added 5 to it, your total now exceeds theirs. Flip ownership.
-6. If `player_id == current_owner`: no ownership change. Capital increases by 5.
-
-**Returns on success:**
-```json
-{
-    "success": true
-}
-```
+2. Let `current_owner` = `economic.owner_id` for `territory_id`.
+3. Set `economic.capital` += `ECONOMIC_INVEST_AMOUNT` (5).
+4. If `player_id != current_owner`:
+   - You just added 5 capital to a territory you did not own, so your total now exceeds the previous owner's. Set `economic.owner_id` = `player_id` and call `dimension_owner_change(ctx, player_id)`.
+5. If `player_id == current_owner`: no ownership change. Capital increases by 5.
+6. Return `Ok(())`.
 
 ---
 
 ### 4.2 Internal Function
 
-#### 4.2.1 `dimension_owner_change(territory_id: INT, dimension: STRING, new_owner: INT)`
+#### 4.2.1 `dimension_owner_change(ctx: &ReducerContext, new_owner: i32)`
 
 **Called by:** `military_attack` and `economic_invest` after an ownership flip.
 
-**Not a reducer.** This is a regular Rust function called internally within the same transaction.
+**Not a reducer.** This is a private Rust function called inside the calling reducer's transaction.
 
 **Behavior:**
 1. Count territories where `military.owner_id = new_owner` AND `economic.owner_id = new_owner`.
-2. If count >= 3:
+2. If count >= `WIN_UNIFIED_TERRITORIES` (3):
    - Set `game_state` row where `key = 'status'` to `'ended'`.
-   - Set `game_state` row where `key = 'winner'` to `players[new_owner].player_name`.
+   - Set `game_state` row where `key = 'winner'` to the new owner's `player_name`.
 
 **No return value.**
 
@@ -249,34 +228,47 @@
 
 ### 4.3 Scheduled Reducer
 
-#### 4.3.1 `regenerate_action_points()`
+#### 4.3.1 `regenerate_action_points(ctx: &ReducerContext, _timer: RegenTimer)`
 
-**Schedule:** Every 8 seconds.
+**Driven by:** the `regen_timer` scheduled table, which names this reducer as its target and is armed with a repeating `ScheduleAt::Interval` of 8 seconds (Section 4.1.1, step 6). It uses `#[spacetimedb::reducer]` (the schedule lives on the table, not on a reducer attribute) and takes the scheduled row as its second argument. It makes no HTTP calls.
 
 **Behavior:**
-1. For each row in `players` where `action_points < 10`:
+1. For each row in `players` where `action_points < MAX_ACTION_POINTS` (10):
    - Increment `action_points` by 1.
-   - Set `last_regen_at` = current server timestamp (milliseconds).
+   - Set `last_regen_at` = `ctx.timestamp` converted to milliseconds.
 
-**No return value.** Clients receive updated `players` table via subscription.
+**No return value.** Clients receive updated `players` rows via subscription.
+
+The scheduled table is declared:
+
+```rust
+#[spacetimedb::table(accessor = regen_timer, scheduled(regenerate_action_points))]
+pub struct RegenTimer {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub scheduled_at: ScheduleAt,
+}
+```
 
 ---
 
 ## 5. SUBSCRIPTIONS
 
-The frontend subscribes to the following tables in full. No server-side filters.
+The frontend subscribes to all four public tables in full via the `useTable` hook from `spacetimedb/react`. No server-side filters.
 
-| Subscription | Table | Client Usage |
-|-------------|-------|--------------|
-| `subscribe_military` | `military` | Render Military (left) quadrant on each territory, show troop count on hover |
-| `subscribe_economic` | `economic` | Render Economic (right) quadrant on each territory, show capital on hover |
-| `subscribe_players` | `players` | Render action point bar for current player, display player colors |
-| `subscribe_game_state` | `game_state` | Show victory overlay when status is `ended`, display winner name |
+| Hook call | Table accessor | Client Usage |
+|-----------|----------------|--------------|
+| `useTable(tables.military)` | `military` | Render Military (left) quadrant on each territory, show troop count on hover |
+| `useTable(tables.economic)` | `economic` | Render Economic (right) quadrant on each territory, show capital on hover |
+| `useTable(tables.players)` | `players` | Render action point bar for current player, display player colors |
+| `useTable(tables.game_state)` | `game_state` | Show victory overlay when status is `ended`, display winner name |
 
 **Subscription semantics:**
-- On initial subscribe: client receives all rows in the table.
-- On subsequent updates: client receives only changed rows.
-- Client merges updates into local state.
+- Each `useTable(...)` returns `[rows, isReady]`.
+- On initial subscribe: the SDK delivers all rows in the table.
+- On subsequent updates: the SDK merges only changed rows automatically (no manual primary-key merge in client code).
+- Reducer mutations therefore propagate to every connected client through these subscriptions.
 
 ---
 
@@ -328,41 +320,30 @@ export const PLAYER_COLORS: Record<number, string> = {
 
 ## 7. WIRE FORMATS
 
-### 7.1 Reducer Returns
+### 7.1 Reducer Results
 
-All client-callable reducers return JSON with the following shapes:
+Reducers return `Result<(), String>` and do not send a data payload to the caller. The client observes outcomes through subscriptions, not a return value:
 
-**Success:**
-```json
-{
-    "success": true
-}
-```
-
-**Failure:**
-```json
-{
-    "success": false,
-    "error": "Insufficient action points."
-}
-```
+- **Success:** the reducer returns `Ok(())`; its transaction commits and the resulting row changes arrive via `useTable` subscriptions. The `useReducer` promise resolves.
+- **Failure:** the reducer returns `Err("message")`; no rows change and the `useReducer` promise rejects, carrying the error message for the client to display.
 
 Possible error strings:
 - `"Game has ended."`
+- `"Invalid player."`
 - `"Invalid territory."`
 - `"Insufficient action points."`
 - `"No adjacent territory controlled."`
 
 ### 7.2 Subscription Data
 
-Subscriptions deliver arrays of rows matching the table schemas in Section 1. Example:
+Subscriptions deliver rows matching the table schemas in Section 1, with camelCase field names in the generated TypeScript bindings. Example for `tables.military`:
 
-```json
-// subscribe_military initial payload
+```jsonc
+// initial useTable(tables.military) rows
 [
-    { "territory_id": 1, "owner_id": 1, "troop_count": 10 },
-    { "territory_id": 2, "owner_id": 1, "troop_count": 5 },
-    ...
+    { "territoryId": 1, "ownerId": 1, "troopCount": 10 },
+    { "territoryId": 2, "ownerId": 1, "troopCount": 5 }
+    // ...
 ]
 ```
 
@@ -370,26 +351,29 @@ Subscriptions deliver arrays of rows matching the table schemas in Section 1. Ex
 
 ## 8. IMPLEMENTATION NOTES FOR CLAUDE CODE
 
-### 8.1 Server (`/server/src/lib.rs`)
+### 8.1 Server (`app/server/src/lib.rs`)
 
-- Single file. All tables, reducers, scheduled reducers, and constants.
-- Use `#[spacetimedb(table)]` macro for each table definition.
-- Use `#[spacetimedb(reducer)]` for client-callable reducers.
-- Use `#[spacetimedb(scheduled)]` for the regeneration timer.
-- `dimension_owner_change` is a regular `fn`, not a reducer.
+- Single file. All tables, the scheduled table, reducers, the scheduled reducer, and constants. This is the one evolving module at `risk-dominion/app/server/` that each slice grows in place.
+- Each table is a `pub struct` with `#[spacetimedb::table(accessor = name, public)]` and column attributes (`#[primary_key]`, `#[auto_inc]`).
+- Use `#[spacetimedb::reducer]` for client-callable reducers; first param `ctx: &ReducerContext`, return `Result<(), String>`.
+- The regeneration timer is a scheduled table (`scheduled(regenerate_action_points)`) armed with `ScheduleAt::Interval`, not a `#[spacetimedb(scheduled)]` attribute.
+- `dimension_owner_change` is a private `fn`, not a reducer, called within the calling reducer's transaction.
 - All arithmetic is integer arithmetic. Use `/` for truncating division.
-- The adjacency map should be defined as a constant lookup: `fn get_adjacent(territory_id: i32) -> Vec<i32>`.
-- The `start_game` reducer must be idempotent — check if game_state already has a 'status' key.
-- `last_regen_at` must be set to the current server timestamp on insert and on each regeneration tick. Use `std::time::SystemTime` or SpacetimeDB's timestamp function.
+- The adjacency map is a function lookup: `fn get_adjacent(territory_id: i32) -> Vec<i32>`.
+- The `start_game` reducer must be idempotent: check if game_state already has a 'status' key.
+- `last_regen_at` is set on insert and on each regeneration tick from `ctx.timestamp` (`ctx.timestamp.to_micros_since_unix_epoch() / 1000`). Never use `SystemTime` or wall-clock.
 
 ### 8.2 Client
 
-- React 18 + TypeScript 5.3 + Vite.
+- React 18 + TypeScript 5.3 + Vite. Code lives in the single evolving app at `risk-dominion/app/client/`.
+- Client SDK is the `spacetimedb` npm package; React hooks come from `spacetimedb/react`.
+- Row types, `tables`, `reducers`, and `DbConnection` come from generated `module_bindings` (`spacetime generate`). Fields are camelCase.
+- Connect via `DbConnection.builder().withUri(VITE_SPACETIMEDB_URI).withDatabaseName(VITE_MODULE_NAME)...`; wrap `<App />` in `<SpacetimeDBProvider connectionBuilder={...}>`.
 - dnd-kit for drag-and-drop (`@dnd-kit/core`).
 - Plain SVG for the map. Hexagonal territories per `../AESTHETIC.md` Section 4.
 - Tailwind CSS for all styling. No custom CSS files.
 - Player ID from URL parameter: `?player=1` or `?player=2`. Default to 1 if absent.
-- `useSubscriptions` hook manages all four table subscriptions.
+- `useSubscriptions` hook manages all four table subscriptions via `useTable`. Reducers are bound with `useReducer(reducers.x)` and called with a single named-args object, e.g. `militaryAttack({ territoryId, playerId })`.
 - Card hand renders one card per available action point. Cards are draggable only when action_points > 0.
 - Military card: red background, sword icon (or text "ATTACK"), draggable only onto adjacent military-controlled territories.
 - Economic card: gold background, coin icon (or text "INVEST"), draggable onto any territory.
