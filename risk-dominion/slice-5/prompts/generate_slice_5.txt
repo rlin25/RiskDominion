@@ -1,0 +1,69 @@
+You are in the slice-1/ directory. You are modifying the working Slice 4 codebase to add Slice 5 features — the final slice. Generate all changes relative to this directory.
+
+You are implementing Slice 5 of Risk: Dominion — adding subagent orchestration, keyboard controls, and the human Strategist advisor. This is the last slice. After this, the game is complete.
+
+Before generating any changes, read every file in the existing Slice 4 codebase:
+- slice-1/server/Cargo.toml
+- slice-1/server/src/lib.rs
+- slice-1/client/src/App.tsx
+- slice-1/client/src/constants.ts
+- slice-1/client/src/types.ts
+- slice-1/client/src/hooks/useSubscriptions.ts
+- slice-1/client/src/utils/territoryHelpers.ts
+- slice-1/client/src/components/Map.tsx
+- slice-1/client/src/components/Territory.tsx
+- slice-1/client/src/components/CardHand.tsx
+- slice-1/client/src/components/ActionCard.tsx
+- slice-1/client/src/components/IntelPanel.tsx
+- slice-1/client/src/components/QueryBar.tsx
+- slice-1/client/src/components/ResultsPanel.tsx
+- slice-1/client/src/components/EventTicker.tsx
+- slice-1/client/src/components/ActionBar.tsx
+- slice-1/client/src/components/VictoryScreen.tsx
+
+Understand the current code before making any changes.
+
+Read these files in full before generating:
+- MASTERPLAN_SLICE_5.md (your authoritative spec — orchestrated AI cycle, specialist prompts, commander prompt, Strategist cycle, deliberation chain, hotkey map, component changes)
+- ../AESTHETIC.md (visual design system — hotkey hint styling, alert card styling, selection cursor)
+
+Modify the existing Slice 4 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
+
+Key constraints:
+- Replace the entire body of ai_reasoning_cycle. Do not preserve the old single-call logic. The new logic spawns 4 specialist threads, collects their JoinHandles, waits for all to complete or timeout, then spawns a commander thread.
+- Specialist threads: 15-second timeout each. Temperature 0.3. Max tokens 150. On timeout or error, return empty result — do not crash.
+- Commander thread: 30-second timeout. Temperature 0.3. Max tokens 500. Receives all specialist recommendations (or "specialist unavailable" for timeouts).
+- Update ai_submit_actions signature to accept: ai_player_id, actions, commander_reasoning, cycle_at, subordinate_results. Update all call sites. Log one ai_reasoning_log row per subordinate plus the commander row. All share the same cycle_at.
+- Store all 12 specialist prompts as constants in lib.rs. Select by ai_player_id. Each prompt includes domain-specific data placeholder, persona context, and JSON output format.
+- get_intel returns a deliberation array — all ai_reasoning_log rows from the latest cycle, ordered by subordinate_id (specialists first, commander last). Map subordinate_id strings to display names and role descriptions. Aggregate territories_referenced from all rows.
+- Handle missing subordinate_id on older rows by treating them as "commander".
+- Strategist cycle: scheduled reducer at 60s interval, 50s initial offset. Analyzes threats, opportunities, weaknesses. Returns up to 3 notifications with priority levels. Inserts into strategist_log.
+- dismiss_strategist_alert reducer sets dismissed=true on a notification.
+- Hotkeys must NOT fire when the query bar has focus. Check document.activeElement. Only Tab, Escape, and Enter pass through when an INPUT is focused.
+- WASD/arrow keys move a selection cursor on the hex grid. Use HEX_GRID_COORDINATES from constants.ts. Compute nearest territory in the pressed direction by Euclidean distance.
+- Enter/Space confirms action: deploys focused card to selected territory if valid.
+- Escape clears card focus, cursor selection, and closes all panels.
+- Q focuses query bar. I toggles Intel panel. C cycles AI intel targets (2→3→4→null). H toggles highlight of player-owned territories.
+- Hotkey hints: small 16x16px squares on ActionCard (1,2,3), QueryBar (Q), IntelPanel (I). JetBrains Mono 9px, text-secondary, faint border.
+- Selection cursor: white or gold 2px outline on the selected territory hex. Distinct from query highlights and ticker highlights.
+- StrategistAlerts component: stacked cards in top-right. Border-left color by priority (critical=red pulse, warning=orange, info=gray). Dismissable. Clickable for territory highlight. Slide-in animation.
+- All styling via Tailwind using AESTHETIC.md tokens. No emojis. No em dashes. No custom CSS files.
+
+Scope boundary:
+- This is Slice 5 of 5 — the FINAL slice. There are no future slices.
+- Generate EVERY feature specified in the masterplan. Do not leave stubs, TODOs, or placeholders.
+- Do not add new dimensions, new AI opponents, new card types, or new gameplay mechanics. Orchestration and hotkeys enhance existing systems.
+
+If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_5.md and INTERFACE_CONTRACT_SLICE_5.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
+
+Success criteria. After applying all modifications:
+1. Compile without errors (cargo build, npm run build).
+2. AI cycles use orchestration — commander + 4 specialists. First cycle up to 120s. Intel shows full deliberation chain.
+3. Strategist alerts appear at 50s and every 60s. Color-coded by priority. Dismissable.
+4. All hotkeys function: 1/2/3, WASD/arrows, Enter/Space, Escape, Q, I, C, H.
+5. Hotkeys suppressed when query bar focused. Escape exits query bar, hotkeys resume.
+6. Selection cursor visible on hex map. Moves with WASD. Confirm with Enter deploys card.
+7. Hotkey hints visible on cards, query bar, and Intel panel.
+8. All Slice 4 functionality preserved — gameplay, queries, ticker unchanged.
+
+This is the final generation. After this, Risk: Dominion is complete. Generate now. Output every changed file. Mark each as MODIFIED or NEW.
