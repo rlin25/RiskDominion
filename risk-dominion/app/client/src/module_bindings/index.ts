@@ -38,6 +38,7 @@ import DeployAgentReducer from "./deploy_agent_reducer";
 import DismissStrategistAlertReducer from "./dismiss_strategist_alert_reducer";
 import EconomicInvestReducer from "./economic_invest_reducer";
 import MilitaryAttackReducer from "./military_attack_reducer";
+import SendChatMessageReducer from "./send_chat_message_reducer";
 import SetConfigReducer from "./set_config_reducer";
 import StartGameReducer from "./start_game_reducer";
 
@@ -50,6 +51,8 @@ import * as QueryDatabaseProcedure from "./query_database_procedure";
 // Import all table schema definitions
 import AiReasoningLogRow from "./ai_reasoning_log_table";
 import AiStateRow from "./ai_state_table";
+import AiTrustRow from "./ai_trust_table";
+import ChatLogRow from "./chat_log_table";
 import CovertRow from "./covert_table";
 import CulturalRow from "./cultural_table";
 import EconomicRow from "./economic_table";
@@ -85,6 +88,32 @@ const tablesSchema = __schema({
       { name: 'ai_state_ai_player_id_key', constraint: 'unique', columns: ['aiPlayerId'] },
     ],
   }, AiStateRow),
+  ai_trust: __table({
+    name: 'ai_trust',
+    indexes: [
+      { accessor: 'by_pair', name: 'ai_trust_ai_player_id_target_player_id_idx_btree', algorithm: 'btree', columns: [
+        'aiPlayerId',
+        'targetPlayerId',
+      ] },
+      { accessor: 'id', name: 'ai_trust_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'ai_trust_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, AiTrustRow),
+  chat_log: __table({
+    name: 'chat_log',
+    indexes: [
+      { accessor: 'id', name: 'chat_log_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'chat_log_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, ChatLogRow),
   covert: __table({
     name: 'covert',
     indexes: [
@@ -181,6 +210,7 @@ const reducersSchema = __reducers(
   __reducerSchema("dismiss_strategist_alert", DismissStrategistAlertReducer),
   __reducerSchema("economic_invest", EconomicInvestReducer),
   __reducerSchema("military_attack", MilitaryAttackReducer),
+  __reducerSchema("send_chat_message", SendChatMessageReducer),
   __reducerSchema("set_config", SetConfigReducer),
   __reducerSchema("start_game", StartGameReducer),
 );

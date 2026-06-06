@@ -57,6 +57,7 @@ export const AI_PLAYERS: { id: number; name: string; color: string }[] = [
 ];
 
 export const EVENT_FEED_MAX_DISPLAY = 50;
+export const MAX_CHAT_MESSAGE_LENGTH = 500;
 
 export const CANNED_QUERIES: { id: number; label: string }[] = [
   { id: 0, label: "Weaknesses" },

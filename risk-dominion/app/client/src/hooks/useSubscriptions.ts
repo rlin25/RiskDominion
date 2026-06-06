@@ -1,5 +1,6 @@
 import { useTable } from "spacetimedb/react";
 import { tables } from "../module_bindings";
+import { HUMAN_PLAYER_ID } from "../constants";
 import type {
   MilitaryRow,
   EconomicRow,
@@ -9,6 +10,7 @@ import type {
   GameStateRow,
   EventFeedRow,
   StrategistLogRow,
+  ChatLogRow,
 } from "../types";
 
 // Subscribes to the public game tables and returns live rows. The SDK delivers
@@ -22,6 +24,13 @@ export function useSubscriptions() {
   const [gameState, gameStateReady] = useTable(tables.game_state);
   const [eventFeed, eventFeedReady] = useTable(tables.event_feed);
   const [strategistLog, strategistReady] = useTable(tables.strategist_log);
+  // Privacy: only global messages and DMs involving this client ever reach the
+  // client. AI-to-AI DMs never match this filter; the secret table is non-public.
+  const [chatLog, chatReady] = useTable(
+    tables.chat_log.where((r) =>
+      r.recipientId.eq(0).or(r.senderId.eq(HUMAN_PLAYER_ID)).or(r.recipientId.eq(HUMAN_PLAYER_ID)),
+    ),
+  );
 
   const isReady =
     militaryReady &&
@@ -31,7 +40,8 @@ export function useSubscriptions() {
     playersReady &&
     gameStateReady &&
     eventFeedReady &&
-    strategistReady;
+    strategistReady &&
+    chatReady;
 
   return {
     military: military as readonly MilitaryRow[],
@@ -42,6 +52,7 @@ export function useSubscriptions() {
     gameState: gameState as readonly GameStateRow[],
     eventFeed: eventFeed as readonly EventFeedRow[],
     strategistLog: strategistLog as readonly StrategistLogRow[],
+    chatLog: chatLog as readonly ChatLogRow[],
     isReady,
   };
 }

@@ -35,10 +35,39 @@ export const AiState = __t.object("AiState", {
 });
 export type AiState = __Infer<typeof AiState>;
 
+export const AiTrust = __t.object("AiTrust", {
+  id: __t.u64(),
+  aiPlayerId: __t.i32(),
+  targetPlayerId: __t.i32(),
+  trustScore: __t.i32(),
+  messagesEvaluated: __t.i32(),
+  truthsConfirmed: __t.i32(),
+  liesCaught: __t.i32(),
+  lastUpdated: __t.i64(),
+});
+export type AiTrust = __Infer<typeof AiTrust>;
+
 export const AutocompleteResult = __t.object("AutocompleteResult", {
   suggestions: __t.array(__t.string()),
 });
 export type AutocompleteResult = __Infer<typeof AutocompleteResult>;
+
+export const ChatLog = __t.object("ChatLog", {
+  id: __t.u64(),
+  timestamp: __t.i64(),
+  senderId: __t.i32(),
+  recipientId: __t.i32(),
+  messageText: __t.string(),
+  territoryId: __t.i32(),
+});
+export type ChatLog = __Infer<typeof ChatLog>;
+
+export const ChatSecret = __t.object("ChatSecret", {
+  chatId: __t.u64(),
+  isDeception: __t.bool(),
+  claimedFact: __t.string(),
+});
+export type ChatSecret = __Infer<typeof ChatSecret>;
 
 export const Covert = __t.object("Covert", {
   territoryId: __t.i32(),

@@ -38,6 +38,14 @@ const STRATEGIST_MAX_TOKENS: u32 = 300;
 const STRATEGIST_TIMEOUT_SECONDS: u64 = 15;
 const INTEL_THRESHOLD: i32 = 3;
 
+const MAX_CHAT_MESSAGE_LENGTH: usize = 500;
+const TRUST_INITIAL: i32 = 50;
+const TRUST_VERIFIED_BONUS: i32 = 3;
+const TRUST_LIE_PENALTY: i32 = 15;
+const TRUST_DECAY_PER_CYCLE: i32 = 1;
+const TRUST_DECAY_FLOOR: i32 = 25;
+const CHAT_RATE_LIMIT_PER_CYCLE: usize = 3;
+
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
@@ -132,6 +140,50 @@ pub struct AiReasoningLog {
     pub actions_taken: String, // JSON array
     /// Which agent produced this row: a specialist id, or "commander".
     pub subordinate_id: String,
+}
+
+/// Public chat. Privacy is structural: secret fields live in `chat_secret`
+/// (non-public), and DM scoping is a client subscription row filter.
+#[spacetimedb::table(accessor = chat_log, public)]
+pub struct ChatLog {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub timestamp: i64,
+    pub sender_id: i32,
+    pub recipient_id: i32, // 0 = global, 1-4 = DM
+    pub message_text: String,
+    pub territory_id: i32, // 0 = none
+}
+
+/// Secret companion to `chat_log`. NOT public: no client subscription, no client
+/// binding. Only server-side logic (AI cycle, Strategist) reads it.
+#[spacetimedb::table(accessor = chat_secret)]
+pub struct ChatSecret {
+    #[primary_key]
+    pub chat_id: u64,
+    pub is_deception: bool,
+    pub claimed_fact: String,
+}
+
+/// Per-AI trust toward each other player. No native composite PK, so use a
+/// surrogate id + a btree index on (ai_player_id, target_player_id).
+#[spacetimedb::table(
+    accessor = ai_trust,
+    public,
+    index(accessor = by_pair, btree(columns = [ai_player_id, target_player_id]))
+)]
+pub struct AiTrust {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    pub ai_player_id: i32,
+    pub target_player_id: i32,
+    pub trust_score: i32,
+    pub messages_evaluated: i32,
+    pub truths_confirmed: i32,
+    pub lies_caught: i32,
+    pub last_updated: i64,
 }
 
 /// Advisor notifications for the human player (Slice 5). Public so the client
@@ -295,7 +347,7 @@ const PROPHET_SEER: &str = "You are Seer, economic specialist for the Prophet, w
 const PROPHET_WARDEN: &str = "You are Warden, military specialist for the Prophet, who strikes only where culture has already won. Recommend up to 1 attack on a territory the Prophet owns culturally but not militarily; otherwise return an empty array.";
 
 const COMMANDER_SYSTEM: &str =
-    "You are a faction commander synthesizing your specialists' advice. Explain your decision in at most 3 short sentences (no headers or lists), then end with a JSON action array as the last thing in your reply. Each action is {\"action_type\":\"...\",\"territory_id\":N} where action_type is EXACTLY one of: \"military_attack\", \"economic_invest\", \"deploy_agent\".";
+    "You are a faction commander synthesizing your specialists' advice. Reply with ONLY a JSON object: {\"reasoning\":\"1-3 sentences\",\"actions\":[{\"action_type\":\"...\",\"territory_id\":N}],\"chat_message\":{\"message_text\":\"...\",\"recipient_id\":0,\"is_deception\":false,\"claimed_fact\":\"\",\"territory_id\":0}}. action_type is EXACTLY one of \"military_attack\", \"economic_invest\", \"deploy_agent\". recipient_id 0 = global broadcast, 1-4 = a direct message. Set chat_message to null to stay silent. Reference a territory in message_text as [Territory Name]. No prose outside the JSON object.";
 
 const STRATEGIST_SYSTEM: &str =
     "You are the Strategist, an AI advisor on the human player's side. Reply with ONLY a JSON array of up to 3 notifications.";
@@ -530,6 +582,25 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
             ctx.timestamp + std::time::Duration::from_secs(STRATEGIST_OFFSET_SECONDS),
         ),
     });
+
+    // Trust relationships: each AI toward every other player, neutral to start.
+    for ai_id in [2, 3, 4] {
+        for target in 1..=TOTAL_PLAYERS {
+            if target == ai_id {
+                continue;
+            }
+            ctx.db.ai_trust().insert(AiTrust {
+                id: 0,
+                ai_player_id: ai_id,
+                target_player_id: target,
+                trust_score: TRUST_INITIAL,
+                messages_evaluated: 0,
+                truths_confirmed: 0,
+                lies_caught: 0,
+                last_updated: ts,
+            });
+        }
+    }
 
     log_event(
         ctx,
@@ -799,6 +870,242 @@ pub fn dismiss_strategist_alert(ctx: &ReducerContext, notification_id: u64) -> R
     Ok(())
 }
 
+/// Resolve a `[Territory Name]` bracket reference in a chat message to its id.
+fn parse_territory_ref(text: &str) -> i32 {
+    for id in 1..=TOTAL_TERRITORIES {
+        if text.contains(&format!("[{}]", territory_name(id))) {
+            return id;
+        }
+    }
+    0
+}
+
+/// Human-only chat. AI chat is written inside the AI cycle, never here.
+#[spacetimedb::reducer]
+pub fn send_chat_message(
+    ctx: &ReducerContext,
+    sender_id: i32,
+    message_text: String,
+    recipient_id: i32,
+    is_deception: bool,
+    claimed_fact: String,
+) -> Result<(), String> {
+    if !game_is_active(ctx) {
+        return Err("Game has ended.".to_string());
+    }
+    if !valid_player(sender_id) {
+        return Err("Invalid player.".to_string());
+    }
+    if message_text.is_empty() || message_text.len() > MAX_CHAT_MESSAGE_LENGTH {
+        return Err("Invalid message.".to_string());
+    }
+    if recipient_id != 0 && (!valid_player(recipient_id) || recipient_id == sender_id) {
+        return Err("Invalid recipient.".to_string());
+    }
+    let territory_id = parse_territory_ref(&message_text);
+    let inserted = ctx.db.chat_log().insert(ChatLog {
+        id: 0,
+        timestamp: now_millis(ctx),
+        sender_id,
+        recipient_id,
+        message_text,
+        territory_id,
+    });
+    ctx.db.chat_secret().insert(ChatSecret {
+        chat_id: inserted.id,
+        is_deception,
+        claimed_fact,
+    });
+    Ok(())
+}
+
+/// An AI's chat message parsed from the commander reply (in-memory only).
+struct AiChat {
+    message_text: String,
+    recipient_id: i32,
+    is_deception: bool,
+    claimed_fact: String,
+    territory_id: i32,
+}
+
+/// Write an AI chat message (chat_log + chat_secret) inside the cycle's tx2.
+fn write_ai_chat(ctx: &ReducerContext, sender_id: i32, chat: AiChat) {
+    if chat.message_text.is_empty() || chat.message_text.len() > MAX_CHAT_MESSAGE_LENGTH {
+        return;
+    }
+    let recipient_id = if chat.recipient_id != 0
+        && (!valid_player(chat.recipient_id) || chat.recipient_id == sender_id)
+    {
+        0
+    } else {
+        chat.recipient_id
+    };
+    let territory_id = if chat.territory_id != 0 {
+        chat.territory_id
+    } else {
+        parse_territory_ref(&chat.message_text)
+    };
+    let inserted = ctx.db.chat_log().insert(ChatLog {
+        id: 0,
+        timestamp: now_millis(ctx),
+        sender_id,
+        recipient_id,
+        message_text: chat.message_text,
+        territory_id,
+    });
+    ctx.db.chat_secret().insert(ChatSecret {
+        chat_id: inserted.id,
+        is_deception: chat.is_deception,
+        claimed_fact: chat.claimed_fact,
+    });
+}
+
+/// Parse the commander reply: an object {reasoning, actions, chat_message} when
+/// possible, falling back to a bare action array. Returns (reasoning, actions, chat).
+fn parse_commander(text: &str) -> (String, Vec<(String, i32)>, Option<AiChat>) {
+    if let Some(slice) = first_balanced_object(text) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(slice) {
+            let reasoning = v
+                .get("reasoning")
+                .and_then(|r| r.as_str())
+                .unwrap_or("")
+                .to_string();
+            let mut actions = Vec::new();
+            if let Some(arr) = v.get("actions").and_then(|a| a.as_array()) {
+                for item in arr {
+                    let at = item.get("action_type").and_then(|x| x.as_str());
+                    let tid = item.get("territory_id").and_then(|x| x.as_i64());
+                    if let (Some(at), Some(tid)) = (at, tid) {
+                        actions.push((at.to_string(), tid as i32));
+                    }
+                }
+            }
+            let chat = v.get("chat_message").and_then(|c| {
+                if !c.is_object() {
+                    return None;
+                }
+                let msg = c.get("message_text").and_then(|m| m.as_str()).unwrap_or("");
+                if msg.is_empty() {
+                    return None;
+                }
+                Some(AiChat {
+                    message_text: msg.to_string(),
+                    recipient_id: c.get("recipient_id").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+                    is_deception: c.get("is_deception").and_then(|x| x.as_bool()).unwrap_or(false),
+                    claimed_fact: c
+                        .get("claimed_fact")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    territory_id: c.get("territory_id").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
+                })
+            });
+            if !actions.is_empty() || chat.is_some() {
+                return (reasoning, actions, chat);
+            }
+        }
+    }
+    // Fallback: bare action array, no chat.
+    (text.to_string(), parse_actions(text), None)
+}
+
+/// Update this AI's trust toward other players from recent chat, returning a
+/// summary for the commander prompt. Runs inside the cycle's tx1.
+fn evaluate_chat_messages(ctx: &ReducerContext, ai_id: i32) -> String {
+    let now = now_millis(ctx);
+    let mut summary = String::from("Your trust scores:\n");
+    for target in 1..=TOTAL_PLAYERS {
+        if target == ai_id {
+            continue;
+        }
+        let Some(mut trust) = ctx
+            .db
+            .ai_trust()
+            .by_pair()
+            .filter((ai_id, target))
+            .next()
+        else {
+            continue;
+        };
+
+        // Recent messages from this sender visible to the AI, since last eval.
+        let mut msgs: Vec<ChatLog> = ctx
+            .db
+            .chat_log()
+            .iter()
+            .filter(|m| {
+                m.sender_id == target
+                    && (m.recipient_id == 0 || m.recipient_id == ai_id)
+                    && m.timestamp > trust.last_updated
+            })
+            .collect();
+        msgs.sort_by_key(|m| m.timestamp);
+        let evaluated = msgs.len().min(CHAT_RATE_LIMIT_PER_CYCLE);
+
+        if evaluated == 0 {
+            trust.trust_score = (trust.trust_score - TRUST_DECAY_PER_CYCLE).max(TRUST_DECAY_FLOOR);
+        } else {
+            for m in msgs.iter().take(CHAT_RATE_LIMIT_PER_CYCLE) {
+                let secret = ctx.db.chat_secret().chat_id().find(m.id);
+                let claimed = secret.as_ref().map(|s| !s.claimed_fact.is_empty()).unwrap_or(false);
+                if claimed && m.territory_id != 0 {
+                    let has_agent = ctx
+                        .db
+                        .covert()
+                        .territory_id()
+                        .find(m.territory_id)
+                        .map(|c| c.owner_id == ai_id && c.agent_count > 0)
+                        .unwrap_or(false);
+                    if has_agent {
+                        if secret.map(|s| s.is_deception).unwrap_or(false) {
+                            trust.trust_score = (trust.trust_score - TRUST_LIE_PENALTY).max(0);
+                            trust.lies_caught += 1;
+                        } else {
+                            trust.trust_score = (trust.trust_score + TRUST_VERIFIED_BONUS).min(100);
+                            trust.truths_confirmed += 1;
+                        }
+                    }
+                }
+                trust.messages_evaluated += 1;
+            }
+        }
+        trust.last_updated = now;
+        let id = trust.id;
+        let (score, truths, lies) = (trust.trust_score, trust.truths_confirmed, trust.lies_caught);
+        ctx.db.ai_trust().id().update(trust);
+        summary.push_str(&format!(
+            "- {}: {score} (truths {truths}, lies {lies})\n",
+            player_display_name(ctx, target),
+        ));
+        let _ = id;
+    }
+    summary
+}
+
+/// Recent chat visible to an AI (global + DMs to it), newest last, up to 10.
+fn recent_chat_for(ctx: &ReducerContext, ai_id: i32) -> String {
+    let mut msgs: Vec<ChatLog> = ctx
+        .db
+        .chat_log()
+        .iter()
+        .filter(|m| m.recipient_id == 0 || m.recipient_id == ai_id || m.sender_id == ai_id)
+        .collect();
+    msgs.sort_by_key(|m| m.timestamp);
+    let mut out = String::new();
+    for m in msgs.iter().rev().take(10).rev() {
+        let channel = if m.recipient_id == 0 { "global".to_string() } else { format!("DM to {}", player_display_name(ctx, m.recipient_id)) };
+        out.push_str(&format!(
+            "[{channel}] {}: {}\n",
+            player_display_name(ctx, m.sender_id),
+            m.message_text,
+        ));
+    }
+    if out.is_empty() {
+        out.push_str("(no messages yet)\n");
+    }
+    out
+}
+
 // ---- INTERNAL: WIN CHECK ----
 
 /// Re-evaluate the win condition after an ownership flip. Covert does NOT count
@@ -946,7 +1253,7 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
 
     // tx1: always re-arm the next cycle (keeps the chain alive), then decide
     // whether to run. Returns the system prompt + API config when we should run.
-    let plan: Option<(String, String, String, i64, i32)> = ctx.with_tx(|tx| {
+    let plan: Option<(String, String, String, i64, i32, String)> = ctx.with_tx(|tx| {
         // Re-schedule the next cycle for this AI.
         tx.db.ai_cycle_schedule().insert(AiCycleSchedule {
             scheduled_id: 0,
@@ -973,10 +1280,16 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
         st.next_cycle_at = now_millis_ts(next_at);
         tx.db.ai_state().ai_player_id().update(st);
 
-        Some((api_key, model, build_board_snapshot(tx), cycle_at, action_points))
+        // Evaluate chat (updates trust) and build the chat context for the commander.
+        let chat_context = format!(
+            "Recent chat messages:\n{}\n{}",
+            recent_chat_for(tx, ai_id),
+            evaluate_chat_messages(tx, ai_id),
+        );
+        Some((api_key, model, build_board_snapshot(tx), cycle_at, action_points, chat_context))
     });
 
-    let (api_key, model, snapshot, cycle_at, action_points) = match plan {
+    let (api_key, model, snapshot, cycle_at, action_points, chat_context) = match plan {
         Some(p) => p,
         None => return,
     };
@@ -1017,7 +1330,7 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
         spec_block.push_str(&format!("{role} ({sname}):\n{body}\n\n"));
     }
     let commander_user = format!(
-        "You are {cname}, commander of your faction.\nYour persona: {cdesc}\n\nCurrent full game state:\n{snapshot}\nYour specialist team has reported:\n{spec_block}Your available action points: {action_points}\nWin condition: unify {WIN_UNIFIED_TERRITORIES} territories (all 4 dimensions).\nSynthesize your team's advice, resolve conflicts per your persona, and decide. End with the JSON action array."
+        "You are {cname}, commander of your faction.\nYour persona: {cdesc}\n\nCurrent full game state:\n{snapshot}\nYour specialist team has reported:\n{spec_block}{chat_context}\nYour available action points: {action_points}\nWin condition: unify {WIN_UNIFIED_TERRITORIES} territories (all 4 dimensions).\nSynthesize your team's advice and the chat, resolve conflicts per your persona, decide your moves, and optionally send one chat message (diplomacy or deception per your persona)."
     );
     let result = anthropic_call(
         ctx, &api_key, &model, COMMANDER_SYSTEM, &commander_user, AI_MAX_TOKENS, AI_LLM_TIMEOUT_SECONDS,
@@ -1027,8 +1340,11 @@ pub fn ai_reasoning_cycle(ctx: &mut ProcedureContext, row: AiCycleSchedule) {
     ctx.with_tx(|tx| {
         match &result {
             Ok(text) => {
-                let actions = parse_actions(text);
-                apply_ai_actions(tx, ai_id, &actions, text, &subordinates, cycle_at);
+                let (reasoning, actions, chat) = parse_commander(text);
+                apply_ai_actions(tx, ai_id, &actions, &reasoning, &subordinates, cycle_at);
+                if let Some(chat) = chat {
+                    write_ai_chat(tx, ai_id, chat);
+                }
             }
             Err(err) => {
                 log::error!("AI {ai_id} commander call failed: {err}");
@@ -1066,7 +1382,12 @@ pub fn strategist_cycle(ctx: &mut ProcedureContext, _row: StrategistSchedule) {
         }
         let api_key = config_value(tx, "anthropic_api_key")?;
         let model = config_value(tx, "anthropic_model").unwrap_or_else(|| DEFAULT_MODEL.to_string());
-        Some((api_key, model, build_board_snapshot(tx)))
+        let snapshot = format!(
+            "{}\nRecent chat visible to the player:\n{}",
+            build_board_snapshot(tx),
+            recent_chat_for(tx, 1),
+        );
+        Some((api_key, model, snapshot))
     });
     let (api_key, model, snapshot) = match plan {
         Some(p) => p,

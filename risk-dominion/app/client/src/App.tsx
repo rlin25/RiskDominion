@@ -11,6 +11,7 @@ import { CardHand } from "./components/CardHand";
 import { ActionBar } from "./components/ActionBar";
 import { IntelPanel } from "./components/IntelPanel";
 import { StrategistAlerts } from "./components/StrategistAlerts";
+import { ChatPanel } from "./components/ChatPanel";
 import { QueryBar } from "./components/QueryBar";
 import { ResultsPanel } from "./components/ResultsPanel";
 import { EventTicker } from "./components/EventTicker";
@@ -20,7 +21,7 @@ import type { QueryResult } from "./types";
 const PLAYER_ID = HUMAN_PLAYER_ID;
 
 export default function App() {
-  const { military, economic, covert, cultural, players, gameState, eventFeed, strategistLog, isReady } =
+  const { military, economic, covert, cultural, players, gameState, eventFeed, strategistLog, chatLog, isReady } =
     useSubscriptions();
 
   const startGame = useReducer(reducers.startGame);
@@ -28,6 +29,17 @@ export default function App() {
   const economicInvest = useReducer(reducers.economicInvest);
   const deployAgent = useReducer(reducers.deployAgent);
   const dismissAlert = useReducer(reducers.dismissStrategistAlert);
+  const sendChat = useReducer(reducers.sendChatMessage);
+
+  function handleSendMessage(text: string, recipientId: number) {
+    sendChat({
+      senderId: PLAYER_ID,
+      messageText: text,
+      recipientId,
+      isDeception: false,
+      claimedFact: "",
+    }).catch((e) => console.warn("send_chat_message:", e));
+  }
 
   const [highlighted, setHighlighted] = useState<Set<number>>(new Set());
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
@@ -183,6 +195,12 @@ export default function App() {
         <div className="flex flex-1 overflow-hidden">
           {intelOpen && <IntelPanel onHighlight={(ids) => setQueryHighlights(ids)} />}
           <Map territories={territories} highlighted={mapHighlights} currentPlayerId={PLAYER_ID} />
+          <ChatPanel
+            messages={chatLog}
+            currentPlayerId={PLAYER_ID}
+            onSendMessage={handleSendMessage}
+            onTerritoryClick={handleEventClick}
+          />
         </div>
 
         <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />

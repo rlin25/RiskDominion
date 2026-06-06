@@ -12,6 +12,8 @@ export type {
   AiReasoningLog as AIReasoningLogRow,
   EventFeed as EventFeedRow,
   StrategistLog as StrategistLogRow,
+  ChatLog as ChatLogRow,
+  AiTrust as AiTrustRow,
   IntelResult,
   DeliberationEntry,
   QueryResult,
