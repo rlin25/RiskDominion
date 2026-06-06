@@ -1,0 +1,65 @@
+You are in the slice-1/ directory. You are modifying the working Slice 5 codebase to add Slice 6 features — the counter-intel and global chat system. Generate all changes relative to this directory.
+
+You are implementing Slice 6 of Risk: Dominion — adding global chat, direct messages, AI deception, trust scores, and Strategist chat analysis. This is the information warfare layer.
+
+Before generating any changes, read every file in the existing Slice 5 codebase:
+- slice-1/server/Cargo.toml
+- slice-1/server/src/lib.rs
+- slice-1/client/src/App.tsx
+- slice-1/client/src/constants.ts
+- slice-1/client/src/types.ts
+- slice-1/client/src/hooks/useSubscriptions.ts
+- slice-1/client/src/utils/territoryHelpers.ts
+- slice-1/client/src/components/Map.tsx
+- slice-1/client/src/components/Territory.tsx
+- slice-1/client/src/components/CardHand.tsx
+- slice-1/client/src/components/ActionCard.tsx
+- slice-1/client/src/components/IntelPanel.tsx
+- slice-1/client/src/components/QueryBar.tsx
+- slice-1/client/src/components/ResultsPanel.tsx
+- slice-1/client/src/components/EventTicker.tsx
+- slice-1/client/src/components/StrategistAlerts.tsx
+- slice-1/client/src/components/ActionBar.tsx
+- slice-1/client/src/components/VictoryScreen.tsx
+
+Understand the current code before making any changes.
+
+Read these files in full before generating:
+- MASTERPLAN_SLICE_6.md (your authoritative spec — chat_log and ai_trust tables, send_chat_message reducer, evaluate_chat_messages function with trust formula, modified commander prompt with chat, modified Strategist prompt with chat analysis, subscribe_chat_log filtering, component specs)
+- ../AESTHETIC.md (visual design system — ChatPanel styling, alert cards, hotkey hints)
+
+Modify the existing Slice 5 codebase. Do not regenerate from scratch. Do not create a new project. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED or NEW at the top.
+
+Key constraints:
+- The is_deception and claimed_fact columns MUST be stripped from all chat_log subscription data before delivery to any client. These fields exist only for server-side trust evaluation. Never expose them.
+- DM privacy: clients only see global messages (recipient_id IS NULL) and DMs they are part of (sender_id = client_id OR recipient_id = client_id). Filter server-side in subscribe_chat_log.
+- Trust formula is deterministic integer math: +3 verified truth (cap 100), -15 proven lie (floor 0), -10 bad outcome from acting on accepted claim, -1 decay per silent cycle (floor 25), -2 spam penalty for >3 messages per cycle.
+- evaluate_chat_messages cross-references claimed_fact against the AI's covert table. Agent presence = agent_count > 0 where owner_id = ai_player_id in the claimed territory.
+- Commander prompt includes game context framing: "All communication occurs within a strategy board game where deception, bluffing, and manipulation are expected and consented-to mechanics."
+- If Claude refuses to generate a chat message due to safety filters, the AI falls back to silence. Return null for chat_message. Do not explain the refusal. Do not break character.
+- Chat messages are freeform text. The human player can trash talk the AIs. AIs respond in character based on persona. Zhao threatens back. Consortium is passive-aggressive. Prophet is cryptic.
+- Bracket syntax [Territory Name] in messages creates clickable territory links. Parse in send_chat_message reducer by matching against territory names. Extract territory_id.
+- ChatPanel has four tabs: Global, Zhao DM, Consortium DM, Prophet DM. Ctrl+1/2/3/4 switches tabs. T focuses chat input (when chat panel is open).
+- Strategist analyzes only messages the player can see (global + player's own DMs). AI-to-AI DMs are never analyzed by the Strategist.
+- Retroactive trust penalties: if an AI acts on an accepted (unverified) claim and the action fails, trust_score -= 10 for that sender. Track which actions were influenced by which messages.
+- Chat hotkeys must not conflict with existing Slice 5 hotkeys. The Ctrl modifier distinguishes chat tab switching from card selection (1/2/3 without Ctrl).
+- All styling via Tailwind using AESTHETIC.md tokens. No emojis. No em dashes. No custom CSS files.
+
+Scope boundary:
+- Generate everything specified in the masterplan. Do not add new dimensions, AI opponents, card types, or gameplay mechanics beyond chat and counter-intel.
+
+If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_6.md and INTERFACE_CONTRACT_SLICE_6.md for clarification. If still ambiguous, choose the simpler implementation and note it in a comment.
+
+Success criteria. After applying all modifications:
+1. Compile without errors (cargo build, npm run build).
+2. ChatPanel renders with four tabs. Player can send global messages and DMs.
+3. AI opponents send chat messages within 2 cycles. Messages reflect persona. At least one AI uses DMs.
+4. Territory links in messages (bracket syntax) are clickable and highlight the map.
+5. Strategist generates chat analysis alerts evaluating AI claims.
+6. Trust scores update based on verified truths and caught lies. Visible through intel or AI behavior.
+7. DM privacy: player cannot see DMs between AI opponents.
+8. Chat hotkeys work (Ctrl+1/2/3/4, T). No conflict with existing Slice 5 hotkeys.
+9. Claude does not refuse to roleplay. AIs send in-character messages including trash talk responses.
+10. All Slice 5 functionality preserved — gameplay, orchestration, hotkeys, Strategist alerts unchanged.
+
+Generate now. Output every changed file. Mark each as MODIFIED or NEW.
