@@ -59,6 +59,7 @@ export default function App() {
   const [tickerHighlight, setTickerHighlight] = useState<number | null>(null);
   const [ownedHighlight, setOwnedHighlight] = useState(false);
   const [intelOpen, setIntelOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(true);
   const [currentTimestamp, setCurrentTimestamp] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -230,6 +231,12 @@ export default function App() {
             >
               {intelOpen ? "Hide Intel" : "Show Intel"}
             </button>
+            <button
+              onClick={() => setChatOpen((v) => !v)}
+              className="rounded border border-[#334455] px-2 py-1 font-ui text-[10px] text-text-secondary hover:text-text-primary"
+            >
+              {chatOpen ? "Hide Chat" : "Show Chat"}
+            </button>
           </div>
           <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
         </div>
@@ -253,14 +260,16 @@ export default function App() {
         <div className="flex flex-1 overflow-hidden">
           {intelOpen && <IntelPanel onHighlight={(ids) => setQueryHighlights(ids)} />}
           <Map territories={territories} highlighted={mapHighlights} currentPlayerId={PLAYER_ID} />
-          <ChatPanel
-            messages={chatLog}
-            currentPlayerId={PLAYER_ID}
-            onSendMessage={handleSendMessage}
-            onTerritoryClick={handleEventClick}
-            mode={mode}
-            currentTimestamp={mode === "replay" ? currentTimestamp : null}
-          />
+          {chatOpen && (
+            <ChatPanel
+              messages={chatLog}
+              currentPlayerId={PLAYER_ID}
+              onSendMessage={handleSendMessage}
+              onTerritoryClick={handleEventClick}
+              mode={mode}
+              currentTimestamp={mode === "replay" ? currentTimestamp : null}
+            />
+          )}
           {mode !== "player" && (
             <SpectatorOverlay
               territories={territories}
