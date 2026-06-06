@@ -1,0 +1,34 @@
+You are in the slice-1/ directory. Generate all files relative to this directory.
+
+You are generating Slice 1 of Risk: Dominion — a two-player real-time strategy game built on SpacetimeDB where the battlefield is a live multidimensional database.
+
+Read these files in full before generating:
+- MASTERPLAN_SLICE_1.md (your authoritative spec — file tree, schemas, reducers, components, seed data, generation order)
+- ../AESTHETIC.md (visual design system — colors, fonts, territory hexagons with X-split quadrants, card design with geometric SVG icons, animations)
+
+Generate the complete application as specified in the masterplan. Output every file in the file tree, in the generation order specified.
+
+Key constraints:
+- Server: single lib.rs with all tables, reducers, scheduled reducers. Use #[spacetimedb(table)], #[spacetimedb(reducer)], #[spacetimedb(scheduled)] macros.
+- Client: React 18 + TypeScript 5.3 + Vite + dnd-kit (@dnd-kit/core) + Tailwind CSS. No custom CSS files.
+- All styling via Tailwind utility classes using the design tokens from AESTHETIC.md.
+- Territory hexagons use the X-split quadrant pattern. Card icons are geometric SVGs.
+- No emojis. No em dashes. No custom CSS files.
+- All arithmetic is integer arithmetic. No floats.
+- Two human players via URL parameter (?player=1, ?player=2). Shared SpacetimeDB instance.
+
+Scope boundary:
+- This is Slice 1 of 4. Generate ONLY what is specified in the masterplan.
+- Do NOT generate: AI opponents, Cultural dimension, Covert dimension, query bar, event ticker, intel panel, debug panel.
+- The game is two dimensions (Military, Economic) and two human players. Nothing more.
+
+If the masterplan is ambiguous on a detail, use DECISIONS_SLICE_1.md for design intent. If still ambiguous, choose the simpler implementation and note it in a comment.
+
+Success criteria. After generation, the application must:
+1. Compile without errors (cargo build for server, npm run build for client).
+2. Render a hex map with 12 territories showing correct two-color X-split quadrants matching seed data.
+3. Accept drag-and-drop card actions that mutate the database and sync between two browser tabs in under 1 second.
+4. Regenerate action points at 1 per 8 seconds, capped at 10.
+5. Trigger victory overlay on both tabs when a player unifies 3 territories.
+
+Generate now. Output every file.
