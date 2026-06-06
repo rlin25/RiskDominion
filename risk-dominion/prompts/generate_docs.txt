@@ -5,10 +5,10 @@ You are maintaining four documentation files for Risk: Dominion. These files are
 For each file: check whether it already exists. If it does, read it in full before making any changes, then update only what is outdated or missing -- do not rewrite sections that are still accurate. If it does not exist, create it from scratch using the spec below.
 
 Before updating or creating any file, read these source documents for context:
-- slice-1/DECISIONS_SLICE_1.md through slice-5/DECISIONS_SLICE_5.md (design philosophy across all slices)
+- slice-1/DECISIONS_SLICE_1.md through slice-7/DECISIONS_SLICE_7.md (design philosophy across all slices)
 - AESTHETIC.md (visual design system)
 - SETUP.md (environment setup)
-- slice-5/MASTERPLAN_SLICE_5.md (full feature list)
+- slice-7/MASTERPLAN_SLICE_7.md (full feature list for the final slice)
 
 Maintain the following four files:
 
@@ -30,10 +30,10 @@ If creating from scratch, use this structure:
   - Arrows: Client → Reducers → Tables → Subscriptions → Client (real-time loop). Scheduled Reducers → Claude → AI Actions → Reducers. Query Bar → Claude → Results → Client. Strategist Cycle → Claude → Alerts → Client.
   - Use `%%{init: {"theme": "dark"}}%%`, `flowchart LR`, `classDef` with the game's color palette, and `:::className` inline notation. Do not use the `class` statement or `&` grouping in arrows -- GitHub's Mermaid parser rejects both. Use rounded nodes `("text")` throughout.
 - **Quick start:** 3-4 lines. "Clone the repo. Run bash setup.sh. Open prompts/generate_slice_1.txt in Claude Code. Start the server. Open localhost:5173."
-- **Features:** Bullet list covering all five slices. Four dimensions, AI opponents with orchestration, cultural spread with cross-dimension bonuses, natural language query system, live event ticker, keyboard controls, Strategist advisor, Tab autocomplete.
+- **Features:** Bullet list covering all seven slices. Four dimensions, AI opponents with orchestration, cultural spread with cross-dimension bonuses, natural language query system, live event ticker, keyboard controls, Strategist advisor, Tab autocomplete, global chat with AI deception and trust scoring, spectator mode, replay system.
 - **Tech stack table:** SpacetimeDB, Rust, React 18, TypeScript, Vite, dnd-kit, Tailwind CSS, Claude (Anthropic API).
-- **Slice structure:** Brief explanation of what each slice adds. Slice 1: core gameplay. Slice 2: AI opponents. Slice 3: cultural dimension. Slice 4: query system + ticker. Slice 5: orchestration + hotkeys.
-- **Documentation links:** Bullet list linking to GLOSSARY.md, ARCHITECTURE.md, DEMO_SCRIPT.md, AESTHETIC.md, SETUP.md, and all slice decision documents.
+- **Slice structure:** Brief explanation of what each slice adds. Slice 1: core gameplay. Slice 2: AI opponents. Slice 3: cultural dimension. Slice 4: query system + ticker. Slice 5: orchestration + hotkeys. Slice 6: global chat with deception and AI trust system. Slice 7: spectator mode and replay system.
+- **Documentation links:** Bullet list linking to GLOSSARY.md, ARCHITECTURE.md, DEMO_SCRIPT.md, AESTHETIC.md, SETUP.md, and all slice decision documents (slices 1 through 7).
 - **Team:** Placeholder for team member names and roles.
 
 ---
@@ -55,9 +55,9 @@ If creating from scratch, use this structure:
 
 **Actions:** Action Card, Military Attack, Economic Invest, Deploy Agent, Card Hand, Drag-and-Drop.
 
-**AI Systems:** AI Opponent, Persona, Zhao, Consortium, Prophet, Reasoning Cycle, Intel, Intel Threshold, Deliberation Chain, Subordinate, Commander, Specialist, Orchestration, Strategist, Strategist Alert.
+**AI Systems:** AI Opponent, Persona, Zhao, Consortium, Prophet, Reasoning Cycle, Intel, Intel Threshold, Deliberation Chain, Subordinate, Commander, Specialist, Orchestration, Strategist, Strategist Alert, Trust Score.
 
-**Technical Terms:** SpacetimeDB, Reducer, Scheduled Reducer, Subscription, Claude, LLM, Thread, Fire-and-Forget.
+**Technical Terms:** SpacetimeDB, Reducer, Scheduled Reducer, Subscription, Claude, LLM, Thread, Fire-and-Forget, Spectator Mode, Replay Mode.
 
 Definitions should be accessible to someone with no prior knowledge of the game. Avoid implementation details — those belong in ARCHITECTURE.md.
 
@@ -71,10 +71,10 @@ If the file already exists: update any sections where the table schema, reducer 
 
 If creating from scratch, use this structure:
 - **Overview:** One paragraph. "Risk: Dominion is a single-page React application connected to a SpacetimeDB server. All game state lives in SpacetimeDB tables. The client subscribes to live table updates. AI opponents reason through a multi-agent orchestration pipeline powered by Claude. A natural language query system translates player questions into live database queries."
-- **SpacetimeDB Layer:** Explain the table architecture (4 dimension tables, player state, game state, event feed, AI state, reasoning log, strategist log). Explain reducers (client-callable for actions and queries, internal for AI submission, scheduled for ticks and cycles). Explain subscriptions (one per table, full rows, client merges updates).
+- **SpacetimeDB Layer:** Explain the table architecture (4 dimension tables, player state, game state, event feed, AI state, reasoning log, strategist log, chat log, AI trust scores). Explain reducers (client-callable for actions, queries, and chat; internal for AI submission; scheduled for ticks and cycles). Explain subscriptions (one per table, full rows, client merges updates).
 - **AI Orchestration:** Explain the Slice 5 threading model. Commander + 4 specialists per AI. Specialists receive domain-specific game state snapshots and narrow prompts. Parallel execution via std::thread::spawn with JoinHandle synchronization. 15s specialist timeout, 30s commander timeout. Commander synthesizes recommendations according to persona priorities. Full deliberation chain logged to ai_reasoning_log and queryable via intel.
 - **Query System:** Explain the natural language pipeline. Player types question → query_database reducer → game state snapshot built → prompt constructed with JSON format instructions → Claude translates to structured response → summary, data_table, highlighted_territories returned → ResultsPanel renders, Map highlights. Canned queries use optimized pre-formulated prompts. Autocomplete uses a separate prompt for context-aware suggestions.
-- **Client Architecture:** React component tree. App → Map (Territory × 12), CardHand (ActionCard × N), QueryBar (with autocomplete dropdown), ResultsPanel, IntelPanel, EventTicker, StrategistAlerts, ActionBar, VictoryScreen. State management via useSubscriptions hook + React useState. Hotkey system via document keydown listener with query bar focus suppression.
+- **Client Architecture:** React component tree. App → Map (Territory × 12), CardHand (ActionCard × N), QueryBar (with autocomplete dropdown), ResultsPanel, IntelPanel, EventTicker, StrategistAlerts, ChatPanel, ActionBar, VictoryScreen. State management via useSubscriptions hook + React useState. Hotkey system via document keydown listener with query bar focus suppression. Spectator mode via ?spectator=true URL parameter (read-only, stats overlay). Replay mode via ?replay=true URL parameter (scrubbable post-game timeline).
 - **Data Flow Diagram:** A Mermaid sequence diagram showing: Player drags card → Client calls reducer → SpacetimeDB validates and mutates tables → Subscription pushes update to all clients → Client re-renders affected components. AI cycle: Scheduled reducer fires → Spawns specialist threads → Claude responds → Commander synthesizes → ai_submit_actions → Tables updated → Subscription pushes to client.
 - **Key Design Decisions:** Brief rationale for: real-time over turn-based, split ownership over single owner, passive cultural spread over active cards, orchestration over single-agent AI, fire-and-forget events, all integer arithmetic.
 
@@ -82,21 +82,22 @@ If creating from scratch, use this structure:
 
 ## 4. DEMO_SCRIPT.md
 
-A timed 5-minute walkthrough script for presenting Risk: Dominion to judges.
+A timed 7-minute walkthrough script for presenting Risk: Dominion to judges.
 
-Features marked with [Slice 5] depend on the final slice. If Slice 5 is not yet stable, skip those sections and adjust timing.
+Features marked with [Slice N] depend on that slice being stable. If a slice is not yet complete, skip those sections and adjust timing as noted in the fallback table.
 
-If the file already exists: update only the segments that reference features or mechanics that have changed. Preserve timing, phrasing, and flow for segments that are still accurate. Do not rewrite the whole script.
+If the file already exists: add missing [Slice 6] and [Slice 7] segments if not present. Update any segments that reference features or mechanics that have changed. Preserve timing, phrasing, and flow for segments that are still accurate. Do not rewrite the whole script.
 
 If creating from scratch, use this structure:
-- **Setup (before demo):** Have the game pre-loaded and running. Have at least one AI cycle completed so intel is queryable. Have the query bar visible. Close any unnecessary panels.
+- **Setup (before demo):** Have the game pre-loaded and running. Have at least one AI cycle completed so intel is queryable. Have the query bar and chat panel visible. Close any unnecessary panels.
 - **0:00-0:30 — First Impression.** "This is Risk: Dominion. It looks like a strategy game. But under the hood, the map is a live database running on SpacetimeDB. Every territory, every color, every number you see is a row in a table, updating in real time." Point out the hex map, the X-split quadrant colors, the four home territories. Point out the ticker at the bottom showing "Game started."
-- **0:30-1:30 — Core Gameplay.** Execute a military attack. "I drag this red card onto an adjacent territory. That's a reducer call — a database transaction. The territory changes color. The ticker narrates it." Execute an economic invest. Execute a covert deploy. "Three dimensions, three card types. The fourth dimension — Cultural — spreads passively. Let me show you." Wait for or trigger a cultural spread tick. Point out influence percentages changing. "Culture creeps across borders based on economic strength. I don't control it directly. I influence it by where I invest."
+- **0:30-1:30 — Core Gameplay.** Execute a military attack. "I drag this red card onto an adjacent territory. That's a reducer call -- a database transaction. The territory changes color. The ticker narrates it." Execute an economic invest. Execute a covert deploy. "Three dimensions, three card types. The fourth dimension -- Cultural -- spreads passively. Let me show you." Wait for or trigger a cultural spread tick. Point out influence percentages changing. "Culture creeps across borders based on economic strength. I don't control it directly. I influence it by where I invest."
 - **1:30-2:30 — Query System.** Click a canned query button. "The battlefield is a database. I can query it." Show results panel with data table and map highlights. "Ten pre-built queries. But I can also ask anything." Type "Where is Zhao strongest?" in natural language. Show the response. "The query goes to Claude with a snapshot of the current game state. Claude translates my English into a structured answer. Highlighted territories, data table, summary. All from live tables."
-- **2:30-3:30 — AI Orchestration [Slice 5].** "The AI opponents aren't simple bots. Each one has a council of specialists." Open the intel panel. Show Zhao's deliberation chain. "This is Zhao's last reasoning cycle. You can see his military specialist — Vanguard — recommended attacking Brazil. His covert specialist — Scout — confirmed the intel. His economic and cultural specialists weighed in. Then Zhao, as commander, synthesized their recommendations and made the final call. Five Claude calls. One decision. All logged, all queryable." Point out the subordinate names and reasoning text.
-- **3:30-4:15 — Strategist and Alerts [Slice 5].** "I also have an AI on my side." Point out Strategist alerts in the top-right. "Every 60 seconds, my Strategist analyzes the game state and pushes me notifications. Threats, opportunities, weaknesses. This one is warning me that Zhao is massing troops near my border. This one is telling me South America is close to unification. I can dismiss them or click them to highlight the territory."
-- **4:15-4:45 — Hotkeys [Slice 5].** "And I can do all of this from the keyboard." Press 1, 2, 3 to select cards. Use WASD to move the selection cursor. Press Enter to execute. "Full keyboard control. Command at the speed of thought." Press Q to focus the query bar. Press I to toggle intel. Press H to highlight owned territories. "Every common action has a hotkey. The hints are right there on the cards."
-- **4:45-5:00 — Wrap Up.** "Risk: Dominion. Four dimensions. AI opponents that deliberate through councils. A database you can query in plain English. And it all runs on SpacetimeDB — every action a transaction, every update a subscription, every AI agent a native participant in the same database." If close to victory, show the progress. "Thank you. Happy to take questions."
+- **2:30-3:15 — AI Orchestration [Slice 5].** "The AI opponents aren't simple bots. Each one has a council of specialists." Open the intel panel. Show Zhao's deliberation chain. "This is Zhao's last reasoning cycle. You can see his military specialist -- Vanguard -- recommended attacking Brazil. His covert specialist -- Scout -- confirmed the intel. His economic and cultural specialists weighed in. Then Zhao, as commander, synthesized their recommendations and made the final call. Five Claude calls. One decision. All logged, all queryable." Point out the subordinate names and reasoning text.
+- **3:15-3:45 — Strategist and Hotkeys [Slice 5].** "I also have an AI on my side." Point out Strategist alerts. "Every 60 seconds, my Strategist analyzes the game state and pushes me notifications. Threats, opportunities, weaknesses." Then briefly show keyboard controls: press 1/2/3 for cards, WASD for cursor, Enter to confirm. "Full keyboard control. Command at the speed of thought."
+- **3:45-4:45 — Deception and Chat [Slice 6].** "And then there is the fifth dimension: deception." Open the chat panel. Show AI messages already in the channel. "Every AI opponent can send messages in the chat. They lie. They threaten. They try to manipulate you into attacking their enemies while they quietly move elsewhere." Read aloud a Consortium message and a Zhao message. Point to a Strategist alert flagging a likely deception: "My Strategist cross-referenced Zhao's claim against my agent network. This didn't check out. Zhao is lying." Explain trust scores: "Every AI tracks how trustworthy every other player is. Lie and get caught, and you lose credibility for the rest of the game."
+- **4:45-5:30 — Spectator and Replay [Slice 7].** "Let me show you one more thing." Open a second browser window with ?spectator=true. "This is spectator mode. Anyone can watch this game right now, read-only, with a stats overlay showing hidden state -- trust scores, dimension dominance, which AI is currently thinking." Then switch to ?replay=true. "And after the game ends, I can scrub through the entire history. Every AI deliberation. Every chat message. Every trust score update. Every cultural spread tick. The database was recording all of it. Now you can watch it back."
+- **5:30-5:45 — Wrap Up.** "Risk: Dominion. Four dimensions. AI opponents that deliberate through councils. A database you can query in plain English. A chat channel where every message is a potential weapon. Spectators with X-ray vision. And a complete replay of every thought the AI ever had. Everything runs on SpacetimeDB -- every action a transaction, every update a subscription, every AI a native participant in the same live database." "Thank you. Happy to take questions."
 
 ---
 

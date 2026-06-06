@@ -30,6 +30,8 @@ There are ten tables. Four dimension tables hold the core game state. The rest s
 | `ai_state` | `ai_player_id` | `cycle_status`, `last_cycle_at` | Whether each AI is idle or mid-cycle |
 | `ai_reasoning_log` | `id` (auto) | `ai_player_id`, `cycle_at`, `subordinate_id`, `reasoning_text`, `actions_taken` | Full deliberation chain per AI cycle |
 | `strategist_log` | `id` (auto) | `notification`, `priority`, `territory_id`, `dismissed` | Player-facing Strategist alert notifications |
+| `chat_log` | `id` (auto) | `sender_id`, `recipient_id`, `message_text`, `is_truthful`, `timestamp` | All chat messages; `recipient_id` null = public, set = DM; `is_truthful` server-side only |
+| `ai_trust` | `(ai_player_id, target_player_id)` | `trust_score` | Per-AI trust score (0-100) for every other player; updated after claim verification |
 
 The four dimension tables are the game. Each row in `military` represents one territory's military state. The same territory has one row in each of the four dimension tables. A territory is "unified" for a player when all four rows point to the same `owner_id`.
 
@@ -44,6 +46,9 @@ Reducers are the only way to mutate tables. There are three categories:
 - `military_attack(territory_id, player_id)` -- validates adjacency, compares troops, transfers Military ownership if attacker wins
 - `economic_invest(territory_id, player_id)` -- adds capital, transfers Economic ownership if player's capital exceeds owner's; applies Military bonus if player owns Military in that territory
 - `deploy_agent(territory_id, player_id)` -- adds one agent, transfers Covert ownership if player's count exceeds owner's
+
+**Client-callable (chat):**
+- `send_chat_message(message, recipient_id, player_id)` -- writes to `chat_log`; `recipient_id` null = public, set = private DM visible only to sender and recipient
 
 **Client-callable (queries and intel):**
 - `query_database(question, player_id)` -- builds game state snapshot, calls Claude, returns `{summary, data_table, highlighted_territories}`
@@ -175,10 +180,21 @@ App
  +-- CardHand
  |    +-- ActionCard x N (drag source, hotkey hint)
  +-- IntelPanel (AI deliberation chain, hotkey hint)
+ +-- ChatPanel (global channel tab, DM tabs for each AI, message input)
  +-- EventTicker (scrolling feed, click-to-highlight)
- +-- StrategistAlerts (stacked notification cards)
+ +-- StrategistAlerts (stacked notification cards including chat analysis)
  +-- VictoryScreen (overlay, conditionally rendered)
 ```
+
+### Spectator and Replay Modes
+
+The client uses URL parameter routing to switch between three modes:
+
+**Default (player mode):** Full interactive game. All reducers callable. Cards draggable.
+
+**Spectator mode (`?spectator=true`):** Read-only. No reducer calls. Cards not draggable. A stats overlay renders over the map showing: unified territory counts per faction, dimension dominance percentages, trust scores between every pair of players, which AI cycle is currently active, and territories with the highest cultural pressure. Multiple spectators connect simultaneously -- each receives the same live subscription updates.
+
+**Replay mode (`?replay=true`):** Activated after a game ends. A timeline bar spans from `game_state.started_at` to `game_state.ended_at`. Colored markers represent every event in `event_feed`. The playhead can be dragged to any point; the client reconstructs map state from the initial seed plus all logged actions up to that timestamp. At any timeline position, the intel panel shows the most recent `ai_reasoning_log` cycle before that timestamp. The chat panel shows all `chat_log` messages up to that timestamp. Trust score history is derived from `ai_trust` update events. Speed controls (1x, 2x, 4x) replay events in real time.
 
 ### State Management
 

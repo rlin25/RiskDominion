@@ -1,10 +1,10 @@
 # DEMO SCRIPT -- Risk: Dominion
 
-A timed 5-minute walkthrough for presenting to judges.
+A timed 7-minute walkthrough for presenting to judges.
 
-Features marked **[Slice 5]** depend on the final slice being stable. If Slice 5 is not yet complete, skip those sections and adjust timing as noted.
+Features marked **[Slice N]** depend on that slice being stable. If a slice is not yet complete, skip those sections and use the fallback timing table at the end.
 
-**Total time:** 5 minutes. Rehearse at least twice before the demo.
+**Total time:** 7 minutes. Rehearse at least twice before the demo.
 
 ---
 
@@ -13,9 +13,11 @@ Features marked **[Slice 5]** depend on the final slice being stable. If Slice 5
 - Game is loaded and running at `http://localhost:5173`
 - At least one full AI cycle has completed (Zhao fires at 0s/60s; wait 90s to ensure all three AIs have cycled at least once)
 - Query bar is visible at the top of the screen
+- Chat panel is visible and has at least one AI message in it
 - Intel panel is closed
 - No open results panels or active queries
 - Anthropic API key is configured in `.env` and verified working
+- A second browser tab is open at `http://localhost:5173?spectator=true` (minimized, ready to switch to)
 - Terminal showing the SpacetimeDB server logs is visible in a side window (optional but impressive)
 
 ---
@@ -76,7 +78,7 @@ Features marked **[Slice 5]** depend on the final slice being stable. If Slice 5
 
 ---
 
-## 2:30-3:30 -- AI Orchestration [Slice 5]
+## 2:30-3:15 -- AI Orchestration [Slice 5]
 
 **Say:**
 "The AI opponents aren't simple bots. Each one runs a council of specialists."
@@ -97,7 +99,7 @@ Features marked **[Slice 5]** depend on the final slice being stable. If Slice 5
 
 ---
 
-## 3:30-4:15 -- Strategist and Alerts [Slice 5]
+## 3:15-3:45 -- Strategist and Alerts [Slice 5]
 
 **Say:**
 "I also have an AI on my side."
@@ -118,7 +120,7 @@ Features marked **[Slice 5]** depend on the final slice being stable. If Slice 5
 
 ---
 
-## 4:15-4:45 -- Hotkeys [Slice 5]
+## 3:45-4:15 -- Hotkeys [Slice 5]
 
 **Say:**
 "And I can command all of this from the keyboard."
@@ -140,10 +142,61 @@ Features marked **[Slice 5]** depend on the final slice being stable. If Slice 5
 
 ---
 
-## 4:45-5:00 -- Wrap Up
+## 4:15-5:15 -- Deception and Chat [Slice 6]
 
 **Say:**
-"Risk: Dominion. Four dimensions of territorial control. AI opponents that deliberate through councils of specialists. A database you can interrogate in plain English. An AI ally that watches the game and tells you what to worry about. And full keyboard command."
+"And then there is the fifth dimension of conflict: deception."
+
+**Do:**
+- Open the chat panel. Point to messages already in the channel.
+
+**Say:**
+"Every AI opponent can send messages. They lie. They threaten. They try to turn you against their enemies while they quietly move elsewhere."
+
+**Do:**
+- Read aloud a Consortium message and a Zhao message. If they contradict each other, point that out.
+- Point to a Strategist alert flagging a likely deception: "My Strategist cross-referenced this claim against my agent network. It did not check out."
+
+**Say:**
+"Every AI maintains a trust score for every other player. Claims are verified against their own agents. Lie and get caught -- trust drops. That penalty lasts the rest of the game. You can build a reputation for honesty and cash it in later with a single devastating lie."
+
+**Do:**
+- Type a message into the chat: "Zhao is massing on the western border." Send it.
+- Point at it: "I can lie too. The AIs will evaluate this claim against their own intel."
+
+---
+
+## 5:15-6:15 -- Spectator and Replay [Slice 7]
+
+**Say:**
+"Let me show you what the database looks like from outside the game."
+
+**Do:**
+- Switch to the second browser tab with `?spectator=true`.
+
+**Say:**
+"This is spectator mode. Read-only. Anyone can open this URL and watch the game live. The stats overlay shows information the player would love to have -- trust scores between every faction, dimension dominance percentages, which AI cycle is active right now."
+
+**Do:**
+- Point to each stat in the overlay.
+- Switch back to the main tab: "Meanwhile the game is still running. The spectator sees every update."
+
+**Say:**
+"After the game ends, there is one more thing."
+
+**Do:**
+- Open a new tab with `?replay=true`. (If a completed game is not available, describe this section verbally.)
+- Show the timeline bar at the bottom. Scrub to an earlier point.
+
+**Say:**
+"Every AI deliberation. Every chat message. Every trust score update. Every cultural pressure tick. The database recorded all of it. Now I can scrub back to any moment and see exactly what every AI was thinking -- and whether they were lying."
+
+---
+
+## 6:15-6:30 -- Wrap Up
+
+**Say:**
+"Risk: Dominion. Four dimensions. AI opponents that deliberate through councils of specialists. A database you can interrogate in plain English. A chat channel where every message is a potential weapon. And a complete replay of every thought the AI ever had."
 
 **Pause for effect.**
 
@@ -158,19 +211,18 @@ Features marked **[Slice 5]** depend on the final slice being stable. If Slice 5
 
 ---
 
-## Timing Without Slice 5
+## Fallback Timing by Slice
 
-If Slice 5 is not yet validated, remove the three Slice 5 segments and redistribute time:
+Drop any slice not yet validated and compress accordingly:
 
-| Segment | Time |
-|---------|------|
-| First Impression | 0:00-0:45 |
-| Core Gameplay | 0:45-2:00 |
-| Query System | 2:00-3:30 |
-| Event Ticker + Tactical Recap | 3:30-4:30 |
-| Wrap Up | 4:30-5:00 |
+| Slices Available | Total Time | Notes |
+|-----------------|------------|-------|
+| 1-4 only | 4 min | Drop orchestration, hotkeys, chat, replay. Add ticker recap at 3:30. |
+| 1-5 | 5 min | Drop chat and replay. Expand orchestration and hotkeys to fill. |
+| 1-6 | 6 min | Drop replay. Expand chat segment to 1:30. |
+| 1-7 (full) | 7 min | Use this script as written. |
 
-For the Tactical Recap segment: trigger a few actions rapidly, then point to the ticker entries -- "The ticker narrated every one of those. A judge who walks up right now can read the last 30 seconds of the game without knowing any of the rules."
+**Ticker Recap (if Slice 5+ not available):** Trigger a few actions rapidly, then point to the ticker entries -- "The ticker narrated every one of those. A judge who walks up right now can read the last 30 seconds of the game without knowing any of the rules."
 
 ---
 
@@ -187,3 +239,9 @@ For the Tactical Recap segment: trigger a few actions rapidly, then point to the
 
 **"Can I see the AI reasoning?"**
 "Yes -- if you deploy at least 3 agents in a territory where the AI has military or economic presence, you can query its intel. In Slice 5, you see the full deliberation chain from every specialist and the commander."
+
+**"Do the AIs actually lie in chat, or is that scripted?"**
+"Every message is a live Claude call. The AI decides what to say based on its current strategy and trust scores. If it is preparing an economic attack, it may try to distract you with false military warnings. There is no script. The lie is chosen by the model in the same reasoning cycle that picks the AI's actions."
+
+**"What does the spectator see that the player does not?"**
+"Trust scores between every pair of players, dimension dominance percentages across the whole board, which AI cycle is currently running, and territories with the highest foreign cultural pressure. The player has to earn intel through agents. The spectator sees everything."
