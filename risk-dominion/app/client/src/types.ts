@@ -5,6 +5,7 @@ export type {
   Military as MilitaryRow,
   Economic as EconomicRow,
   Covert as CovertRow,
+  Cultural as CulturalRow,
   Player as PlayerRow,
   GameState as GameStateRow,
   AiState as AIStateRow,
@@ -23,4 +24,6 @@ export interface TerritoryState {
   capital: number;
   covertOwner: number;
   agentCount: number;
+  culturalOwner: number;
+  influencePct: number;
 }

@@ -1,5 +1,11 @@
 import { ADJACENCY, TERRITORY_NAMES } from "../constants";
-import type { MilitaryRow, EconomicRow, CovertRow, TerritoryState } from "../types";
+import type {
+  MilitaryRow,
+  EconomicRow,
+  CovertRow,
+  CulturalRow,
+  TerritoryState,
+} from "../types";
 
 export function getAdjacentTerritories(territoryId: number): number[] {
   return ADJACENCY[territoryId] ?? [];
@@ -18,10 +24,12 @@ export function buildTerritoryStates(
   military: readonly MilitaryRow[],
   economic: readonly EconomicRow[],
   covert: readonly CovertRow[],
+  cultural: readonly CulturalRow[],
 ): TerritoryState[] {
   return military.map((m) => {
     const e = economic.find((row) => row.territoryId === m.territoryId);
     const c = covert.find((row) => row.territoryId === m.territoryId);
+    const l = cultural.find((row) => row.territoryId === m.territoryId);
     return {
       territoryId: m.territoryId,
       militaryOwner: m.ownerId,
@@ -30,6 +38,8 @@ export function buildTerritoryStates(
       capital: e?.capital ?? 0,
       covertOwner: c?.ownerId ?? 0,
       agentCount: c?.agentCount ?? 0,
+      culturalOwner: l?.ownerId ?? 0,
+      influencePct: l?.influencePct ?? 0,
     };
   });
 }
@@ -37,13 +47,23 @@ export function buildTerritoryStates(
 export function countUnifiedTerritories(
   military: readonly MilitaryRow[],
   economic: readonly EconomicRow[],
+  covert: readonly CovertRow[],
+  cultural: readonly CulturalRow[],
   playerId: number,
 ): number {
   let count = 0;
   for (const m of military) {
     if (m.ownerId !== playerId) continue;
-    const e = economic.find((row) => row.territoryId === m.territoryId);
-    if (e && e.ownerId === playerId) count++;
+    const e = economic.find((r) => r.territoryId === m.territoryId);
+    const c = covert.find((r) => r.territoryId === m.territoryId);
+    const l = cultural.find((r) => r.territoryId === m.territoryId);
+    if (
+      e?.ownerId === playerId &&
+      c?.ownerId === playerId &&
+      l?.ownerId === playerId
+    ) {
+      count++;
+    }
   }
   return count;
 }

@@ -4,6 +4,7 @@ import type {
   MilitaryRow,
   EconomicRow,
   CovertRow,
+  CulturalRow,
   PlayerRow,
   GameStateRow,
 } from "../types";
@@ -14,16 +15,23 @@ export function useSubscriptions() {
   const [military, militaryReady] = useTable(tables.military);
   const [economic, economicReady] = useTable(tables.economic);
   const [covert, covertReady] = useTable(tables.covert);
+  const [cultural, culturalReady] = useTable(tables.cultural);
   const [players, playersReady] = useTable(tables.players);
   const [gameState, gameStateReady] = useTable(tables.game_state);
 
   const isReady =
-    militaryReady && economicReady && covertReady && playersReady && gameStateReady;
+    militaryReady &&
+    economicReady &&
+    covertReady &&
+    culturalReady &&
+    playersReady &&
+    gameStateReady;
 
   return {
     military: military as readonly MilitaryRow[],
     economic: economic as readonly EconomicRow[],
     covert: covert as readonly CovertRow[],
+    cultural: cultural as readonly CulturalRow[],
     players: players as readonly PlayerRow[],
     gameState: gameState as readonly GameStateRow[],
     isReady,

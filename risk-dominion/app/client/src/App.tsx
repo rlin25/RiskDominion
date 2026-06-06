@@ -15,7 +15,8 @@ import { VictoryScreen } from "./components/VictoryScreen";
 const PLAYER_ID = HUMAN_PLAYER_ID;
 
 export default function App() {
-  const { military, economic, covert, players, gameState, isReady } = useSubscriptions();
+  const { military, economic, covert, cultural, players, gameState, isReady } =
+    useSubscriptions();
 
   const startGame = useReducer(reducers.startGame);
   const militaryAttack = useReducer(reducers.militaryAttack);
@@ -35,8 +36,8 @@ export default function App() {
   }, [isReady, gameState, startGame]);
 
   const territories = useMemo(
-    () => buildTerritoryStates(military, economic, covert),
-    [military, economic, covert],
+    () => buildTerritoryStates(military, economic, covert, cultural),
+    [military, economic, covert, cultural],
   );
 
   const me = players.find((p) => p.playerId === PLAYER_ID);

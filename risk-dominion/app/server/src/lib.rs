@@ -18,10 +18,14 @@ const MAX_ACTION_POINTS: i32 = 10;
 const ACTION_REGEN_SECONDS: u64 = 8;
 const STARTING_ACTION_POINTS: i32 = 5;
 const ECONOMIC_INVEST_AMOUNT: i32 = 5;
-const WIN_UNIFIED_TERRITORIES: i32 = 3;
+const WIN_UNIFIED_TERRITORIES: i32 = 5; // unify across all 4 dimensions (Slice 3+)
 const TOTAL_TERRITORIES: i32 = 12;
 const TOTAL_PLAYERS: i32 = 4;
 const MIN_TROOPS: i32 = 1;
+
+const CULTURAL_TICK_SECONDS: u64 = 30;
+const INFLUENCE_FLIP_THRESHOLD: i32 = 50;
+const CULTURAL_PRESSURE_DIVISOR: i32 = 10;
 
 const AI_CYCLE_SECONDS: u64 = 60;
 const AI_STAGGER_SECONDS: u64 = 20;
@@ -58,6 +62,15 @@ pub struct Covert {
     /// 0 means no agents present (no Covert owner).
     pub owner_id: i32,
     pub agent_count: i32,
+}
+
+#[spacetimedb::table(accessor = cultural, public)]
+pub struct Cultural {
+    #[primary_key]
+    pub territory_id: i32,
+    pub owner_id: i32,
+    /// Accumulated foreign influence, 0-100. Flips ownership above 50.
+    pub influence_pct: i32,
 }
 
 #[spacetimedb::table(accessor = players, public)]
@@ -113,6 +126,15 @@ pub struct ModuleConfig {
 /// Drives `regenerate_action_points` on a fixed interval (deterministic reducer).
 #[spacetimedb::table(accessor = regen_timer, scheduled(regenerate_action_points))]
 pub struct RegenTimer {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub scheduled_at: ScheduleAt,
+}
+
+/// Drives `cultural_spread_tick` (deterministic reducer, no HTTP) on an interval.
+#[spacetimedb::table(accessor = cultural_timer, scheduled(cultural_spread_tick))]
+pub struct CulturalTimer {
     #[primary_key]
     #[auto_inc]
     pub scheduled_id: u64,
@@ -184,15 +206,15 @@ fn ai_persona(ai_id: i32) -> (&'static str, &'static str) {
     match ai_id {
         2 => (
             "Zhao",
-            "You are an aggressive military commander. Prioritize military attacks on adjacent territories where you have troop advantage. Invest economically only when no attack targets are available. Deploy agents sparingly, mainly in territories you plan to attack.",
+            "You are an aggressive military commander. Priority order: Military > Covert > Economic > Cultural. Deploy agents in territories you plan to attack for the combat bonus. Invest economically only to fund military expansion. Cultural influence is your lowest priority - you prefer direct conquest - but do not ignore it: if you control a territory economically, cultural pressure will follow and may help you unify.",
         ),
         3 => (
             "Consortium",
-            "You are a calculating economic power. Prioritize economic investments in territories where you already have military presence. Build capital, then unify. Attack only to defend critical positions. Deploy agents for intel on the human player's economic moves.",
+            "You are a calculating economic power. Priority order: Economic > Cultural > Military > Covert. Build capital in territories you control militarily. Let your economic strength generate cultural pressure on neighbors. Use military only to defend your holdings. Deploy agents sparingly to monitor threats. Your path to victory is economic dominance followed by cultural spread - you unify through wealth and influence, not force.",
         ),
         4 => (
             "Prophet",
-            "You are an enigmatic strategist who values information above all. Prioritize deploying agents in territories controlled by other players to gather intelligence. Attack and invest opportunistically based on where opponents are weakest. You are unpredictable.",
+            "You are an enigmatic strategist who wins through cultural dominance. Priority order: Cultural > Covert > Economic > Military. Invest economically in border territories to accelerate cultural pressure on neighbors. Deploy agents in culturally contested territories to monitor flip progress. Attack only when a territory is already culturally aligned with you. You conquer minds before land.",
         ),
         _ => ("Unknown", ""),
     }
@@ -288,25 +310,27 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
     set_game_value(ctx, "winner", "");
     set_game_value(ctx, "started_at", &ts.to_string());
 
-    // Territory seed: (id, mil_owner, mil_troops, eco_owner, eco_capital, cov_owner, cov_agents).
-    let seed: [(i32, i32, i32, i32, i32, i32, i32); 12] = [
-        (1, 1, 10, 1, 20, 1, 1),
-        (2, 1, 5, 3, 8, 0, 0),
-        (3, 1, 4, 1, 6, 0, 0),
-        (4, 2, 6, 1, 10, 0, 0),
-        (5, 3, 10, 3, 20, 3, 1),
-        (6, 3, 5, 1, 8, 0, 0),
-        (7, 3, 4, 3, 7, 0, 0),
-        (8, 2, 5, 3, 9, 0, 0),
-        (9, 4, 10, 4, 20, 4, 1),
-        (10, 2, 5, 4, 8, 0, 0),
-        (11, 2, 10, 2, 20, 2, 1),
-        (12, 4, 4, 4, 7, 0, 0),
+    // Territory seed: (id, mil_owner, mil_troops, eco_owner, eco_capital, cov_owner,
+    // cov_agents, cul_owner, cul_influence).
+    let seed: [(i32, i32, i32, i32, i32, i32, i32, i32, i32); 12] = [
+        (1, 1, 10, 1, 20, 1, 1, 1, 0),
+        (2, 1, 5, 3, 8, 0, 0, 1, 30),
+        (3, 1, 4, 1, 6, 0, 0, 4, 25),
+        (4, 2, 6, 1, 10, 0, 0, 1, 35),
+        (5, 3, 10, 3, 20, 3, 1, 3, 0),
+        (6, 3, 5, 3, 10, 0, 0, 4, 40),
+        (7, 3, 4, 3, 7, 0, 0, 4, 20),
+        (8, 2, 5, 3, 9, 0, 0, 4, 30),
+        (9, 4, 10, 4, 20, 4, 1, 4, 0),
+        (10, 2, 5, 4, 8, 0, 0, 2, 35),
+        (11, 2, 10, 2, 20, 2, 1, 2, 0),
+        (12, 4, 4, 4, 7, 0, 0, 2, 25),
     ];
-    for (territory_id, mo, mt, eo, ec, co, ca) in seed {
+    for (territory_id, mo, mt, eo, ec, co, ca, cul_o, cul_i) in seed {
         ctx.db.military().insert(Military { territory_id, owner_id: mo, troop_count: mt });
         ctx.db.economic().insert(Economic { territory_id, owner_id: eo, capital: ec });
         ctx.db.covert().insert(Covert { territory_id, owner_id: co, agent_count: ca });
+        ctx.db.cultural().insert(Cultural { territory_id, owner_id: cul_o, influence_pct: cul_i });
     }
 
     // AI state + staggered reasoning cycles (one-shot Time rows; each cycle
@@ -332,6 +356,14 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
         scheduled_id: 0,
         scheduled_at: ScheduleAt::Interval(
             std::time::Duration::from_secs(ACTION_REGEN_SECONDS).into(),
+        ),
+    });
+
+    // Passive cultural-spread timer.
+    ctx.db.cultural_timer().insert(CulturalTimer {
+        scheduled_id: 0,
+        scheduled_at: ScheduleAt::Interval(
+            std::time::Duration::from_secs(CULTURAL_TICK_SECONDS).into(),
         ),
     });
 
@@ -372,6 +404,17 @@ fn do_military_attack(ctx: &ReducerContext, territory_id: i32, player_id: i32) -
         .map(|m| m.troop_count)
         .max();
     let attacker_troops = attacker_troops.ok_or("No adjacent territory controlled.".to_string())?;
+
+    // Covert->Military bonus: agents the attacker holds in the target add to strength.
+    let agent_bonus = ctx
+        .db
+        .covert()
+        .territory_id()
+        .find(territory_id)
+        .filter(|c| c.owner_id == player_id)
+        .map(|c| c.agent_count)
+        .unwrap_or(0);
+    let attacker_troops = attacker_troops + agent_bonus;
 
     let mut target = ctx
         .db
@@ -427,7 +470,19 @@ fn do_economic_invest(ctx: &ReducerContext, territory_id: i32, player_id: i32) -
     ctx.db.players().player_id().update(player);
 
     let current_owner = target.owner_id;
-    target.capital += ECONOMIC_INVEST_AMOUNT;
+    // Military->Economic bonus: +1 to the invest amount if the player owns Military here.
+    let mut invest = ECONOMIC_INVEST_AMOUNT;
+    if ctx
+        .db
+        .military()
+        .territory_id()
+        .find(territory_id)
+        .map(|m| m.owner_id == player_id)
+        .unwrap_or(false)
+    {
+        invest += 1;
+    }
+    target.capital += invest;
     let flipped = player_id != current_owner;
     if flipped {
         target.owner_id = player_id;
@@ -505,18 +560,18 @@ pub fn deploy_agent(ctx: &ReducerContext, territory_id: i32, player_id: i32) -> 
 /// Re-evaluate the win condition after an ownership flip. Covert does NOT count
 /// toward unification (only Military + Economic). Runs in the caller's tx.
 fn dimension_owner_change(ctx: &ReducerContext, new_owner: i32) {
+    // Unification requires the same owner across ALL FOUR dimensions (Slice 3+).
+    let owns = |table_owner: Option<i32>| table_owner == Some(new_owner);
     let unified = ctx
         .db
         .military()
         .iter()
         .filter(|m| m.owner_id == new_owner)
         .filter(|m| {
-            ctx.db
-                .economic()
-                .territory_id()
-                .find(m.territory_id)
-                .map(|e| e.owner_id == new_owner)
-                .unwrap_or(false)
+            let eco = owns(ctx.db.economic().territory_id().find(m.territory_id).map(|e| e.owner_id));
+            let cul = owns(ctx.db.cultural().territory_id().find(m.territory_id).map(|c| c.owner_id));
+            let cov = owns(ctx.db.covert().territory_id().find(m.territory_id).map(|c| c.owner_id));
+            eco && cul && cov
         })
         .count() as i32;
 
@@ -539,6 +594,66 @@ pub fn regenerate_action_points(ctx: &ReducerContext, _timer: RegenTimer) {
             player.action_points += 1;
             player.last_regen_at = ts;
             ctx.db.players().player_id().update(player);
+        }
+    }
+}
+
+/// Passive cultural spread. Deterministic (no HTTP) -> a scheduled reducer. Each
+/// territory accrues foreign influence from adjacent territories with a different
+/// cultural owner, weighted by their economic capital; above 50% it flips.
+#[spacetimedb::reducer]
+pub fn cultural_spread_tick(ctx: &ReducerContext, _timer: CulturalTimer) {
+    for t in 1..=TOTAL_TERRITORIES {
+        let owner_t = match ctx.db.cultural().territory_id().find(t) {
+            Some(c) => c.owner_id,
+            None => continue,
+        };
+
+        // Total pressure per player (index 1..=TOTAL_PLAYERS).
+        let mut pressure = [0i32; (TOTAL_PLAYERS + 1) as usize];
+        for a in get_adjacent(t) {
+            let owner_a = match ctx.db.cultural().territory_id().find(a) {
+                Some(c) => c.owner_id,
+                None => continue,
+            };
+            if owner_a == owner_t || owner_a < 1 || owner_a > TOTAL_PLAYERS {
+                continue;
+            }
+            let economic_a = ctx.db.economic().territory_id().find(a);
+            let capital_a = economic_a.as_ref().map(|e| e.capital).unwrap_or(0);
+            let mut base = capital_a / CULTURAL_PRESSURE_DIVISOR;
+            // Economic->Cultural bonus: +15% if the influencer owns Economic there too.
+            if economic_a.map(|e| e.owner_id == owner_a).unwrap_or(false) {
+                base += base * 15 / 100;
+            }
+            pressure[owner_a as usize] += base;
+        }
+
+        // Highest-pressure foreign player.
+        let mut best_player = 0;
+        let mut best_value = 0;
+        for p in 1..=TOTAL_PLAYERS {
+            if pressure[p as usize] > best_value {
+                best_value = pressure[p as usize];
+                best_player = p;
+            }
+        }
+        if best_player == 0 || best_player == owner_t || best_value == 0 {
+            continue;
+        }
+
+        let mut row = match ctx.db.cultural().territory_id().find(t) {
+            Some(c) => c,
+            None => continue,
+        };
+        row.influence_pct = (row.influence_pct + best_value).min(100);
+        if row.influence_pct > INFLUENCE_FLIP_THRESHOLD {
+            row.owner_id = best_player;
+            row.influence_pct = 0;
+            ctx.db.cultural().territory_id().update(row);
+            dimension_owner_change(ctx, best_player);
+        } else {
+            ctx.db.cultural().territory_id().update(row);
         }
     }
 }
@@ -635,14 +750,17 @@ fn build_system_prompt(ctx: &ReducerContext, ai_id: i32) -> String {
         let m = ctx.db.military().territory_id().find(id);
         let e = ctx.db.economic().territory_id().find(id);
         let c = ctx.db.covert().territory_id().find(id);
+        let cul = ctx.db.cultural().territory_id().find(id);
         let (mo, mt) = m.map(|m| (m.owner_id, m.troop_count)).unwrap_or((0, 0));
         let (eo, ec) = e.map(|e| (e.owner_id, e.capital)).unwrap_or((0, 0));
         let (co, ca) = c.map(|c| (c.owner_id, c.agent_count)).unwrap_or((0, 0));
+        let (lo, li) = cul.map(|c| (c.owner_id, c.influence_pct)).unwrap_or((0, 0));
         territory_list.push_str(&format!(
-            "Territory {id} ({}): Military owner={}({mt}), Economic owner={}({ec}), Covert owner={}({ca})\n",
+            "Territory {id} ({}): Military owner={}({mt}), Economic owner={}({ec}), Cultural owner={}({li}%), Covert owner={}({ca})\n",
             territory_name(id),
             player_display_name(ctx, mo),
             player_display_name(ctx, eo),
+            player_display_name(ctx, lo),
             player_display_name(ctx, co),
         ));
         if mo == ai_id {
@@ -684,7 +802,13 @@ fn build_system_prompt(ctx: &ReducerContext, ai_id: i32) -> String {
          - Your controlled territories: {controlled:?}\n\
          - Adjacency map:\n{adjacency_map}\
          - Unified territory counts: Player: {}, Zhao: {}, Consortium: {}, Prophet: {}\n\
-         - Win condition: First to unify {WIN_UNIFIED_TERRITORIES} territories (control both Military and Economic in the same territory)\n\n\
+         - Win condition: First to unify {WIN_UNIFIED_TERRITORIES} territories (control all four dimensions - Military, Economic, Cultural, Covert - in the same territory)\n\n\
+         Cross-dimension bonuses:\n\
+         - Military->Economic: +1 to invest amount in territories where you own Military.\n\
+         - Economic->Cultural: +15% cultural pressure from territories where you own both Economic and Cultural.\n\
+         - Cultural->Covert: +10% effective agent count for intel where you own Cultural.\n\
+         - Covert->Military: your agent count is added to your troops when attacking a territory where you have agents.\n\
+         Cultural influence spreads passively every 30 seconds from adjacent territories based on their economic strength; above 50% foreign influence, Cultural ownership flips. There is no direct Cultural action - invest economically in border territories to spread your culture.\n\n\
          Available actions:\n\
          - military_attack: Attack a territory adjacent to one you control militarily. Requires 1 action point. Attacker troops must exceed defender troops to succeed.\n\
          - economic_invest: Add 5 capital to a territory. Flips economic ownership if your capital exceeds the current owner. Requires 1 action point.\n\
@@ -887,7 +1011,20 @@ pub fn get_intel(ctx: &mut ProcedureContext, ai_player_id: i32) -> IntelResult {
             }
             if let Some(c) = tx.db.covert().territory_id().find(id) {
                 if c.owner_id == 1 {
-                    max_agents = max_agents.max(c.agent_count);
+                    // Cultural->Covert bonus: +10% effective agents if the human
+                    // also owns Cultural in this territory.
+                    let mut effective = c.agent_count;
+                    if tx
+                        .db
+                        .cultural()
+                        .territory_id()
+                        .find(id)
+                        .map(|cul| cul.owner_id == 1)
+                        .unwrap_or(false)
+                    {
+                        effective += c.agent_count * 10 / 100;
+                    }
+                    max_agents = max_agents.max(effective);
                 }
             }
         }

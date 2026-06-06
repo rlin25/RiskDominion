@@ -24,6 +24,7 @@ export function Territory({ state, isHighlighted, isOwned }: Props) {
   const militaryColor = ownerColor(state.militaryOwner);
   const economicColor = ownerColor(state.economicOwner);
   const covertColor = state.agentCount > 0 ? ownerColor(state.covertOwner) : NEUTRAL;
+  const culturalColor = ownerColor(state.culturalOwner);
 
   const borderColor = isHighlighted ? "#FFD700" : isOwned ? "#8899AA" : BORDER;
   const borderWidth = isHighlighted || isOwned ? 2 : 1.5;
@@ -39,12 +40,12 @@ export function Territory({ state, isHighlighted, isOwned }: Props) {
             ? "drop-shadow(0 0 8px rgba(255,215,0,0.4))"
             : "none",
       }}
-      title={`${getTerritoryName(state.territoryId)} — troops ${state.troopCount}, capital ${state.capital}, agents ${state.agentCount}`}
+      title={`${getTerritoryName(state.territoryId)} — troops ${state.troopCount}, capital ${state.capital}, agents ${state.agentCount}, influence ${state.influencePct}%`}
     >
       <svg width="80" height="70" viewBox="0 0 80 70">
-        {/* Quadrant fills: TL Military, BR Economic, BL Covert, TR neutral */}
+        {/* Quadrant fills: TL Military, TR Cultural, BR Economic, BL Covert */}
         <polygon points="40,35 40,0 20,0 0,35" fill={militaryColor} />
-        <polygon points="40,35 40,0 60,0 80,35" fill={NEUTRAL} />
+        <polygon points="40,35 40,0 60,0 80,35" fill={culturalColor} />
         <polygon points="40,35 80,35 60,70 40,70" fill={economicColor} />
         <polygon points="40,35 0,35 20,70 40,70" fill={covertColor} />
         {/* Internal dividers */}

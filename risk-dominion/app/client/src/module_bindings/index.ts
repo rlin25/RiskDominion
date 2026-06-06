@@ -47,6 +47,7 @@ import * as GetIntelProcedure from "./get_intel_procedure";
 import AiReasoningLogRow from "./ai_reasoning_log_table";
 import AiStateRow from "./ai_state_table";
 import CovertRow from "./covert_table";
+import CulturalRow from "./cultural_table";
 import EconomicRow from "./economic_table";
 import GameStateRow from "./game_state_table";
 import MilitaryRow from "./military_table";
@@ -89,6 +90,17 @@ const tablesSchema = __schema({
       { name: 'covert_territory_id_key', constraint: 'unique', columns: ['territoryId'] },
     ],
   }, CovertRow),
+  cultural: __table({
+    name: 'cultural',
+    indexes: [
+      { accessor: 'territory_id', name: 'cultural_territory_id_idx_btree', algorithm: 'btree', columns: [
+        'territoryId',
+      ] },
+    ],
+    constraints: [
+      { name: 'cultural_territory_id_key', constraint: 'unique', columns: ['territoryId'] },
+    ],
+  }, CulturalRow),
   economic: __table({
     name: 'economic',
     indexes: [

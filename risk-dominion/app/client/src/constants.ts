@@ -4,8 +4,10 @@ export const MAX_ACTION_POINTS = 10;
 export const ACTION_REGEN_SECONDS = 8;
 export const STARTING_ACTION_POINTS = 5;
 export const ECONOMIC_INVEST_AMOUNT = 5;
-export const WIN_UNIFIED_TERRITORIES = 3;
+export const WIN_UNIFIED_TERRITORIES = 5;
 export const TOTAL_TERRITORIES = 12;
+export const CULTURAL_TICK_SECONDS = 30;
+export const INFLUENCE_FLIP_THRESHOLD = 50;
 
 export const TERRITORY_NAMES: Record<number, string> = {
   1: "North America",

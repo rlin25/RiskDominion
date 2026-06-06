@@ -41,6 +41,19 @@ export const Covert = __t.object("Covert", {
 });
 export type Covert = __Infer<typeof Covert>;
 
+export const Cultural = __t.object("Cultural", {
+  territoryId: __t.i32(),
+  ownerId: __t.i32(),
+  influencePct: __t.i32(),
+});
+export type Cultural = __Infer<typeof Cultural>;
+
+export const CulturalTimer = __t.object("CulturalTimer", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type CulturalTimer = __Infer<typeof CulturalTimer>;
+
 export const Economic = __t.object("Economic", {
   territoryId: __t.i32(),
   ownerId: __t.i32(),
