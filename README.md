@@ -109,18 +109,18 @@ Open `prompts/generate_slice_1.txt` in Claude Code. Follow the generation instru
 
 ## Documentation
 
-- [GLOSSARY.md](GLOSSARY.md) -- Every game term defined in plain English for judges and new players
-- [ARCHITECTURE.md](ARCHITECTURE.md) -- Technical deep-dive: tables, reducers, AI orchestration, data flow diagrams
-- [DEMO_SCRIPT.md](DEMO_SCRIPT.md) -- Timed 5-minute walkthrough script for presenting to judges
-- [AESTHETIC.md](AESTHETIC.md) -- Visual design system: colors, fonts, territory rendering, component specs
-- [SETUP.md](SETUP.md) -- Environment setup, verification, and troubleshooting
+- [GLOSSARY.md](risk-dominion/GLOSSARY.md) -- Every game term defined in plain English for judges and new players
+- [ARCHITECTURE.md](risk-dominion/ARCHITECTURE.md) -- Technical deep-dive: tables, reducers, AI orchestration, data flow diagrams
+- [DEMO_SCRIPT.md](risk-dominion/DEMO_SCRIPT.md) -- Timed 5-minute walkthrough script for presenting to judges
+- [AESTHETIC.md](risk-dominion/AESTHETIC.md) -- Visual design system: colors, fonts, territory rendering, component specs
+- [SETUP.md](risk-dominion/SETUP.md) -- Environment setup, verification, and troubleshooting
 
 **Design decisions by slice:**
-- [slice-1/DECISIONS_SLICE_1.md](slice-1/DECISIONS_SLICE_1.md) -- Core gameplay design philosophy
-- [slice-2/DECISIONS_SLICE_2.md](slice-2/DECISIONS_SLICE_2.md) -- AI opponents and intel system design
-- [slice-3/DECISIONS_SLICE_3.md](slice-3/DECISIONS_SLICE_3.md) -- Cultural dimension and cross-dimension bonuses
-- [slice-4/DECISIONS_SLICE_4.md](slice-4/DECISIONS_SLICE_4.md) -- Query system and event ticker
-- [slice-5/DECISIONS_SLICE_5.md](slice-5/DECISIONS_SLICE_5.md) -- Multi-agent orchestration, Strategist, and hotkeys
+- [slice-1/DECISIONS_SLICE_1.md](risk-dominion/slice-1/DECISIONS_SLICE_1.md) -- Core gameplay design philosophy
+- [slice-2/DECISIONS_SLICE_2.md](risk-dominion/slice-2/DECISIONS_SLICE_2.md) -- AI opponents and intel system design
+- [slice-3/DECISIONS_SLICE_3.md](risk-dominion/slice-3/DECISIONS_SLICE_3.md) -- Cultural dimension and cross-dimension bonuses
+- [slice-4/DECISIONS_SLICE_4.md](risk-dominion/slice-4/DECISIONS_SLICE_4.md) -- Query system and event ticker
+- [slice-5/DECISIONS_SLICE_5.md](risk-dominion/slice-5/DECISIONS_SLICE_5.md) -- Multi-agent orchestration, Strategist, and hotkeys
 
 ---
 
