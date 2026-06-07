@@ -5,6 +5,15 @@ import type { ChatLogRow } from "../types";
 
 type Tab = 0 | 2 | 3 | 4; // 0 = global, 2-4 = DM with that AI
 
+const PLAYER_NAMES: Record<number, string> = {
+  1: "Player",
+  ...Object.fromEntries(AI_PLAYERS.map((p) => [p.id, p.name])),
+};
+
+function senderName(id: number): string {
+  return PLAYER_NAMES[id] ?? `Player ${id}`;
+}
+
 interface Props {
   messages: readonly ChatLogRow[];
   currentPlayerId: number;
@@ -84,18 +93,28 @@ export function ChatPanel({
             const mine = m.senderId === currentPlayerId;
             return (
               <div key={String(m.id)} className={`mb-2 flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                <span className="font-ui text-[10px]" style={{ color: PLAYER_COLORS[m.senderId] ?? "#8899AA" }}>
-                  {mine ? "You" : m.senderId}
+                <span className="flex items-center gap-1 font-ui text-[10px]" style={{ color: PLAYER_COLORS[m.senderId] ?? "#8899AA" }}>
+                  <span
+                    className="inline-block h-2 w-2 rounded-[2px]"
+                    style={{ backgroundColor: PLAYER_COLORS[m.senderId] ?? "#8899AA" }}
+                  />
+                  {mine ? "You" : senderName(m.senderId)}
                 </span>
-                <span className="max-w-[230px] font-data text-[11px] text-text-primary">{m.messageText}</span>
-                {m.territoryId !== 0 && (
-                  <button
-                    onClick={() => onTerritoryClick(m.territoryId)}
-                    className="font-data text-[10px] text-text-accent underline"
-                  >
-                    {getTerritoryName(m.territoryId)}
-                  </button>
-                )}
+                <div
+                  className={`max-w-[230px] rounded-2xl px-3 py-1.5 ${
+                    mine ? "rounded-br-sm bg-[#2A3A5A]" : "rounded-bl-sm bg-[#24243A]"
+                  }`}
+                >
+                  <span className="font-data text-[11px] text-text-primary">{m.messageText}</span>
+                  {m.territoryId !== 0 && (
+                    <button
+                      onClick={() => onTerritoryClick(m.territoryId)}
+                      className="mt-1 block font-data text-[10px] text-text-accent underline"
+                    >
+                      {getTerritoryName(m.territoryId)}
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })
