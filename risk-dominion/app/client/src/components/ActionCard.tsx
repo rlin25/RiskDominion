@@ -1,11 +1,10 @@
 import { useDraggable } from "@dnd-kit/core";
 import type { CardType } from "../types";
+import { PLAYER_COLORS, HUMAN_PLAYER_ID } from "../constants";
 
-const ACCENT: Record<CardType, string> = {
-  military: "#FF6666",
-  economic: "#FFCC44",
-  covert: "#AA44FF",
-};
+// All cards use the human player's blue so the hand matches the player's
+// own faction color.
+const ACCENT = PLAYER_COLORS[HUMAN_PLAYER_ID] ?? "#4488FF";
 const LABEL: Record<CardType, string> = {
   military: "ATTACK",
   economic: "INVEST",
@@ -13,10 +12,10 @@ const LABEL: Record<CardType, string> = {
 };
 
 function CardIcon({ cardType }: { cardType: CardType }) {
-  const color = ACCENT[cardType];
+  const color = ACCENT;
   if (cardType === "military") {
     return (
-      <svg width="20" height="20" viewBox="0 0 20 20" style={{ color }}>
+      <svg width="26" height="26" viewBox="0 0 20 20" style={{ color }}>
         <polygon
           points="10,3 17,16 3,16"
           fill="none"
@@ -29,14 +28,14 @@ function CardIcon({ cardType }: { cardType: CardType }) {
   }
   if (cardType === "economic") {
     return (
-      <svg width="20" height="20" viewBox="0 0 20 20" style={{ color }}>
+      <svg width="26" height="26" viewBox="0 0 20 20" style={{ color }}>
         <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeWidth={2} />
         <line x1="10" y1="2" x2="10" y2="18" stroke="currentColor" strokeWidth={2} />
       </svg>
     );
   }
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" style={{ color }}>
+    <svg width="26" height="26" viewBox="0 0 20 20" style={{ color }}>
       <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth={2} />
       <circle cx="10" cy="10" r="3" fill="currentColor" />
     </svg>
@@ -56,13 +55,12 @@ export function ActionCard({ id, cardType, disabled }: Props) {
     disabled,
   });
 
-  const accent = ACCENT[cardType];
   const label = LABEL[cardType];
 
   const style: React.CSSProperties = {
-    borderLeft: `3px solid ${accent}`,
-    boxShadow: disabled ? "none" : "0 2px 8px rgba(0,0,0,0.3)",
-    opacity: disabled ? 0.35 : isDragging ? 0.85 : 1,
+    // Previous design: colored left bar accent (player blue).
+    borderLeft: `3px solid ${ACCENT}`,
+    opacity: disabled ? 0.35 : isDragging ? 0.9 : 1,
     transform: transform
       ? `translate3d(${transform.x}px, ${transform.y}px, 0) rotate(${isDragging ? 2 : 0}deg)`
       : undefined,
@@ -70,11 +68,20 @@ export function ActionCard({ id, cardType, disabled }: Props) {
     zIndex: isDragging ? 100 : 1,
   };
 
+  // Restrained by default; blue-purple glow on hover; strong highlight when
+  // the card is picked up (the active/selected state). Box-shadow lives in
+  // classes so the :hover variant isn't overridden by inline styles.
+  const stateClass = disabled
+    ? ""
+    : isDragging
+      ? "shadow-[0_0_22px_5px_rgba(138,99,255,0.9)] ring-2 ring-[#8A63FF]"
+      : "shadow-[0_2px_8px_rgba(0,0,0,0.3)] hover:shadow-[0_0_16px_3px_rgba(138,99,255,0.65)]";
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex h-[55px] w-[90px] flex-col items-center justify-center gap-0.5 rounded-lg bg-bg-surface"
+      className={`flex h-[55px] w-[90px] flex-col items-center justify-center gap-0.5 rounded-lg bg-bg-surface transition-shadow duration-150 ${stateClass}`}
       {...(disabled ? {} : listeners)}
       {...attributes}
     >

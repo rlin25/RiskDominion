@@ -73,10 +73,10 @@ export const CANNED_QUERIES: { id: number; label: string }[] = [
 ];
 
 export const EVENT_TYPE_COLORS: Record<string, string> = {
-  military: "#FF6666",
-  economic: "#FFCC44",
+  military: "#9EFF00", // Attack — toxic lime (kept in sync with ActionCard)
+  economic: "#00E676", // Invest — emerald
   cultural: "#44DDAA",
-  covert: "#AA44FF",
+  covert: "#18FFD5", // Deploy — neon aqua
   victory: "#FFD700",
   system: "#8899AA",
 };
