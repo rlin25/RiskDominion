@@ -180,8 +180,11 @@ export default function App() {
 
   if (!isReady) {
     return (
-      <div className="flex h-full items-center justify-center font-data text-text-secondary">
-        Connecting to SpacetimeDB...
+      <div className="map-bg flex h-full flex-col items-center justify-center gap-4">
+        <span style={{ color: "#d4a017", fontSize: 32, animation: "glow-pulse 2s ease-in-out infinite" }}>⚔</span>
+        <span style={{ fontFamily: "Cinzel, serif", fontSize: 14, letterSpacing: "0.3em", color: "#9a8870" }}>
+          ESTABLISHING COMMAND LINK…
+        </span>
       </div>
     );
   }
@@ -221,8 +224,18 @@ export default function App() {
           onHighlight={(ids) => setQueryHighlights(ids)}
         />
 
-        <div className="flex items-center justify-between px-4 py-2">
-          <span className="font-ui text-[12px] text-text-secondary">Risk: Dominion</span>
+        <div
+          className="flex items-center justify-between px-4 py-2"
+          style={{ borderBottom: "1px solid #3d3525", background: "linear-gradient(90deg, #13110d, #1a1610, #13110d)" }}
+        >
+          <div className="flex items-center gap-2">
+            <span style={{ color: "#d4a017", fontSize: 14 }}>⚔</span>
+            <span
+              style={{ fontFamily: "Cinzel, serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", color: "#d4a017" }}
+            >
+              RISK: DOMINION
+            </span>
+          </div>
           <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
         </div>
 

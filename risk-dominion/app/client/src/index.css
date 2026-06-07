@@ -8,11 +8,75 @@
   #root {
     height: 100%;
   }
+
   body {
     margin: 0;
-    background-color: #0a0a1a;
-    color: #e0e0e0;
+    background-color: #0d0b08;
+    color: #f0e6d0;
     font-family: "Orbitron", sans-serif;
     overflow: hidden;
+  }
+}
+
+@layer utilities {
+  /* Crosshatch map background */
+  .map-bg {
+    background-color: #0d0a06;
+    background-image:
+      linear-gradient(rgba(212, 160, 23, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(212, 160, 23, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* Vignette overlay */
+  .vignette::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+  }
+
+  /* Ornate panel border */
+  .panel-border {
+    border: 1px solid #3d3525;
+    box-shadow: inset 0 0 0 1px rgba(212, 160, 23, 0.08);
+  }
+
+  /* Gold text gradient */
+  .text-gold-gradient {
+    background: linear-gradient(180deg, #f0c040 0%, #a07010 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Card shimmer hover */
+  .card-shimmer::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.06) 50%, transparent 70%);
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .card-shimmer:hover::before {
+    opacity: 1;
+  }
+
+  /* Scrollbar */
+  .styled-scroll::-webkit-scrollbar {
+    width: 4px;
+  }
+  .styled-scroll::-webkit-scrollbar-track {
+    background: #1a1610;
+  }
+  .styled-scroll::-webkit-scrollbar-thumb {
+    background: #3d3525;
+    border-radius: 2px;
+  }
+  .styled-scroll::-webkit-scrollbar-thumb:hover {
+    background: #6b5a2a;
   }
 }

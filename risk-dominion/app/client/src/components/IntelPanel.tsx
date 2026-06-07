@@ -30,23 +30,48 @@ export function IntelPanel({ onHighlight }: Props) {
   }
 
   return (
-    <div className="flex w-[260px] flex-col gap-2 border-r border-[#334455] bg-bg-surface/60 p-3">
-      <h2 className="font-ui text-[13px] text-text-accent">Intel</h2>
+    <div
+      className="styled-scroll flex w-[260px] flex-col gap-2 p-3 overflow-y-auto"
+      style={{ borderRight: "1px solid #3d3525", background: "rgba(13,10,6,0.7)" }}
+    >
+      <h2
+        style={{ fontFamily: "Cinzel, serif", fontSize: 11, letterSpacing: "0.22em", color: "#d4a017", textTransform: "uppercase" }}
+      >
+        ◉ Intelligence
+      </h2>
       {AI_PLAYERS.map((ai) => (
         <button
           key={ai.id}
           onClick={() => ask(ai.id)}
           disabled={loading !== null}
-          className="rounded border border-[#334455] px-2 py-1 text-left font-ui text-[11px] text-text-secondary transition-colors hover:border-highlight hover:text-text-primary disabled:opacity-50"
+          className="rounded px-2 py-1.5 text-left transition-all disabled:opacity-50"
+          style={{
+            border: "1px solid #3d3525",
+            background: "rgba(255,255,255,0.02)",
+            fontFamily: "Cinzel, serif",
+            fontSize: 10,
+            color: "#9a8870",
+            letterSpacing: "0.04em",
+          }}
+          onMouseEnter={e => { if (!loading) (e.currentTarget as HTMLElement).style.borderColor = "#6b5a2a"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#3d3525"; }}
         >
-          <span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: ai.color }} />
-          {loading === ai.id ? `Querying ${ai.name}...` : `What is ${ai.name} planning?`}
+          <span
+            className="mr-1.5 inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: ai.color, boxShadow: `0 0 6px ${ai.color}88` }}
+          />
+          {loading === ai.id ? `Querying ${ai.name}…` : `What is ${ai.name} planning?`}
         </button>
       ))}
 
       {intel && (
-        <div className="mt-2 overflow-y-auto rounded bg-bg-surface p-2 font-data text-[11px] text-text-primary">
-          <div className="mb-1 font-ui text-[11px] text-text-accent">{intel.aiPlayerName}</div>
+        <div
+          className="mt-2 overflow-y-auto rounded p-2 font-data text-[11px]"
+          style={{ background: "#13110d", border: "1px solid #3d3525", color: "#f0e6d0" }}
+        >
+          <div className="mb-1" style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: "#d4a017" }}>
+            {intel.aiPlayerName}
+          </div>
           {intel.status === "success" && intel.deliberation.length > 0 ? (
             <div className="flex flex-col gap-2">
               {intel.deliberation.map((d, i) => (
