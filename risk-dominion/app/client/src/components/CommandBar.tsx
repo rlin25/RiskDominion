@@ -181,11 +181,22 @@ export function CommandBar({
         />
 
         {loading && (
-          <span
-            style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 14, color: "#7d827e" }}
+          <svg
+            className="animate-spin shrink-0"
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            aria-label="Working"
           >
-            ...
-          </span>
+            <circle cx="8" cy="8" r="6" fill="none" stroke="#3a3f3c" strokeWidth="2" />
+            <path
+              d="M8 2 a6 6 0 0 1 6 6"
+              fill="none"
+              stroke="#d4a843"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
         )}
       </div>
 

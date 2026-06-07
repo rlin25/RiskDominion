@@ -2,7 +2,7 @@
 // AESTHETIC.md v2.0 visual system.
 
 export const MAX_ACTION_POINTS = 10;
-export const ACTION_REGEN_SECONDS = 4; // AESTHETIC/DECISIONS v2.0: faster pace
+export const ACTION_REGEN_SECONDS = 1; // fast gameplay pace
 export const STARTING_ACTION_POINTS = 5;
 export const ECONOMIC_INVEST_AMOUNT = 5;
 export const WIN_UNIFIED_TERRITORIES = 5;

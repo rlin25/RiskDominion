@@ -56,7 +56,7 @@ export default {
           from: { opacity: "0", transform: "translateY(-8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
-        // Empty card-stack pulse (matches 4s regen interval)
+        // Empty card-stack pulse (matches the regen interval)
         emptyPulse: {
           "0%, 100%": { opacity: "0.4" },
           "50%": { opacity: "0.55" },
@@ -110,7 +110,7 @@ export default {
         "chat-in": "chatIn 200ms ease-out forwards",
         "chat-out": "chatOut 150ms ease-in forwards",
         "notify-in": "notifyIn 200ms ease-out forwards",
-        "empty-pulse": "emptyPulse 4s ease-in-out infinite",
+        "empty-pulse": "emptyPulse 1s ease-in-out infinite",
         "float-up": "float-up 0.3s ease-out forwards",
         "territory-pulse": "territoryPulse 2s ease-in-out infinite",
         "lose-pulse": "losePulse 1s ease-in-out infinite",
