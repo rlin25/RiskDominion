@@ -59,7 +59,7 @@ export function ChatPanel({
   ];
 
   return (
-    <div className="flex w-[280px] flex-col border-l border-[#334455] bg-bg-surface/60">
+    <div className="flex h-full w-full flex-col bg-bg-surface">
       <div className="flex border-b border-[#334455]">
         {tabs.map((t) => (
           <button
