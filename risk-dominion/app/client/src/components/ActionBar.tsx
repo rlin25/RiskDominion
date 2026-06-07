@@ -10,7 +10,7 @@ export function ActionBar({ actionPoints, playerColor }: Props) {
     <div className="flex flex-col items-end gap-1">
       <span
         className="text-[8px] tracking-widest uppercase"
-        style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 600, color: "#9a8870" }}
+        style={{ fontFamily: "Orbitron, sans-serif", color: "#9a8870" }}
       >
         Command Points
       </span>
@@ -19,11 +19,11 @@ export function ActionBar({ actionPoints, playerColor }: Props) {
           const filled = i < actionPoints;
           return (
             <div
-              key={i}
-              className="rounded-full transition-all duration-300"
+              key={`${i}-${filled}`}
+              className={`rounded-full ${filled ? "animate-pip-fill" : ""} transition-all duration-300`}
               style={{
-                width: 10,
-                height: 10,
+                width: 8,
+                height: 8,
                 backgroundColor: filled ? playerColor : "transparent",
                 border: `1.5px solid ${filled ? playerColor : "#3d3525"}`,
                 boxShadow: filled ? `0 0 6px ${playerColor}88` : "none",

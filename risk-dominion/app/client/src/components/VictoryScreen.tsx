@@ -51,6 +51,7 @@ export function VictoryScreen({ winner, didWin, winnerColor }: Props) {
               letterSpacing: "0.35em",
               color: "#9a8870",
               textTransform: "uppercase",
+              fontWeight: 500,
               marginBottom: 6,
             }}
           >
@@ -74,6 +75,7 @@ export function VictoryScreen({ winner, didWin, winnerColor }: Props) {
               fontSize: 13,
               color: "#d4a017",
               letterSpacing: "0.2em",
+              fontWeight: 600,
               marginTop: 4,
             }}
           >

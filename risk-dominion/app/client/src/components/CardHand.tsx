@@ -37,16 +37,16 @@ export function CardHand({ actionPoints, gameEnded }: Props) {
             const total = cards.length;
             const mid = (total - 1) / 2;
             const angle = (i - mid) * 5.5;
-            const yLift = Math.pow(Math.abs(i - mid), 1.4) * 5;
+            const yLift = Math.abs(i - mid) * 3;
             return (
               <div
                 key={i}
                 className="animate-float-up"
                 style={{
                   transform: `rotate(${angle}deg) translateY(${yLift}px)`,
-                  transformOrigin: "bottom center",
+                  transformOrigin: "center bottom 120px",
                   marginLeft: i === 0 ? 0 : -10,
-                  animationDelay: `${i * 0.06}s`,
+                  animationDelay: `${i * 0.04}s`,
                   animationFillMode: "both",
                   position: "relative",
                   zIndex: i,

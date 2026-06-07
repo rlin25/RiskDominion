@@ -13,7 +13,7 @@ export default {
         "text-secondary": "#9a8870",
         "text-accent": "#d4a017",
         "text-command": "#c8b882",
-        "player-1": "#4a90e2",
+        "player-1": "#4488FF",
         "player-2": "#d94f4f",
         "player-3": "#e8a020",
         "player-4": "#9b59b6",
