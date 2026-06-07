@@ -35,7 +35,7 @@ export function IntelPanel({ onHighlight }: Props) {
       style={{ borderRight: "1px solid #3d3525", background: "rgba(13,10,6,0.7)" }}
     >
       <h2
-        style={{ fontFamily: "Cinzel, serif", fontSize: 11, letterSpacing: "0.22em", color: "#d4a017", textTransform: "uppercase" }}
+        style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 600, fontSize: 11, letterSpacing: "0.22em", color: "#d4a017", textTransform: "uppercase" }}
       >
         ◉ Intelligence
       </h2>
@@ -48,7 +48,8 @@ export function IntelPanel({ onHighlight }: Props) {
           style={{
             border: "1px solid #3d3525",
             background: "rgba(255,255,255,0.02)",
-            fontFamily: "Cinzel, serif",
+            fontFamily: "Rajdhani, sans-serif",
+            fontWeight: 500,
             fontSize: 10,
             color: "#9a8870",
             letterSpacing: "0.04em",
@@ -69,7 +70,7 @@ export function IntelPanel({ onHighlight }: Props) {
           className="mt-2 overflow-y-auto rounded p-2 font-data text-[11px]"
           style={{ background: "#13110d", border: "1px solid #3d3525", color: "#f0e6d0" }}
         >
-          <div className="mb-1" style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: "#d4a017" }}>
+          <div className="mb-1" style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 600, fontSize: 10, color: "#d4a017" }}>
             {intel.aiPlayerName}
           </div>
           {intel.status === "success" && intel.deliberation.length > 0 ? (

@@ -46,7 +46,7 @@ export function VictoryScreen({ winner, didWin, winnerColor }: Props) {
         <div className="text-center">
           <div
             style={{
-              fontFamily: "Cinzel, serif",
+              fontFamily: "Rajdhani, sans-serif",
               fontSize: 11,
               letterSpacing: "0.35em",
               color: "#9a8870",
@@ -58,7 +58,7 @@ export function VictoryScreen({ winner, didWin, winnerColor }: Props) {
           </div>
           <h1
             style={{
-              fontFamily: "Cinzel, serif",
+              fontFamily: "Rajdhani, sans-serif",
               fontSize: 32,
               fontWeight: 700,
               color: winnerColor,
@@ -70,7 +70,7 @@ export function VictoryScreen({ winner, didWin, winnerColor }: Props) {
           </h1>
           <div
             style={{
-              fontFamily: "Cinzel, serif",
+              fontFamily: "Rajdhani, sans-serif",
               fontSize: 13,
               color: "#d4a017",
               letterSpacing: "0.2em",

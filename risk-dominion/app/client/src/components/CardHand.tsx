@@ -25,7 +25,7 @@ export function CardHand({ actionPoints, gameEnded }: Props) {
         <div className="flex flex-col items-center gap-1 pb-2">
           <span
             className="text-[11px] tracking-widest uppercase"
-            style={{ fontFamily: "Cinzel, serif", color: "#4a4030" }}
+            style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 500, color: "#4a4030" }}
           >
             {gameEnded ? "Campaign Ended" : "Awaiting Orders"}
           </span>

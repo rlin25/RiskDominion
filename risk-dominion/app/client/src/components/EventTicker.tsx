@@ -26,7 +26,7 @@ export function EventTicker({ events, onEventClick }: Props) {
         className="flex h-[30px] items-center justify-center"
         style={{ borderTop: "1px solid #3d3525", background: "#100e09" }}
       >
-        <span style={{ fontFamily: "Cinzel, serif", fontSize: 9, color: "#4a4030", letterSpacing: "0.2em" }}>
+        <span style={{ fontFamily: "Rajdhani, sans-serif", fontSize: 9, color: "#4a4030", letterSpacing: "0.2em" }}>
           AWAITING DISPATCHES
         </span>
       </div>
@@ -76,7 +76,7 @@ export function EventTicker({ events, onEventClick }: Props) {
             background: "rgba(212,160,23,0.06)",
           }}
         >
-          <span style={{ fontFamily: "Cinzel, serif", fontSize: 8, color: "#d4a017", letterSpacing: "0.2em" }}>
+          <span style={{ fontFamily: "Rajdhani, sans-serif", fontSize: 8, color: "#d4a017", letterSpacing: "0.2em" }}>
             DISPATCHES
           </span>
         </div>

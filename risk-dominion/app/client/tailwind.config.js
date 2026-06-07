@@ -29,7 +29,7 @@ export default {
         "border-gold": "#6b5a2a",
       },
       fontFamily: {
-        display: ["Cinzel", "serif"],
+        display: ["Rajdhani", "sans-serif"],
         ui: ["Orbitron", "sans-serif"],
         data: ["JetBrains Mono", "monospace"],
       },

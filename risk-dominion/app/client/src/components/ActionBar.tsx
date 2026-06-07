@@ -10,7 +10,7 @@ export function ActionBar({ actionPoints, playerColor }: Props) {
     <div className="flex flex-col items-end gap-1">
       <span
         className="text-[8px] tracking-widest uppercase"
-        style={{ fontFamily: "Cinzel, serif", color: "#9a8870" }}
+        style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 600, color: "#9a8870" }}
       >
         Command Points
       </span>

@@ -182,7 +182,7 @@ export default function App() {
     return (
       <div className="map-bg flex h-full flex-col items-center justify-center gap-4">
         <span style={{ color: "#d4a017", fontSize: 32, animation: "glow-pulse 2s ease-in-out infinite" }}>⚔</span>
-        <span style={{ fontFamily: "Cinzel, serif", fontSize: 14, letterSpacing: "0.3em", color: "#9a8870" }}>
+        <span style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 600, fontSize: 14, letterSpacing: "0.3em", color: "#9a8870" }}>
           ESTABLISHING COMMAND LINK…
         </span>
       </div>
@@ -231,7 +231,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span style={{ color: "#d4a017", fontSize: 14 }}>⚔</span>
             <span
-              style={{ fontFamily: "Cinzel, serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", color: "#d4a017" }}
+              style={{ fontFamily: "Rajdhani, sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", color: "#d4a017" }}
             >
               RISK: DOMINION
             </span>

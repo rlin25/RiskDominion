@@ -2,12 +2,6 @@ import { Territory } from "./Territory";
 import { CONTINENTS } from "../constants";
 import type { TerritoryState } from "../types";
 
-const CONTINENT_ICONS: Record<string, string> = {
-  "Americas":      "⚔",
-  "Europe-Africa": "🏛",
-  "Asia-Oceania":  "🌏",
-};
-
 interface Props {
   territories: TerritoryState[];
   highlighted: Set<number>;
@@ -79,10 +73,9 @@ export function Map({ territories, highlighted, currentPlayerId }: Props) {
               borderBottom: "1px solid rgba(212,160,23,0.2)",
             }}
           >
-            <span className="text-[13px]">{CONTINENT_ICONS[continent.name] ?? "◆"}</span>
             <span
               className="text-[10px] tracking-widest uppercase"
-              style={{ fontFamily: "Cinzel, serif", color: "#9a8870", letterSpacing: "0.18em" }}
+              style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 600, color: "#9a8870", letterSpacing: "0.18em" }}
             >
               {continent.name}
             </span>
