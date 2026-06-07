@@ -1,105 +1,63 @@
+import { useEffect, useState } from "react";
+import { PLAYER_COLORS, TERRITORY_NAMES } from "../constants";
+import type { EndGameState } from "../types";
+
 interface Props {
-  winner: string;
-  didWin: boolean;
-  winnerColor: string;
+  endGame: EndGameState;
+  currentPlayerId: number;
 }
 
-export function VictoryScreen({ winner, didWin, winnerColor }: Props) {
+// Centered overlay card for the end of the game. The on-map shockwave/pulse is
+// handled in Map.tsx. App triggers the victory/defeat sounds; this renders only
+// the card, after a short delay. (No sound here.)
+export function VictoryScreen({ endGame, currentPlayerId }: Props) {
+  const isVictory = endGame.outcome === "victory";
+  const delay = isVictory ? 1000 : 2000;
+  const [shown, setShown] = useState(false);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setShown(true), delay);
+    return () => window.clearTimeout(t);
+  }, [delay]);
+
+  if (!shown) return null;
+
+  const winnerColor = PLAYER_COLORS[endGame.winnerId] ?? "#d4a843";
+  // From the human's perspective: did they win?
+  const didWin = endGame.winnerId === currentPlayerId;
+  const heading = didWin ? "Victory" : "Defeat";
+
   return (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center"
-      style={{ background: "radial-gradient(ellipse at center, rgba(13,10,6,0.88) 40%, rgba(0,0,0,0.97) 100%)" }}
-    >
-      <div className="animate-victory-reveal flex flex-col items-center gap-5">
-
-        {/* Trophy / crown SVG */}
-        <svg width="90" height="80" viewBox="0 0 90 80" aria-hidden>
-          {/* Crown base */}
-          <rect x="15" y="58" width="60" height="10" rx="2" fill={winnerColor} opacity="0.85"/>
-          {/* Crown body */}
-          <polygon
-            points="15,58 15,30 28,44 45,18 62,44 75,30 75,58"
-            fill={winnerColor}
-            opacity="0.75"
-          />
-          {/* Crown jewels */}
-          <circle cx="45" cy="26" r="5" fill="#f0e6d0" opacity="0.95"/>
-          <circle cx="22" cy="47" r="3.5" fill="#f0e6d0" opacity="0.8"/>
-          <circle cx="68" cy="47" r="3.5" fill="#f0e6d0" opacity="0.8"/>
-          {/* Outer glow ring */}
-          <polygon
-            points="15,58 15,30 28,44 45,18 62,44 75,30 75,58"
-            fill="none"
-            stroke={winnerColor}
-            strokeWidth="1.5"
-            opacity="0.5"
-          />
-        </svg>
-
-        {/* Decorative line */}
-        <div className="flex items-center gap-3">
-          <div className="h-px w-16" style={{ background: `linear-gradient(90deg, transparent, ${winnerColor})` }} />
-          <span style={{ color: winnerColor, fontSize: 14 }}>✦</span>
-          <div className="h-px w-16" style={{ background: `linear-gradient(90deg, ${winnerColor}, transparent)` }} />
-        </div>
-
-        {/* Winner name */}
-        <div className="text-center">
-          <div
-            style={{
-              fontFamily: "Cinzel, serif",
-              fontSize: 11,
-              letterSpacing: "0.35em",
-              color: "#9a8870",
-              textTransform: "uppercase",
-              marginBottom: 6,
-            }}
-          >
-            Dominion Achieved
-          </div>
-          <h1
-            style={{
-              fontFamily: "Cinzel, serif",
-              fontSize: 32,
-              fontWeight: 700,
-              color: winnerColor,
-              textShadow: `0 0 24px ${winnerColor}88, 0 0 48px ${winnerColor}44`,
-              lineHeight: 1.1,
-            }}
-          >
-            {winner}
-          </h1>
-          <div
-            style={{
-              fontFamily: "Cinzel, serif",
-              fontSize: 13,
-              color: "#d4a017",
-              letterSpacing: "0.2em",
-              marginTop: 4,
-            }}
-          >
-            CONQUERS ALL
-          </div>
-        </div>
-
-        {/* Decorative line */}
-        <div className="flex items-center gap-3">
-          <div className="h-px w-16" style={{ background: `linear-gradient(90deg, transparent, ${winnerColor})` }} />
-          <span style={{ color: winnerColor, fontSize: 14 }}>✦</span>
-          <div className="h-px w-16" style={{ background: `linear-gradient(90deg, ${winnerColor}, transparent)` }} />
-        </div>
-
-        {/* You win / lose */}
-        <p
-          style={{
-            fontFamily: "Orbitron, sans-serif",
-            fontSize: 15,
-            color: didWin ? "#2ecc71" : "#9a8870",
-            letterSpacing: "0.1em",
-            textShadow: didWin ? "0 0 12px #2ecc7188" : undefined,
-          }}
+    <div className="fixed inset-0 z-[9000] flex items-center justify-center">
+      <div
+        className="animate-fade-in flex flex-col items-center"
+        style={{
+          width: 300,
+          padding: 24,
+          background: "rgba(30,33,32,0.95)",
+          border: `2px solid ${winnerColor}`,
+          borderRadius: 8,
+        }}
+      >
+        <h1
+          className="text-center"
+          style={{ fontFamily: "Inter, sans-serif", fontSize: 28, color: "#d4a843" }}
         >
-          {didWin ? "✦  VICTORY IS YOURS  ✦" : "Your campaign ends here."}
-        </p>
+          {heading}
+        </h1>
+        {!didWin && (
+          <p
+            className="text-center"
+            style={{
+              fontFamily: "Inter, sans-serif",
+              fontSize: 16,
+              color: "#7d827e",
+              marginTop: 6,
+            }}
+          >
+            {TERRITORY_NAMES[endGame.territoryId] ?? ""}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1,140 +1,79 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DndContext, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { useReducer } from "spacetimedb/react";
-import { reducers } from "./module_bindings";
+import {
+  DndContext,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { useProcedure, useReducer } from "spacetimedb/react";
+import { procedures, reducers } from "./module_bindings";
 import { useSubscriptions } from "./hooks/useSubscriptions";
 import { buildTerritoryStates, getValidMilitaryTargets } from "./utils/territoryHelpers";
-import { PLAYER_COLORS, TOTAL_TERRITORIES, HUMAN_PLAYER_ID } from "./constants";
-import type { CardType } from "./types";
-import { Map } from "./components/Map";
+import { HUMAN_PLAYER_ID } from "./constants";
+import type { CardType, EndGameState, VizSpec, ChatLogRow, EventFeedRow, StrategistLogRow } from "./types";
+import { Map as GameMap } from "./components/Map";
 import { CardHand } from "./components/CardHand";
-import { ActionBar } from "./components/ActionBar";
+import { ColorLegend } from "./components/ColorLegend";
+import { TitleScreen } from "./components/TitleScreen";
+import { CommandBar } from "./components/CommandBar";
+import { ChatWindow } from "./components/ChatWindow";
 import { IntelPanel } from "./components/IntelPanel";
-import { StrategistAlerts } from "./components/StrategistAlerts";
-import { ChatPanel } from "./components/ChatPanel";
-import { SpectatorOverlay } from "./components/SpectatorOverlay";
-import { ReplayControls } from "./components/ReplayControls";
-import { QueryBar } from "./components/QueryBar";
-import { ResultsPanel } from "./components/ResultsPanel";
-import { EventTicker } from "./components/EventTicker";
+import { QueryViz } from "./components/QueryViz";
 import { VictoryScreen } from "./components/VictoryScreen";
-import type { QueryResult } from "./types";
+import { EventNotifications } from "./components/EventTicker";
+import { StrategistAdvice } from "./components/StrategistAlerts";
+import {
+  playCardSound,
+  playCulturalPressureSound,
+  playDefeatSound,
+  playTerritoryFlipSound,
+  playVictorySound,
+} from "./utils/soundEngine";
 
 const PLAYER_ID = HUMAN_PLAYER_ID;
-
-type Mode = "player" | "spectator" | "replay";
-
-function readMode(): Mode {
-  const p = new URLSearchParams(window.location.search);
-  if (p.get("replay") === "true") return "replay";
-  if (p.get("spectator") === "true") return "spectator";
-  return "player";
-}
+const MAX_CHATS = 3;
 
 export default function App() {
-  const mode = useMemo(readMode, []);
-  const { military, economic, covert, cultural, players, gameState, eventFeed, strategistLog, chatLog, aiState, aiTrust, isReady } =
+  const { military, economic, covert, cultural, players, gameState, eventFeed, strategistLog, chatLog, isReady } =
     useSubscriptions();
 
   const startGame = useReducer(reducers.startGame);
   const militaryAttack = useReducer(reducers.militaryAttack);
   const economicInvest = useReducer(reducers.economicInvest);
   const deployAgent = useReducer(reducers.deployAgent);
-  const dismissAlert = useReducer(reducers.dismissStrategistAlert);
   const sendChat = useReducer(reducers.sendChatMessage);
+  const chatReply = useProcedure(procedures.chatReply);
 
-  function handleSendMessage(text: string, recipientId: number) {
-    sendChat({
-      senderId: PLAYER_ID,
-      messageText: text,
-      recipientId,
-      isDeception: false,
-      claimedFact: "",
-    }).catch((e) => console.warn("send_chat_message:", e));
-  }
+  // ---- UI state (UIUX.md section 10) ----
+  const [commandBarVisible, setCommandBarVisible] = useState(false);
+  const [activeChats, setActiveChats] = useState<number[]>([]);
+  const [showIntel, setShowIntel] = useState<number | null>(null);
+  const [titleScreenDone, setTitleScreenDone] = useState(false);
+  const [queryViz, setQueryViz] = useState<VizSpec | null>(null);
+  const [requestedAdvice, setRequestedAdvice] = useState<string | null>(null);
+  const [showRecentToken, setShowRecentToken] = useState(0);
+  const [chatNotif, setChatNotif] = useState(false);
 
-  const [highlighted, setHighlighted] = useState<Set<number>>(new Set());
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [queryHighlights, setQueryHighlights] = useState<number[]>([]);
-  const [tickerHighlight, setTickerHighlight] = useState<number | null>(null);
-  const [ownedHighlight, setOwnedHighlight] = useState(false);
-  const [intelOpen, setIntelOpen] = useState(true);
-  const [currentTimestamp, setCurrentTimestamp] = useState<number>(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  // ---- drag state ----
+  const [attackMode, setAttackMode] = useState(false);
+  const [validTargets, setValidTargets] = useState<number[]>([]);
+  const [isCardDragging, setIsCardDragging] = useState(false);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const seedAttempted = useRef(false);
 
-  const startedAt = Number(gameState.find((r) => r.key === "started_at")?.value ?? 0);
-  const endedAt = Number(gameState.find((r) => r.key === "ended_at")?.value ?? 0);
-
-  // Replay: initialize the playhead at game start once data is ready.
+  // Seed a game on first connect if none is running.
   useEffect(() => {
-    if (mode === "replay" && currentTimestamp === 0 && startedAt > 0) {
-      setCurrentTimestamp(startedAt);
-    }
-  }, [mode, currentTimestamp, startedAt]);
-
-  // Replay playback loop: advance the playhead while playing.
-  useEffect(() => {
-    if (mode !== "replay" || !isPlaying || endedAt <= startedAt) return;
-    const stepMs = 200;
-    const timer = window.setInterval(() => {
-      setCurrentTimestamp((t) => {
-        const next = t + stepMs * playbackSpeed;
-        if (next >= endedAt) {
-          setIsPlaying(false);
-          return endedAt;
-        }
-        return next;
-      });
-    }, stepMs);
-    return () => window.clearInterval(timer);
-  }, [mode, isPlaying, playbackSpeed, startedAt, endedAt]);
-
-  function handleEventClick(territoryId: number) {
-    setTickerHighlight(territoryId);
-    window.setTimeout(() => setTickerHighlight(null), 3000);
-  }
-
-  // Hotkeys: H toggle owned highlight, Q focus query, I toggle intel, Escape clear.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const inInput = document.activeElement?.tagName === "INPUT";
-      if (inInput && e.key !== "Escape") return;
-      switch (e.key) {
-        case "h":
-        case "H":
-          setOwnedHighlight((v) => !v);
-          break;
-        case "i":
-        case "I":
-          setIntelOpen((v) => !v);
-          break;
-        case "q":
-        case "Q":
-          e.preventDefault();
-          document.querySelector<HTMLInputElement>("input")?.focus();
-          break;
-        case "Escape":
-          setQueryResult(null);
-          setQueryHighlights([]);
-          setOwnedHighlight(false);
-          (document.activeElement as HTMLElement | null)?.blur();
-          break;
-      }
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
-  useEffect(() => {
-    if (mode !== "player" || !isReady || seedAttempted.current) return;
+    if (!isReady || seedAttempted.current) return;
     const hasStatus = gameState.some((row) => row.key === "status");
     if (!hasStatus) {
       seedAttempted.current = true;
       startGame().catch((e) => console.warn("start_game failed:", e));
     }
-  }, [mode, isReady, gameState, startGame]);
+  }, [isReady, gameState, startGame]);
 
   const territories = useMemo(
     () => buildTerritoryStates(military, economic, covert, cultural),
@@ -143,169 +82,253 @@ export default function App() {
 
   const me = players.find((p) => p.playerId === PLAYER_ID);
   const actionPoints = me?.actionPoints ?? 0;
-  const playerColor = PLAYER_COLORS[PLAYER_ID] ?? "#4488FF";
 
   const status = gameState.find((r) => r.key === "status")?.value ?? "active";
-  const winner = gameState.find((r) => r.key === "winner")?.value ?? "";
+  const winnerName = gameState.find((r) => r.key === "winner")?.value ?? "";
   const gameEnded = status === "ended";
-  const winnerPlayer = players.find((p) => p.playerName === winner);
-  const didWin = winnerPlayer?.playerId === PLAYER_ID;
+  const winnerPlayer = players.find((p) => p.playerName === winnerName);
+  const winnerId = winnerPlayer?.playerId ?? 0;
 
+  const endGame: EndGameState | null = useMemo(() => {
+    if (!gameEnded || winnerId <= 0) return null;
+    const victoryEvents = [...eventFeed]
+      .filter((e) => e.eventType === "victory" && e.territoryId != null)
+      .sort((a, b) => Number(a.eventAt) - Number(b.eventAt));
+    const lastVictoryEvent = victoryEvents[victoryEvents.length - 1];
+    const unifiedByWinner = territories.find(
+      (t) =>
+        t.militaryOwner === winnerId &&
+        t.economicOwner === winnerId &&
+        t.covertOwner === winnerId &&
+        t.culturalOwner === winnerId,
+    );
+    return {
+      outcome: winnerId === PLAYER_ID ? "victory" : "defeat",
+      winnerId,
+      territoryId: lastVictoryEvent?.territoryId ?? unifiedByWinner?.territoryId ?? 0,
+    };
+  }, [gameEnded, winnerId, eventFeed, territories]);
+
+  // ---- Sound: territory flips + cultural pressure thresholds ----
+  const prevOwners = useRef<Map<number, string> | null>(null);
+  const prevInfluence = useRef<Map<number, number> | null>(null);
+  useEffect(() => {
+    if (!isReady) return;
+    const owners = new Map<number, string>();
+    const influence = new Map<number, number>();
+    let flip = false;
+    let pressure: 0 | 1 | 2 = 0;
+    for (const t of territories) {
+      const key = `${t.militaryOwner}.${t.economicOwner}.${t.covertOwner}.${t.culturalOwner}`;
+      owners.set(t.territoryId, key);
+      influence.set(t.territoryId, t.influencePct);
+      const prevKey = prevOwners.current?.get(t.territoryId);
+      if (prevKey !== undefined && prevKey !== key) flip = true;
+      const prevInf = prevInfluence.current?.get(t.territoryId);
+      if (prevInf !== undefined) {
+        if (prevInf < 40 && t.influencePct >= 40) pressure = 2;
+        else if (prevInf < 30 && t.influencePct >= 30 && pressure === 0) pressure = 1;
+      }
+    }
+    if (prevOwners.current) {
+      if (flip) playTerritoryFlipSound();
+      if (pressure) playCulturalPressureSound(pressure);
+    }
+    prevOwners.current = owners;
+    prevInfluence.current = influence;
+  }, [territories, isReady]);
+
+  // ---- Sound: victory / defeat (once) ----
+  const endSoundPlayed = useRef(false);
+  useEffect(() => {
+    if (endGame && !endSoundPlayed.current) {
+      endSoundPlayed.current = true;
+      if (endGame.outcome === "victory") playVictorySound();
+      else playDefeatSound();
+      // End game dismisses open overlays (UIUX 8.1/8.2).
+      setCommandBarVisible(false);
+      setActiveChats([]);
+      setShowIntel(null);
+    }
+  }, [endGame]);
+
+  // ---- Chat notification dot: new AI message to a non-open window ----
+  const lastChatId = useRef<bigint | null>(null);
+  useEffect(() => {
+    if (chatLog.length === 0) return;
+    let maxId = chatLog[0].id;
+    let newest = chatLog[0];
+    for (const m of chatLog) {
+      if (m.id > maxId) {
+        maxId = m.id;
+        newest = m;
+      }
+    }
+    if (lastChatId.current !== null && maxId > lastChatId.current) {
+      const fromAi = newest.senderId >= 2 && newest.recipientId === PLAYER_ID;
+      if (fromAi && !activeChats.includes(newest.senderId)) setChatNotif(true);
+    }
+    lastChatId.current = maxId;
+  }, [chatLog, activeChats]);
+
+  // ---- Query visualization auto-dismiss after 10s ----
+  useEffect(() => {
+    if (!queryViz) return;
+    const t = window.setTimeout(() => setQueryViz(null), 10000);
+    return () => window.clearTimeout(t);
+  }, [queryViz]);
+
+  // ---- Global keyboard: summon command bar (Enter/T), Escape dismiss all ----
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const inInput =
+        document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA";
+      if (e.key === "Escape") {
+        setCommandBarVisible(false);
+        setActiveChats([]);
+        setShowIntel(null);
+        setQueryViz(null);
+        setRequestedAdvice(null);
+        return;
+      }
+      if (inInput) return;
+      if (!titleScreenDone) return;
+      if ((e.key === "Enter" || e.key === "t" || e.key === "T") && !commandBarVisible) {
+        e.preventDefault();
+        setCommandBarVisible(true);
+        setChatNotif(false);
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [titleScreenDone, commandBarVisible]);
+
+  // ---- Drag (cards) ----
   function handleDragStart(event: DragStartEvent) {
     const cardType = event.active.data.current?.cardType as CardType | undefined;
-    if (!cardType) return;
+    setIsCardDragging(true);
+    if (commandBarVisible) setCommandBarVisible(false);
+    setQueryViz(null);
     if (cardType === "military") {
-      setHighlighted(new Set(getValidMilitaryTargets(military, PLAYER_ID)));
+      setAttackMode(true);
+      setValidTargets(getValidMilitaryTargets(military, PLAYER_ID));
     } else {
-      // Economic and Covert may target any territory.
-      setHighlighted(new Set(Array.from({ length: TOTAL_TERRITORIES }, (_, i) => i + 1)));
+      setAttackMode(false);
+      setValidTargets([]);
     }
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const cardType = event.active.data.current?.cardType as CardType | undefined;
     const territoryId = event.over?.id as number | undefined;
-    setHighlighted(new Set());
+    setAttackMode(false);
+    setValidTargets([]);
+    setIsCardDragging(false);
     if (!cardType || territoryId === undefined) return;
 
     if (cardType === "military") {
       if (!getValidMilitaryTargets(military, PLAYER_ID).includes(territoryId)) return;
-      militaryAttack({ territoryId, playerId: PLAYER_ID }).catch((e) => console.warn("military_attack:", e));
+      militaryAttack({ territoryId, playerId: PLAYER_ID })
+        .then(() => playCardSound())
+        .catch((e) => console.warn("military_attack:", e));
     } else if (cardType === "economic") {
-      economicInvest({ territoryId, playerId: PLAYER_ID }).catch((e) => console.warn("economic_invest:", e));
+      economicInvest({ territoryId, playerId: PLAYER_ID })
+        .then(() => playCardSound())
+        .catch((e) => console.warn("economic_invest:", e));
     } else {
-      deployAgent({ territoryId, playerId: PLAYER_ID }).catch((e) => console.warn("deploy_agent:", e));
+      deployAgent({ territoryId, playerId: PLAYER_ID })
+        .then(() => playCardSound())
+        .catch((e) => console.warn("deploy_agent:", e));
     }
+  }
+
+  // ---- Chat send: human message then trigger the AI's real-time reply ----
+  function handleSend(aiId: number, text: string) {
+    sendChat({ senderId: PLAYER_ID, messageText: text, recipientId: aiId, isDeception: false, claimedFact: "" })
+      .then(() => chatReply({ aiPlayerId: aiId }))
+      .catch((e) => console.warn("chat send/reply:", e));
+  }
+
+  function openChat(aiId: number) {
+    setChatNotif(false);
+    setActiveChats((prev) => {
+      if (prev.includes(aiId)) return prev;
+      const next = [...prev, aiId];
+      return next.length > MAX_CHATS ? next.slice(next.length - MAX_CHATS) : next;
+    });
   }
 
   if (!isReady) {
     return (
-      <div className="map-bg flex h-full flex-col items-center justify-center gap-4">
-        <span style={{ color: "#d4a017", fontSize: 32, animation: "glow-pulse 2s ease-in-out infinite" }}>⚔</span>
-        <span style={{ fontFamily: "Cinzel, serif", fontSize: 14, letterSpacing: "0.3em", color: "#9a8870" }}>
-          ESTABLISHING COMMAND LINK…
+      <div className="map-bg flex h-full flex-col items-center justify-center gap-3">
+        <span className="font-ui text-[13px] tracking-widest text-text-secondary">
+          ESTABLISHING COMMAND LINK...
         </span>
       </div>
     );
   }
 
-  if (mode === "replay" && status !== "ended") {
-    return (
-      <div className="flex h-full items-center justify-center font-ui text-text-secondary">
-        Replay will be available after the game ends.
-      </div>
-    );
-  }
-
-  const ownedIds = ownedHighlight
-    ? territories
-        .filter(
-          (t) =>
-            t.militaryOwner === PLAYER_ID ||
-            t.economicOwner === PLAYER_ID ||
-            t.culturalOwner === PLAYER_ID ||
-            t.covertOwner === PLAYER_ID,
-        )
-        .map((t) => t.territoryId)
-    : [];
-
-  const mapHighlights = new Set<number>([
-    ...highlighted,
-    ...queryHighlights,
-    ...ownedIds,
-    ...(tickerHighlight != null ? [tickerHighlight] : []),
-  ]);
-
   return (
-    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="relative flex h-full flex-col">
-        <QueryBar
-          onResult={(r) => setQueryResult(r)}
-          onHighlight={(ids) => setQueryHighlights(ids)}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      {/* Persistent: the map */}
+      <GameMap
+        territories={territories}
+        currentPlayerId={PLAYER_ID}
+        attackMode={attackMode}
+        validTargets={validTargets}
+        isCardDragging={isCardDragging}
+        endGame={endGame}
+        queryViz={queryViz}
+      />
+
+      <ColorLegend />
+
+      {/* Persistent: the card hand (fan-out arc) */}
+      <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />
+
+      {/* Temporary overlays */}
+      {!titleScreenDone && <TitleScreen onDone={() => setTitleScreenDone(true)} />}
+
+      <CommandBar
+        visible={commandBarVisible}
+        notificationDot={chatNotif}
+        onDismiss={() => setCommandBarVisible(false)}
+        onOpenChat={openChat}
+        onOpenIntel={(aiId) => setShowIntel(aiId)}
+        onShowEvents={() => setShowRecentToken((t) => t + 1)}
+        onAdvice={(text) => setRequestedAdvice(text)}
+        onQueryViz={(viz) => setQueryViz(viz)}
+      />
+
+      {activeChats.map((aiId, i) => (
+        <ChatWindow
+          key={aiId}
+          aiId={aiId}
+          index={i}
+          messages={chatLog as ChatLogRow[]}
+          onClose={(id) => setActiveChats((prev) => prev.filter((x) => x !== id))}
+          onSend={handleSend}
         />
+      ))}
 
-        <div
-          className="flex items-center justify-between px-4 py-2"
-          style={{ borderBottom: "1px solid #3d3525", background: "linear-gradient(90deg, #13110d, #1a1610, #13110d)" }}
-        >
-          <div className="flex items-center gap-2">
-            <span style={{ color: "#d4a017", fontSize: 14 }}>⚔</span>
-            <span
-              style={{ fontFamily: "Cinzel, serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", color: "#d4a017" }}
-            >
-              RISK: DOMINION
-            </span>
-          </div>
-          <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
-        </div>
+      {showIntel !== null && <IntelPanel aiId={showIntel} onClose={() => setShowIntel(null)} />}
 
-        {queryResult && (
-          <ResultsPanel
-            result={queryResult}
-            onClose={() => {
-              setQueryResult(null);
-              setQueryHighlights([]);
-            }}
-          />
-        )}
+      {queryViz && <QueryViz viz={queryViz} onDismiss={() => setQueryViz(null)} />}
 
-        <StrategistAlerts
-          alerts={strategistLog}
-          onDismiss={(id) => dismissAlert({ notificationId: id }).catch(() => {})}
-          onAlertClick={handleEventClick}
-        />
+      <EventNotifications events={eventFeed as EventFeedRow[]} showRecentToken={showRecentToken} />
 
-        <div className="flex flex-1 overflow-hidden">
-          {intelOpen && <IntelPanel onHighlight={(ids) => setQueryHighlights(ids)} />}
-          <Map territories={territories} highlighted={mapHighlights} currentPlayerId={PLAYER_ID} />
-          <ChatPanel
-            messages={chatLog}
-            currentPlayerId={PLAYER_ID}
-            onSendMessage={handleSendMessage}
-            onTerritoryClick={handleEventClick}
-            mode={mode}
-            currentTimestamp={mode === "replay" ? currentTimestamp : null}
-          />
-          {mode !== "player" && (
-            <SpectatorOverlay
-              territories={territories}
-              players={players}
-              aiState={aiState}
-              aiTrust={aiTrust}
-              eventFeed={eventFeed}
-            />
-          )}
-        </div>
+      <StrategistAdvice
+        alerts={strategistLog as StrategistLogRow[]}
+        requested={requestedAdvice}
+        onDismissRequested={() => setRequestedAdvice(null)}
+      />
 
-        {mode === "player" && <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />}
-
-        {mode === "replay" ? (
-          <ReplayControls
-            events={eventFeed}
-            startedAt={startedAt}
-            endedAt={endedAt > startedAt ? endedAt : startedAt + 1}
-            currentTimestamp={currentTimestamp}
-            onSeek={(t) => setCurrentTimestamp(t)}
-            isPlaying={isPlaying}
-            onPlayPause={() => setIsPlaying((p) => !p)}
-            speed={playbackSpeed}
-            onSpeedChange={setPlaybackSpeed}
-          />
-        ) : (
-          <EventTicker
-            events={eventFeed}
-            onEventClick={handleEventClick}
-          />
-        )}
-
-        {gameEnded && mode === "player" && (
-          <VictoryScreen
-            winner={winner}
-            didWin={didWin}
-            winnerColor={PLAYER_COLORS[winnerPlayer?.playerId ?? 1] ?? "#FFD700"}
-          />
-        )}
-      </div>
+      {endGame && <VictoryScreen endGame={endGame} currentPlayerId={PLAYER_ID} />}
     </DndContext>
   );
 }

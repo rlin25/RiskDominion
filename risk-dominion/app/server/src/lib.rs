@@ -15,7 +15,7 @@ use spacetimedb::{
 // ---- CONSTANTS ----
 
 const MAX_ACTION_POINTS: i32 = 10;
-const ACTION_REGEN_SECONDS: u64 = 8;
+const ACTION_REGEN_SECONDS: u64 = 4;
 const STARTING_ACTION_POINTS: i32 = 5;
 const ECONOMIC_INVEST_AMOUNT: i32 = 5;
 const WIN_UNIFIED_TERRITORIES: i32 = 5; // unify across all 4 dimensions (Slice 3+)
@@ -1959,6 +1959,98 @@ pub fn autocomplete_query(ctx: &mut ProcedureContext, partial: String) -> Autoco
         Ok(text) => AutocompleteResult { suggestions: parse_suggestions(&text) },
         Err(_) => AutocompleteResult { suggestions: Vec::new() },
     }
+}
+
+// ---- PROCEDURE: REAL-TIME CHAT REPLY ----
+
+/// Generate an immediate in-character chat reply from an AI to the human player.
+/// Called by the client right after the human sends a direct message. This is the
+/// real-time conversational channel and is independent of the AI reasoning cycle:
+/// the map shows what the AI is doing; chat shows who the AI is. The reply is
+/// capped at one short sentence (<= 100 chars). Follows the snapshot(tx1) ->
+/// HTTP -> insert(tx2) pattern; a tx is never held across the HTTP call.
+#[spacetimedb::procedure]
+pub fn chat_reply(ctx: &mut ProcedureContext, ai_player_id: i32) -> String {
+    if ai_player_id < 2 || ai_player_id > TOTAL_PLAYERS {
+        return String::new();
+    }
+
+    // tx1: snapshot the board, API config, and the recent human<->AI conversation.
+    let prep = ctx.with_tx(|tx| {
+        if game_value(tx, "status").as_deref() != Some("active") {
+            return None;
+        }
+        let key = config_value(tx, "anthropic_api_key")?;
+        let model =
+            config_value(tx, "anthropic_model").unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let snapshot = build_board_snapshot(tx);
+
+        let mut convo: Vec<(i64, i32, String)> = tx
+            .db
+            .chat_log()
+            .iter()
+            .filter(|m| {
+                (m.sender_id == 1 && m.recipient_id == ai_player_id)
+                    || (m.sender_id == ai_player_id && m.recipient_id == 1)
+            })
+            .map(|m| (m.timestamp, m.sender_id, m.message_text.clone()))
+            .collect();
+        convo.sort_by_key(|(t, _, _)| *t);
+        let start = convo.len().saturating_sub(8);
+        let convo_text = convo[start..]
+            .iter()
+            .map(|(_, s, txt)| {
+                let who = if *s == 1 { "Player" } else { "You" };
+                format!("{who}: {txt}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if convo_text.is_empty() {
+            return None;
+        }
+        Some((key, model, snapshot, convo_text))
+    });
+
+    let (key, model, snapshot, convo_text) = match prep {
+        Some(v) => v,
+        None => return String::new(),
+    };
+
+    let (name, persona) = ai_persona(ai_player_id);
+    let system = format!(
+        "{persona}\n\nYou are {name}, speaking directly to the human player in a private chat in the game Risk: Dominion. Stay in character. Your chat is independent of your battlefield plans. Keep your response to one short sentence, no more than 100 characters. Be terse and punchy. Do not exceed this limit. Do not wrap your reply in quotation marks and do not prefix it with your name."
+    );
+    let user = format!(
+        "Current game state:\n{snapshot}\n\nRecent conversation:\n{convo_text}\n\nReply to the player's latest message as {name}, in one short sentence under 100 characters."
+    );
+
+    let reply = match anthropic_call(ctx, &key, &model, &system, &user, 80, 12) {
+        Ok(t) => t.trim().trim_matches('"').trim().to_string(),
+        Err(_) => return String::new(),
+    };
+    if reply.is_empty() {
+        return String::new();
+    }
+    // Defensive cap at 100 characters (char-safe, never splitting a UTF-8 boundary).
+    let reply: String = reply.chars().take(100).collect();
+
+    // tx2: persist the AI's reply so it streams back to the client via subscription.
+    ctx.with_tx(|tx| {
+        write_ai_chat(
+            tx,
+            ai_player_id,
+            AiChat {
+                message_text: reply.clone(),
+                recipient_id: 1,
+                is_deception: false,
+                claimed_fact: String::new(),
+                territory_id: 0,
+            },
+        );
+    });
+
+    reply
 }
 
 fn json_to_string(v: &serde_json::Value) -> String {

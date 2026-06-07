@@ -44,6 +44,7 @@ import StartGameReducer from "./start_game_reducer";
 
 // Import all procedure arg schemas
 import * as AutocompleteQueryProcedure from "./autocomplete_query_procedure";
+import * as ChatReplyProcedure from "./chat_reply_procedure";
 import * as GetCannedQueryProcedure from "./get_canned_query_procedure";
 import * as GetIntelProcedure from "./get_intel_procedure";
 import * as QueryDatabaseProcedure from "./query_database_procedure";
@@ -218,6 +219,7 @@ const reducersSchema = __reducers(
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
 const proceduresSchema = __procedures(
   __procedureSchema("autocomplete_query", AutocompleteQueryProcedure.params, AutocompleteQueryProcedure.returnType),
+  __procedureSchema("chat_reply", ChatReplyProcedure.params, ChatReplyProcedure.returnType),
   __procedureSchema("get_canned_query", GetCannedQueryProcedure.params, GetCannedQueryProcedure.returnType),
   __procedureSchema("get_intel", GetIntelProcedure.params, GetIntelProcedure.returnType),
   __procedureSchema("query_database", QueryDatabaseProcedure.params, QueryDatabaseProcedure.returnType),

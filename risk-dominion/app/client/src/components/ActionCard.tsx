@@ -1,64 +1,44 @@
 import { useDraggable } from "@dnd-kit/core";
 import type { CardType } from "../types";
+import { DIMENSION_COLORS } from "../constants";
 
 const ACCENT: Record<CardType, string> = {
-  military: "#cc3322",
-  economic: "#e8a020",
-  covert:   "#8e44ad",
+  military: DIMENSION_COLORS.military,
+  economic: DIMENSION_COLORS.economic,
+  covert: DIMENSION_COLORS.covert,
 };
 
 const LABEL: Record<CardType, string> = {
   military: "ATTACK",
   economic: "INVEST",
-  covert:   "DEPLOY",
+  covert: "DEPLOY",
 };
 
-const SUBLABEL: Record<CardType, string> = {
-  military: "Military",
-  economic: "Economic",
-  covert:   "Covert",
-};
-
+// Geometric dimension icons (INTERFACE_CONTRACT v2.0 section 2.3), stroke-only,
+// rendered in the dimension's accent color.
 function CardIcon({ cardType, color }: { cardType: CardType; color: string }) {
   if (cardType === "military") {
+    // Upward chevron
     return (
-      <svg width="36" height="36" viewBox="0 0 36 36">
-        {/* Sword pointing up */}
-        <line x1="18" y1="4" x2="18" y2="28" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>
-        <line x1="18" y1="28" x2="12" y2="34" stroke={color} strokeWidth="2" strokeLinecap="round"/>
-        <line x1="18" y1="28" x2="24" y2="34" stroke={color} strokeWidth="2" strokeLinecap="round"/>
-        {/* Cross-guard */}
-        <line x1="11" y1="22" x2="25" y2="22" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>
-        {/* Blade tip diamond */}
-        <polygon points="18,4 21,10 18,8 15,10" fill={color} opacity="0.9"/>
+      <svg width="24" height="24" viewBox="0 0 24 24">
+        <polygon points="12,4 20,18 4,18" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
       </svg>
     );
   }
   if (cardType === "economic") {
+    // Circle with vertical line
     return (
-      <svg width="36" height="36" viewBox="0 0 36 36">
-        {/* Coin stack */}
-        <ellipse cx="18" cy="26" rx="11" ry="4" fill={color} opacity="0.3" />
-        <ellipse cx="18" cy="26" rx="11" ry="4" fill="none" stroke={color} strokeWidth="1.5"/>
-        <rect x="7" y="16" width="22" height="10" fill={color} opacity="0.15"/>
-        <line x1="7" y1="16" x2="7"  y2="26" stroke={color} strokeWidth="1.5"/>
-        <line x1="29" y1="16" x2="29" y2="26" stroke={color} strokeWidth="1.5"/>
-        <ellipse cx="18" cy="16" rx="11" ry="4" fill={color} opacity="0.35" />
-        <ellipse cx="18" cy="16" rx="11" ry="4" fill="none" stroke={color} strokeWidth="1.5"/>
-        <text x="18" y="19.5" textAnchor="middle" fontSize="8" fontWeight="700" fill={color} fontFamily="JetBrains Mono">$</text>
+      <svg width="24" height="24" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="7" fill="none" stroke={color} strokeWidth="2" />
+        <line x1="12" y1="4" x2="12" y2="20" stroke={color} strokeWidth="2" />
       </svg>
     );
   }
+  // Covert: concentric circles
   return (
-    <svg width="36" height="36" viewBox="0 0 36 36">
-      {/* Eye / spy */}
-      <ellipse cx="18" cy="18" rx="13" ry="7" fill="none" stroke={color} strokeWidth="1.8"/>
-      <circle cx="18" cy="18" r="4.5" fill={color} opacity="0.9"/>
-      <circle cx="18" cy="18" r="2" fill="#0d0b08"/>
-      {/* Lashes */}
-      <line x1="18" y1="10" x2="18" y2="7"  stroke={color} strokeWidth="1.2" opacity="0.5"/>
-      <line x1="24" y1="12" x2="26" y2="9"  stroke={color} strokeWidth="1.2" opacity="0.5"/>
-      <line x1="12" y1="12" x2="10" y2="9"  stroke={color} strokeWidth="1.2" opacity="0.5"/>
+    <svg width="24" height="24" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8" fill="none" stroke={color} strokeWidth="2" />
+      <circle cx="12" cy="12" r="3" fill={color} />
     </svg>
   );
 }
@@ -77,17 +57,14 @@ export function ActionCard({ id, cardType, disabled }: Props) {
   });
 
   const accent = ACCENT[cardType];
-  const label = LABEL[cardType];
-  const sub = SUBLABEL[cardType];
-
   const lifted = isDragging;
 
   const style: React.CSSProperties = {
-    opacity: disabled ? 0.3 : lifted ? 0.92 : 1,
+    opacity: disabled ? 0.4 : lifted ? 0.9 : 1,
     transform: transform
-      ? `translate3d(${transform.x}px, ${transform.y}px, 0) rotate(${lifted ? 4 : 0}deg) scale(${lifted ? 1.08 : 1})`
+      ? `translate3d(${transform.x}px, ${transform.y}px, 0) rotate(${lifted ? 2 : 0}deg) scale(${lifted ? 1.05 : 1})`
       : undefined,
-    cursor: disabled ? "not-allowed" : lifted ? "grabbing" : "grab",
+    cursor: disabled ? "default" : lifted ? "grabbing" : "grab",
     zIndex: lifted ? 100 : 1,
     transition: lifted ? undefined : "transform 0.15s ease, box-shadow 0.15s ease",
   };
@@ -98,65 +75,31 @@ export function ActionCard({ id, cardType, disabled }: Props) {
       style={style}
       {...(disabled ? {} : listeners)}
       {...attributes}
-      className="relative card-shimmer"
+      className="relative"
     >
-      {/* Card body */}
       <div
-        className="flex flex-col items-center justify-between overflow-hidden rounded-lg"
+        className="relative flex flex-col items-center justify-between rounded-md bg-bg-surface"
         style={{
-          width: 78,
-          height: 112,
-          background: `linear-gradient(160deg, #221e18 0%, #13110d 100%)`,
-          border: `1.5px solid ${disabled ? "#3d3525" : accent}`,
-          boxShadow: disabled ? "none"
-            : lifted ? `0 14px 36px rgba(0,0,0,0.7), 0 0 20px ${accent}55`
-            : `0 4px 16px rgba(0,0,0,0.5), 0 0 6px ${accent}22`,
+          width: 60,
+          height: 84,
+          border: "1px solid #3a3f3c",
+          borderLeft: `3px solid ${accent}`,
+          boxShadow: lifted ? "0 6px 16px rgba(0,0,0,0.5)" : "0 2px 8px rgba(0,0,0,0.3)",
         }}
       >
-        {/* Top corner marks */}
-        <div className="flex w-full justify-between px-1.5 pt-1.5">
-          <span style={{ fontFamily: "Cinzel, serif", fontSize: 9, color: accent, opacity: 0.8 }}>
-            {sub[0]}
-          </span>
-          <span style={{ fontFamily: "Cinzel, serif", fontSize: 9, color: accent, opacity: 0.8 }}>
-            ✦
-          </span>
+        {/* Count slot at top-right is rendered by the hand; the card centers its icon */}
+        <div className="flex flex-1 items-center justify-center pt-2">
+          <CardIcon cardType={cardType} color={accent} />
         </div>
-
-        {/* Center icon */}
-        <div className="flex flex-1 items-center justify-center">
-          <CardIcon cardType={cardType} color={disabled ? "#3d3525" : accent} />
-        </div>
-
-        {/* Bottom label */}
-        <div
-          className="w-full py-1.5 text-center"
-          style={{
-            background: `linear-gradient(0deg, ${accent}22, transparent)`,
-            borderTop: `1px solid ${accent}33`,
-          }}
-        >
+        <div className="w-full pb-1.5 text-center">
           <span
-            style={{
-              fontFamily: "Cinzel, serif",
-              fontSize: 8.5,
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              color: disabled ? "#3d3525" : accent,
-            }}
+            className="font-ui"
+            style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.1em", color: accent }}
           >
-            {label}
+            {LABEL[cardType]}
           </span>
         </div>
       </div>
-
-      {/* Outer glow border on hover (non-disabled) */}
-      {!disabled && !lifted && (
-        <div
-          className="pointer-events-none absolute inset-0 rounded-lg opacity-0 hover:opacity-100 transition-opacity duration-200"
-          style={{ boxShadow: `0 0 0 1px ${accent}44, 0 0 12px ${accent}22` }}
-        />
-      )}
     </div>
   );
 }

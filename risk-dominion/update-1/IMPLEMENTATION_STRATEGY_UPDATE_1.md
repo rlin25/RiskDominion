@@ -443,7 +443,7 @@ If any condition is not met, fix it before the demo.
 - **D3 debugging:** If territory rendering or patterns aren't working, check the browser console for D3 errors. Verify GeoJSON data is valid. Check that the SVG container is properly sized.
 - **Sound testing:** Use headphones during sound validation. The cultural pressure sounds are very quiet by design — they should be barely perceptible.
 - **Performance check:** On a lower-powered machine, verify that animations don't stutter. If they do, the animation system should simplify (the spec includes a frame rate check at 30fps).
-- **Demo dry run:** After all 15 steps pass, do one full playthrough as if it were the demo. Follow the demo arc from UX_OVERHAUL_DECISIONS.md. Note anything that feels slow, awkward, or confusing.
+- **Demo dry run:** After all 15 steps pass, do one full playthrough as if it were the demo. Follow the demo arc from DECISIONS_UPDATE_1.md. Note anything that feels slow, awkward, or confusing.
 
 ---
 

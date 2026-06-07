@@ -2,13 +2,13 @@
 
 ## Version 1.0
 ## Scope: Complete UI/UX Overhaul — All Slices
-## Companion: AESTHETIC.md v2.0, INTERFACE_CONTRACT_UX_OVERHAUL.md
+## Companion: AESTHETIC.md v2.0, INTERFACE_CONTRACT_UPDATE_1.md
 
 ---
 
 ## 0. DOCUMENT PURPOSE
 
-This document specifies how every interaction works in Risk: Dominion. It does not specify how things look (see AESTHETIC.md v2.0) or exact pixel values (see INTERFACE_CONTRACT_UX_OVERHAUL.md). It specifies behavior — what happens when the player does something, step by step.
+This document specifies how every interaction works in Risk: Dominion. It does not specify how things look (see AESTHETIC.md v2.0) or exact pixel values (see INTERFACE_CONTRACT_UPDATE_1.md). It specifies behavior — what happens when the player does something, step by step.
 
 Each section describes one interaction flow: what triggers it, the sequence of events, the state changes, what the player sees and hears, and how the flow ends.
 
@@ -35,6 +35,8 @@ Each section describes one interaction flow: what triggers it, the sequence of e
 ---
 
 ## 2. CARD ACTION FLOW
+
+> **Implementation note:** The card hand is rendered as a retained fan-out arc (one card per action point, fanned with rotation and lift, cycling Military/Economic/Covert) rather than three discrete stacks. All drag, attack-arrow, empty-state, regeneration, styling, and sound behavior described in this section still applies to the fanned cards.
 
 ### 2.1 Pick Up Card
 
@@ -469,4 +471,4 @@ One press of Escape dismisses the highest priority open overlay. Multiple presse
 
 ## End of UIUX.md
 
-This document specifies every interaction pattern, user flow, state transition, and behavioral rule for the Risk: Dominion frontend. Use this document alongside AESTHETIC.md v2.0 (visual design) and INTERFACE_CONTRACT_UX_OVERHAUL.md (exact component specifications) during implementation. Every trigger, every sequence, every edge case is defined. Ready for generation.
+This document specifies every interaction pattern, user flow, state transition, and behavioral rule for the Risk: Dominion frontend. Use this document alongside AESTHETIC.md v2.0 (visual design) and INTERFACE_CONTRACT_UPDATE_1.md (exact component specifications) during implementation. Every trigger, every sequence, every edge case is defined. Ready for generation.

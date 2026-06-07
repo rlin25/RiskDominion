@@ -144,6 +144,8 @@ Trigger: `mousedown` on Military card stack top card.
 
 ## 2. CARD STACKS
 
+> **Implementation note:** The card hand is rendered as a retained fan-out arc (one card per action point, fanned with rotation and lift, cycling Military/Economic/Covert) rather than three discrete stacks. All drag, attack-arrow, empty-state, regeneration, styling, and sound behavior described in this section still applies to the fanned cards.
+
 ### 2.1 Container
 
 - Position: fixed, `bottom: 24px`, centered horizontally (`left: 50%`, `transform: translateX(-50%)`)

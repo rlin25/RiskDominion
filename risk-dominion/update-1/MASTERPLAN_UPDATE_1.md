@@ -21,8 +21,8 @@ Read every existing file in the frontend codebase. Understand the current compon
 Read these supporting documents for detailed specifications:
 - `AESTHETIC.md` (v2.0 — exact visual design system: colors, fonts, dimensions, animations)
 - `UIUX.md` (interaction patterns, user flows, state management, keyboard shortcuts)
-- `INTERFACE_CONTRACT_UX_OVERHAUL.md` (exact component specifications with pixel values and D3 patterns)
-- `UX_OVERHAUL_DECISIONS.md` (design philosophy and rationale)
+- `INTERFACE_CONTRACT_UPDATE_1.md` (exact component specifications with pixel values and D3 patterns)
+- `DECISIONS_UPDATE_1.md` (design philosophy and rationale)
 
 ---
 
@@ -30,7 +30,7 @@ Read these supporting documents for detailed specifications:
 
 These paradigm shifts define the overhaul. They override any previous implementation:
 
-1. **The persistent UI is exactly two elements:** the full-screen D3 geographic map and the three card stacks at bottom center. Everything else is temporary and summoned through the command bar.
+1. **The persistent UI is exactly two elements:** the full-screen D3 geographic map and the three card stacks at bottom center (implemented as the retained fan-out arc card hand; see Implementation Reconciliation). Everything else is temporary and summoned through the command bar.
 
 2. **Replace the hex grid entirely.** Use a D3.js geographic world map with GeoJSON data. Territories are irregular polygonal shapes within continent outlines. No hexagons anywhere.
 
@@ -125,10 +125,10 @@ For exact specifications, refer to:
 
 - **Colors, fonts, dimensions, animations:** `AESTHETIC.md` v2.0
 - **Interaction flows, state management, keyboard shortcuts:** `UIUX.md`
-- **Component specifications with pixel values, D3 patterns, sound frequencies:** `INTERFACE_CONTRACT_UX_OVERHAUL.md`
-- **Design philosophy and rationale:** `UX_OVERHAUL_DECISIONS.md`
+- **Component specifications with pixel values, D3 patterns, sound frequencies:** `INTERFACE_CONTRACT_UPDATE_1.md`
+- **Design philosophy and rationale:** `DECISIONS_UPDATE_1.md`
 
-If any detail is ambiguous between documents, `INTERFACE_CONTRACT_UX_OVERHAUL.md` is the authoritative implementation spec.
+If any detail is ambiguous between documents, `INTERFACE_CONTRACT_UPDATE_1.md` is the authoritative implementation spec.
 
 ---
 
@@ -175,6 +175,21 @@ After applying all modifications:
 11. All sound triggers fire at correct moments.
 12. Color legend visible with correct colors and names.
 13. All existing game logic functions unchanged.
+
+---
+
+## 9. IMPLEMENTATION RECONCILIATION
+
+The shipped code intentionally differs from the literal text of these documents in the following places. The differences are recorded here so the docs and code agree.
+
+- **Card hand:** Retained the existing fan-out arc card hand (one card per action point, fanned) instead of three discrete stacks, by request. The drag, attack-arrow, empty-state, regeneration, sound, and styling specs still apply.
+- **Map:** The hex grid is fully replaced by a D3 (`d3-geo` / `geoEqualEarth`) geographic map. Territory label and centroid anchoring uses `path.centroid` (projected pixels) rather than `geoCentroid` (spherical), which is more robust for irregular facets. The 12-territory GeoJSON is hand-authored (`client/src/data/territories.geo.ts`).
+- **Query visualizations:** The server `query_database` / `get_canned_query` procedures return `{summary, highlightedTerritories, dataTable}` with no `visualization` field. The frontend infers the visualization type (heatmap, symbols, bar, table) client-side from that shape (`client/src/utils/queryViz.ts`) and renders it on the map. There is no server query-contract change.
+- **AI chat:** Added a real-time `chat_reply` SpacetimeDB procedure (Claude call, reply capped at 100 characters or fewer) invoked when the player messages an AI, since the original server only produced AI chat during the 60s reasoning cycle. TS bindings were regenerated.
+- **Action-point regeneration:** Set to 4 seconds (server `ACTION_REGEN_SECONDS` and the client constant) per the v2.0 game-feel decision.
+- **AI portraits:** No illustrated portrait assets exist, so the documented fallback (a colored circle with the AI's initial) is used everywhere portraits appear (chat windows, intel).
+- **Player palette:** `PLAYER_COLORS` is aligned to the AESTHETIC v2.0 palette (#5b8cbe / #c4554d / #c4944d / #8b6bae).
+- **Removed:** Spectator and replay modes and the old multi-panel layout (header, sidebars, ticker, query bar, results panel) were removed. The persistent UI is now only the map and the card hand, with everything else summoned via the command bar, per the overhaul vision.
 
 ---
 

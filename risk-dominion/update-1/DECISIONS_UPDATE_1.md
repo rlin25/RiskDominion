@@ -1,4 +1,4 @@
-# UX_OVERHAUL_DECISIONS.md — Risk: Dominion
+# DECISIONS_UPDATE_1.md — Risk: Dominion
 
 ## Version 1.0
 ## Scope: Complete UI/UX Overhaul — All Slices
@@ -80,6 +80,8 @@ Each AI commander has an illustrated character portrait. Each subordinate has th
 Portraits subtly animate to reflect emotional state. Zhao's expression hardens when aggressive. The Consortium's eyes narrow when calculating. The Prophet's face becomes more enigmatic. These are not cartoonish animations. They are quiet, deliberate shifts.
 
 ### Card Stacks
+
+> **Implementation note:** The card hand is rendered as a retained fan-out arc (one card per action point, fanned with rotation and lift, cycling Military/Economic/Covert) rather than three discrete stacks. All drag, attack-arrow, empty-state, regeneration, styling, and sound behavior described in this section still applies to the fanned cards.
 
 The card hand is three stacks of cards at the bottom center of the screen. Military (red, chevron icon). Economic (gold, currency icon). Covert (purple, concentric circles icon).
 
@@ -220,7 +222,7 @@ The following features were considered and explicitly excluded from this overhau
 | 4 | JetBrains Mono for data, Inter for UI |
 | 5 | Geographic low-poly world map with irregular territory facets |
 | 6 | Territory names always visible, small and low-opacity, brighten on hover |
-| 7 | Three card stacks at bottom center with visual stacking and counts |
+| 7 | Three card stacks at bottom center with visual stacking and counts — implemented as the retained fan-out arc hand |
 | 8 | Illustrated AI portraits for commanders and subordinates |
 | 9 | Chat accessed exclusively through command bar, appears as temporary overlay |
 | 10 | Unified command bar for all non-card interactions |
@@ -249,7 +251,7 @@ The following features were considered and explicitly excluded from this overhau
 
 ---
 
-## End of UX_OVERHAUL_DECISIONS.md
+## End of DECISIONS_UPDATE_1.md
 
 This document contains every design decision for the overhaul. It does not contain exact hex codes, pixel values, animation durations, or component specifications. Those belong to AESTHETIC.md v2.0 and UIUX.md.
 

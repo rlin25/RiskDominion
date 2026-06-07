@@ -11,72 +11,64 @@
 
   body {
     margin: 0;
-    background-color: #0d0b08;
-    color: #f0e6d0;
-    font-family: "Orbitron", sans-serif;
+    background-color: #1a1d1c;
+    color: #c5c9c6;
+    font-family: "Inter", sans-serif;
     overflow: hidden;
   }
 }
 
 @layer utilities {
-  /* Crosshatch map background */
+  /* Deep-charcoal ocean background for the map viewport */
   .map-bg {
-    background-color: #0d0a06;
-    background-image:
-      linear-gradient(rgba(212, 160, 23, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(212, 160, 23, 0.04) 1px, transparent 1px);
-    background-size: 32px 32px;
+    background-color: #1a1d1c;
   }
 
-  /* Vignette overlay */
-  .vignette::after {
-    content: "";
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
-  }
-
-  /* Ornate panel border */
-  .panel-border {
-    border: 1px solid #3d3525;
-    box-shadow: inset 0 0 0 1px rgba(212, 160, 23, 0.08);
-  }
-
-  /* Gold text gradient */
-  .text-gold-gradient {
-    background: linear-gradient(180deg, #f0c040 0%, #a07010 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  /* Card shimmer hover */
-  .card-shimmer::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.06) 50%, transparent 70%);
-    border-radius: inherit;
-    opacity: 0;
-    transition: opacity 0.25s;
-  }
-  .card-shimmer:hover::before {
-    opacity: 1;
-  }
-
-  /* Scrollbar */
+  /* Thin technical scrollbar for overlays */
   .styled-scroll::-webkit-scrollbar {
     width: 4px;
   }
   .styled-scroll::-webkit-scrollbar-track {
-    background: #1a1610;
+    background: #1e2120;
   }
   .styled-scroll::-webkit-scrollbar-thumb {
-    background: #3d3525;
+    background: #3a3f3c;
     border-radius: 2px;
   }
   .styled-scroll::-webkit-scrollbar-thumb:hover {
-    background: #6b5a2a;
+    background: #7d827e;
   }
+}
+
+/* ---- Title screen (fade in 300ms, hold, fade out 500ms) ---- */
+@keyframes title-fade {
+  0% {
+    opacity: 0;
+  }
+  11% {
+    opacity: 1;
+  } /* ~300ms of 2800ms total */
+  82% {
+    opacity: 1;
+  } /* hold until ~2300ms */
+  100% {
+    opacity: 0;
+  } /* fade out over last ~500ms */
+}
+.animate-title-fade {
+  animation: title-fade 2800ms ease-in-out forwards;
+}
+
+/* ---- Victory shockwave ring (expands from a centroid across the map) ---- */
+@keyframes shockwave {
+  from {
+    r: 0;
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.animate-shockwave {
+  animation: shockwave 1500ms ease-out forwards;
 }

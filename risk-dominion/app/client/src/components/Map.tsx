@@ -1,118 +1,709 @@
+// The D3 geographic world map. React owns the SVG and all element creation;
+// D3 is used only for projection/path math and one imperative zoom attachment.
+// Ownership flows in via the `territories` prop and React reconciliation.
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
+import {
+  geoEqualEarth,
+  geoPath,
+  type GeoPath,
+  type GeoProjection,
+  type GeoContext,
+} from "d3-geo";
+import { zoom, type D3ZoomEvent } from "d3-zoom";
+import { select } from "d3-selection";
+import { scaleLinear, scaleSqrt } from "d3-scale";
 import { Territory } from "./Territory";
-import { CONTINENTS } from "../constants";
-import type { TerritoryState } from "../types";
+import { TERRITORIES_GEOJSON } from "../data/territories.geo";
+import { ADJACENCY, PLAYER_COLORS, DIMENSION_COLORS } from "../constants";
+import type { TerritoryState, VizSpec, EndGameState } from "../types";
 
-const CONTINENT_ICONS: Record<string, string> = {
-  "Americas":      "⚔",
-  "Europe-Africa": "🏛",
-  "Asia-Oceania":  "🌏",
-};
+// ---- shared projected-territory model --------------------------------------
 
-interface Props {
-  territories: TerritoryState[];
-  highlighted: Set<number>;
-  currentPlayerId: number;
+export interface ProjectedTerritory {
+  territoryId: number;
+  name: string;
+  continent: string;
+  d: string; // SVG path data
+  centroidPx: [number, number];
+  bboxPx: [number, number, number, number]; // [minX, minY, maxX, maxY]
+  areaPx: number;
+  ringsPx: [number, number][][]; // projected rings; [0] is the outer ring
 }
 
-export function Map({ territories, highlighted, currentPlayerId }: Props) {
-  const byId: Record<number, TerritoryState> = {};
-  for (const t of territories) byId[t.territoryId] = t;
+export interface MapProps {
+  territories: TerritoryState[];
+  currentPlayerId: number; // 1
+  attackMode: boolean; // a Military card is being dragged -> show arrows
+  validTargets: number[]; // valid military attack target territory ids
+  isCardDragging: boolean; // any card mid-drag -> disable map pan
+  endGame: EndGameState | null;
+  queryViz: VizSpec | null; // render heatmap/symbols; bar/table ignored here
+}
+
+// AI / player display names for the hover callout and tooltips.
+const PLAYER_NAMES: Record<number, string> = {
+  0: "Neutral",
+  1: "You",
+  2: "Zhao",
+  3: "Consortium",
+  4: "Prophet",
+};
+
+function playerName(id: number): string {
+  return PLAYER_NAMES[id] ?? `Player ${id}`;
+}
+
+function playerColor(id: number): string {
+  return PLAYER_COLORS[id] ?? "#7d827e";
+}
+
+// A tiny path-context that records the projected rings as geoPath streams them.
+// We segment a new ring on every moveTo.
+function makeRingContext(): { ctx: GeoContext; rings: [number, number][][] } {
+  const rings: [number, number][][] = [];
+  let current: [number, number][] | null = null;
+  const ctx: GeoContext = {
+    moveTo(x: number, y: number) {
+      current = [[x, y]];
+      rings.push(current);
+    },
+    lineTo(x: number, y: number) {
+      if (current) current.push([x, y]);
+    },
+    closePath() {
+      /* rings are implicitly closed by the renderer */
+    },
+    beginPath() {
+      /* no-op: rings are segmented on moveTo */
+    },
+    arc() {
+      /* not used by polygon geometry */
+    },
+  };
+  return { ctx, rings };
+}
+
+export function Map(props: MapProps): JSX.Element {
+  const {
+    territories,
+    currentPlayerId,
+    attackMode,
+    validTargets,
+    isCardDragging,
+    endGame,
+    queryViz,
+  } = props;
+
+  // ---- measure the container ----
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<{ width: number; height: number }>(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 1280,
+    height: typeof window !== "undefined" ? window.innerHeight : 720,
+  }));
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (r && r.width > 0 && r.height > 0) {
+        setSize({ width: r.width, height: r.height });
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const { width, height } = size;
+
+  // ---- projection + projected territories (memoized on size) ----
+  const { projected, projection, path } = useMemo(() => {
+    const proj: GeoProjection = geoEqualEarth().fitExtent(
+      [
+        [24, 24],
+        [Math.max(48, width - 24), Math.max(48, height - 24)],
+      ],
+      TERRITORIES_GEOJSON,
+    );
+    const pathGen: GeoPath = geoPath(proj);
+
+    const list: ProjectedTerritory[] = TERRITORIES_GEOJSON.features.map((f) => {
+      const { ctx, rings } = makeRingContext();
+      const ringPath = geoPath(proj, ctx);
+      ringPath(f); // populates `rings`
+      const [[minX, minY], [maxX, maxY]] = pathGen.bounds(f);
+      return {
+        territoryId: f.properties.territory_id,
+        name: f.properties.name,
+        continent: f.properties.continent,
+        d: pathGen(f) ?? "",
+        centroidPx: pathGen.centroid(f) as [number, number],
+        bboxPx: [minX, minY, maxX, maxY],
+        areaPx: Math.abs(pathGen.area(f)),
+        ringsPx: rings,
+      };
+    });
+    return { projected: list, projection: proj, path: pathGen };
+  }, [width, height]);
+
+  // void unused vars (projection/path are kept for clarity / future use)
+  void projection;
+  void path;
+
+  // Lookups by id.
+  const projById = useMemo(() => {
+    const m = new globalThis.Map<number, ProjectedTerritory>();
+    for (const p of projected) m.set(p.territoryId, p);
+    return m;
+  }, [projected]);
+
+  const stateById = useMemo(() => {
+    const m = new globalThis.Map<number, TerritoryState>();
+    for (const s of territories) m.set(s.territoryId, s);
+    return m;
+  }, [territories]);
+
+  // ---- d3 zoom (imperative attach) ----
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const bgRef = useRef<SVGRectElement | null>(null);
+  const [zoomTransform, setZoomTransform] = useState<string>("translate(0,0) scale(1)");
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const zoomBehavior = zoom<SVGSVGElement, unknown>()
+      .scaleExtent([1, 4])
+      .filter((e: any) => {
+        // Allow wheel-zoom always; allow drag-pan only when no card is dragging
+        // and the gesture started on the transparent background surface.
+        return (
+          e.type === "wheel" ||
+          (!isCardDragging && e.target === bgRef.current)
+        );
+      })
+      .on("zoom", (e: D3ZoomEvent<SVGSVGElement, unknown>) => {
+        setZoomTransform(e.transform.toString());
+      });
+    const sel = select(svg);
+    sel.call(zoomBehavior);
+    return () => {
+      sel.on(".zoom", null);
+    };
+  }, [isCardDragging]);
+
+  // ---- hover callout state (Map owns the 150ms debounce) ----
+  const [hovered, setHovered] = useState<{
+    id: number;
+    pos: [number, number];
+  } | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+
+  const handleHover = useCallback(
+    (id: number | null, clientPos: [number, number] | null) => {
+      if (hoverTimer.current !== null) {
+        window.clearTimeout(hoverTimer.current);
+        hoverTimer.current = null;
+      }
+      if (id === null || clientPos === null) {
+        setHovered(null);
+        return;
+      }
+      hoverTimer.current = window.setTimeout(() => {
+        setHovered({ id, pos: clientPos });
+      }, 150);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    };
+  }, []);
+
+  const validSet = useMemo(() => new Set(validTargets), [validTargets]);
 
   return (
-    <div className="map-bg vignette relative flex flex-1 items-center justify-center gap-8 p-6 overflow-hidden">
+    <div
+      ref={containerRef}
+      className="map-bg vignette relative flex-1 overflow-hidden"
+    >
+      <svg ref={svgRef} width={width} height={height}>
+        <defs>
+          {/* Per-territory clip paths for the pattern layers. */}
+          {projected.map((p) => (
+            <clipPath key={`clip-${p.territoryId}`} id={`clip-${p.territoryId}`}>
+              <path d={p.d} />
+            </clipPath>
+          ))}
+          {/* Edge-fade gradients (vignette toward the viewport edges). */}
+          <linearGradient id="edge-fade-x" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#1a1d1c" stopOpacity="1" />
+            <stop offset="0.08" stopColor="#1a1d1c" stopOpacity="0" />
+            <stop offset="0.92" stopColor="#1a1d1c" stopOpacity="0" />
+            <stop offset="1" stopColor="#1a1d1c" stopOpacity="1" />
+          </linearGradient>
+          <linearGradient id="edge-fade-y" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#1a1d1c" stopOpacity="1" />
+            <stop offset="0.08" stopColor="#1a1d1c" stopOpacity="0" />
+            <stop offset="0.92" stopColor="#1a1d1c" stopOpacity="0" />
+            <stop offset="1" stopColor="#1a1d1c" stopOpacity="1" />
+          </linearGradient>
+        </defs>
 
-      {/* World map silhouette background */}
-      <svg
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.055]"
-        viewBox="0 0 1000 500"
-        preserveAspectRatio="xMidYMid slice"
-        aria-hidden
-      >
-        {/* Americas */}
-        <path d="M160,60 Q180,40 200,55 Q220,65 215,90 Q225,110 210,130 Q220,160 200,190 Q190,220 175,250 Q165,280 150,310 Q135,340 140,370 Q145,400 130,420 Q110,440 95,420 Q80,395 90,370 Q100,340 95,310 Q85,280 90,250 Q95,220 85,190 Q70,160 75,130 Q80,100 95,80 Q115,55 140,55 Z" fill="#d4a017"/>
-        <path d="M205,80 Q230,70 250,85 Q265,100 255,125 Q245,155 230,175 Q215,195 210,220 Q205,245 195,265 Q185,240 190,215 Q195,190 205,165 Q215,140 215,115 Q212,95 205,80 Z" fill="#d4a017"/>
+        {/* Transparent pan surface (the only drag-pannable target). */}
+        <rect
+          ref={bgRef}
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="transparent"
+        />
 
-        {/* Europe */}
-        <path d="M430,50 Q450,40 470,50 Q490,60 485,85 Q480,110 460,125 Q440,140 420,130 Q400,118 405,95 Q410,70 430,50 Z" fill="#d4a017"/>
-        <path d="M460,120 Q490,110 510,125 Q525,140 515,165 Q500,185 480,190 Q460,195 445,180 Q430,163 440,145 Q448,128 460,120 Z" fill="#d4a017"/>
+        {/* Zoom layer: everything that should pan/zoom together. */}
+        <g transform={zoomTransform}>
+          {projected.map((p) => {
+            const state =
+              stateById.get(p.territoryId) ?? neutralState(p.territoryId);
+            const dimmed =
+              endGame?.outcome === "defeat" &&
+              endGame.territoryId !== p.territoryId;
+            return (
+              <Territory
+                key={p.territoryId}
+                proj={p}
+                state={state}
+                currentPlayerId={currentPlayerId}
+                highlighted={attackMode && validSet.has(p.territoryId)}
+                dimmed={dimmed}
+                onHover={handleHover}
+              />
+            );
+          })}
 
-        {/* Africa */}
-        <path d="M440,190 Q475,180 500,200 Q520,220 515,260 Q510,300 500,340 Q490,375 475,400 Q455,425 435,415 Q415,400 410,370 Q405,335 408,300 Q412,265 415,230 Q420,205 440,190 Z" fill="#d4a017"/>
+          {attackMode && (
+            <AttackArrowLayer
+              projById={projById}
+              stateById={stateById}
+              currentPlayerId={currentPlayerId}
+              validSet={validSet}
+            />
+          )}
 
-        {/* Russia / Eurasia */}
-        <path d="M490,40 Q560,25 640,35 Q710,45 760,60 Q800,75 820,95 Q810,115 780,120 Q740,125 700,115 Q660,105 620,110 Q580,115 545,105 Q510,95 495,75 Q487,60 490,40 Z" fill="#d4a017"/>
+          {queryViz && (queryViz.type === "heatmap" || queryViz.type === "symbols") && (
+            <QueryOverlay queryViz={queryViz} projById={projById} stateById={stateById} />
+          )}
 
-        {/* Asia */}
-        <path d="M540,110 Q600,95 660,105 Q720,115 760,130 Q790,145 785,175 Q775,205 750,225 Q720,245 685,255 Q650,263 615,255 Q580,245 560,225 Q538,202 535,175 Q532,145 540,110 Z" fill="#d4a017"/>
+          {endGame && (
+            <EndGameOverlay endGame={endGame} projected={projected} />
+          )}
+        </g>
 
-        {/* South / SE Asia */}
-        <path d="M590,250 Q630,240 665,250 Q695,260 700,290 Q698,320 680,340 Q655,360 625,355 Q595,348 580,325 Q565,300 570,275 Q575,255 590,250 Z" fill="#d4a017"/>
+        {/* Edge fades pinned outside the zoom layer. */}
+        <rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="url(#edge-fade-x)"
+          pointerEvents="none"
+        />
+        <rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="url(#edge-fade-y)"
+          pointerEvents="none"
+        />
 
-        {/* Australia */}
-        <path d="M730,310 Q770,295 810,305 Q845,315 855,345 Q860,375 845,400 Q825,425 790,430 Q755,435 730,415 Q705,393 700,365 Q696,335 710,318 Q718,308 730,310 Z" fill="#d4a017"/>
-
-        {/* Japan */}
-        <path d="M800,130 Q820,120 835,130 Q848,142 840,158 Q828,170 812,165 Q797,158 797,145 Q797,134 800,130 Z" fill="#d4a017"/>
+        {/* Leader line from the callout to the hovered territory centroid. */}
+        {hovered &&
+          (() => {
+            const p = projById.get(hovered.id);
+            if (!p) return null;
+            // centroid in screen space requires the zoom transform; we draw the
+            // leader line inside the zoom layer instead, so here we just anchor
+            // the HTML callout. (Line below is a subtle accent at the centroid.)
+            return null;
+          })()}
       </svg>
 
-      {/* Decorative corner marks */}
-      {["top-0 left-0", "top-0 right-0", "bottom-0 left-0", "bottom-0 right-0"].map((pos, i) => (
-        <svg
-          key={i}
-          width="28" height="28"
-          viewBox="0 0 28 28"
-          className={`absolute ${pos} m-2 opacity-20`}
-          aria-hidden
-        >
-          <line x1="0" y1="0" x2="0"  y2="14" stroke="#d4a017" strokeWidth="1.5" />
-          <line x1="0" y1="0" x2="14" y2="0"  stroke="#d4a017" strokeWidth="1.5" />
-        </svg>
+      {/* HTML hover callout (fixed near cursor). */}
+      {hovered &&
+        (() => {
+          const state = stateById.get(hovered.id);
+          const proj = projById.get(hovered.id);
+          if (!state || !proj) return null;
+          return (
+            <HoverCallout
+              state={state}
+              name={proj.name}
+              pos={hovered.pos}
+            />
+          );
+        })()}
+    </div>
+  );
+}
+
+// ---- neutral fallback when a territory has no state row yet ----
+function neutralState(territoryId: number): TerritoryState {
+  return {
+    territoryId,
+    militaryOwner: 0,
+    troopCount: 0,
+    economicOwner: 0,
+    capital: 0,
+    covertOwner: 0,
+    agentCount: 0,
+    culturalOwner: 0,
+    influencePct: 0,
+  };
+}
+
+// ---- attack arrows ----------------------------------------------------------
+
+interface AttackArrowLayerProps {
+  projById: globalThis.Map<number, ProjectedTerritory>;
+  stateById: globalThis.Map<number, TerritoryState>;
+  currentPlayerId: number;
+  validSet: Set<number>;
+}
+
+interface ArrowDef {
+  key: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+function AttackArrowLayer({
+  projById,
+  stateById,
+  currentPlayerId,
+  validSet,
+}: AttackArrowLayerProps) {
+  // Build the source->target arrow list: from each territory the player owns
+  // militarily, to each adjacent territory that is a valid target.
+  const arrows: ArrowDef[] = useMemo(() => {
+    const out: ArrowDef[] = [];
+    for (const [src, state] of stateById) {
+      if (state.militaryOwner !== currentPlayerId) continue;
+      const sp = projById.get(src);
+      if (!sp) continue;
+      for (const adj of ADJACENCY[src] ?? []) {
+        if (!validSet.has(adj)) continue;
+        const tp = projById.get(adj);
+        if (!tp) continue;
+        out.push({
+          key: `${src}-${adj}`,
+          x1: sp.centroidPx[0],
+          y1: sp.centroidPx[1],
+          x2: tp.centroidPx[0],
+          y2: tp.centroidPx[1],
+        });
+      }
+    }
+    return out;
+  }, [projById, stateById, currentPlayerId, validSet]);
+
+  // Animate the travelling particles with ONE shared rAF loop, writing cx/cy
+  // via refs so we never re-render React at 60fps.
+  const particleRefs = useRef<(SVGCircleElement | null)[]>([]);
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      const now = performance.now();
+      const t = (now % 800) / 800; // 0..1 phase over 800ms
+      for (let i = 0; i < arrows.length; i++) {
+        const c = particleRefs.current[i];
+        const a = arrows[i];
+        if (!c || !a) continue;
+        const x = a.x1 + (a.x2 - a.x1) * t;
+        const y = a.y1 + (a.y2 - a.y1) * t;
+        c.setAttribute("cx", String(x));
+        c.setAttribute("cy", String(y));
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [arrows]);
+
+  const color = PLAYER_COLORS[1]; // current player accent (blue)
+
+  return (
+    <g pointerEvents="none">
+      {arrows.map((a, i) => (
+        <g key={a.key}>
+          <line
+            x1={a.x1}
+            y1={a.y1}
+            x2={a.x2}
+            y2={a.y2}
+            stroke={color}
+            strokeOpacity={0.6}
+            strokeWidth={2}
+            strokeDasharray="6 4"
+          />
+          <circle
+            ref={(el) => {
+              particleRefs.current[i] = el;
+            }}
+            cx={a.x1}
+            cy={a.y1}
+            r={2}
+            fill={color}
+            opacity={0.8}
+          />
+        </g>
       ))}
+    </g>
+  );
+}
 
-      {CONTINENTS.map((continent) => (
-        <div key={continent.name} className="flex flex-col items-center gap-2">
-          {/* Continent banner */}
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded"
+// ---- query overlays (heatmap / symbols) ------------------------------------
+
+interface QueryOverlayProps {
+  queryViz: VizSpec;
+  projById: globalThis.Map<number, ProjectedTerritory>;
+  stateById: globalThis.Map<number, TerritoryState>;
+}
+
+function QueryOverlay({ queryViz, projById, stateById }: QueryOverlayProps) {
+  const values = queryViz.territories.map((t) => t.value);
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 1;
+
+  if (queryViz.type === "heatmap") {
+    const color = scaleLinear<string>()
+      .domain([min, (min + max) / 2, max])
+      .range(["#2d302e", "#d4a843", "#c4554d"])
+      .clamp(true);
+    return (
+      <g pointerEvents="none" style={{ transition: "opacity 300ms" }}>
+        {queryViz.territories.map((t) => {
+          const p = projById.get(t.id);
+          if (!p) return null;
+          return (
+            <path
+              key={`hm-${t.id}`}
+              d={p.d}
+              fill={color(t.value)}
+              fillOpacity={0.6}
+            />
+          );
+        })}
+      </g>
+    );
+  }
+
+  // symbols
+  const radius = scaleSqrt().domain([min, max]).range([8, 32]).clamp(true);
+  return (
+    <g pointerEvents="none" style={{ transition: "opacity 300ms" }}>
+      {queryViz.territories.map((t) => {
+        const p = projById.get(t.id);
+        if (!p) return null;
+        const st = stateById.get(t.id);
+        const owner = st?.militaryOwner ?? 0;
+        const fill = PLAYER_COLORS[owner] ?? PLAYER_COLORS[1];
+        return (
+          <circle
+            key={`sym-${t.id}`}
+            cx={p.centroidPx[0]}
+            cy={p.centroidPx[1]}
+            r={radius(t.value)}
+            fill={fill}
+            fillOpacity={0.5}
+          />
+        );
+      })}
+    </g>
+  );
+}
+
+// ---- endgame overlays -------------------------------------------------------
+
+interface EndGameOverlayProps {
+  endGame: EndGameState;
+  projected: ProjectedTerritory[];
+}
+
+function EndGameOverlay({ endGame, projected }: EndGameOverlayProps) {
+  const winColor = PLAYER_COLORS[endGame.winnerId] ?? "#d4a843";
+  const target = projected.find((p) => p.territoryId === endGame.territoryId);
+
+  if (endGame.outcome === "victory") {
+    return (
+      <g pointerEvents="none">
+        {/* Pulsing winner-color overlay across all territories. */}
+        {projected.map((p) => (
+          <path
+            key={`vp-${p.territoryId}`}
+            className="animate-territory-pulse"
+            d={p.d}
+            fill={winColor}
+          />
+        ))}
+        {/* Expanding shockwave ring from the winning territory. */}
+        {target && (
+          <circle
+            className="animate-shockwave"
+            cx={target.centroidPx[0]}
+            cy={target.centroidPx[1]}
+            r={0}
+            fill="none"
+            stroke={winColor}
+            strokeWidth={3}
+          />
+        )}
+      </g>
+    );
+  }
+
+  // defeat: highlight the losing territory, dim all others.
+  return (
+    <g pointerEvents="none">
+      {projected.map((p) =>
+        p.territoryId === endGame.territoryId ? null : (
+          <path
+            key={`dim-${p.territoryId}`}
+            d={p.d}
+            fill="#1a1d1c"
+            fillOpacity={0.6}
+            style={{ transition: "fill-opacity 500ms" }}
+          />
+        ),
+      )}
+      {target && (
+        <path
+          className="animate-lose-pulse"
+          d={target.d}
+          fill="none"
+          stroke={winColor}
+          strokeWidth={3}
+        />
+      )}
+    </g>
+  );
+}
+
+// ---- hover callout ----------------------------------------------------------
+
+interface HoverCalloutProps {
+  state: TerritoryState;
+  name: string;
+  pos: [number, number]; // clientX, clientY
+}
+
+function HoverCallout({ state, name, pos }: HoverCalloutProps) {
+  const rows: {
+    key: string;
+    label: string;
+    color: string;
+    owner: number;
+    value: string;
+  }[] = [
+    {
+      key: "military",
+      label: "Military",
+      color: DIMENSION_COLORS.military,
+      owner: state.militaryOwner,
+      value: String(state.troopCount),
+    },
+    {
+      key: "economic",
+      label: "Economic",
+      color: DIMENSION_COLORS.economic,
+      owner: state.economicOwner,
+      value: String(state.capital),
+    },
+    {
+      key: "cultural",
+      label: "Cultural",
+      color: DIMENSION_COLORS.cultural,
+      owner: state.culturalOwner,
+      value: `${state.influencePct}%`,
+    },
+    {
+      key: "covert",
+      label: "Covert",
+      color: DIMENSION_COLORS.covert,
+      owner: state.covertOwner,
+      value: String(state.agentCount),
+    },
+  ];
+
+  return (
+    <div
+      className="pointer-events-none fixed z-50"
+      style={{
+        left: pos[0] + 14,
+        top: pos[1] + 14,
+        background: "rgba(30, 33, 32, 0.92)",
+        border: "1px solid #3a3f3c",
+        borderRadius: 4,
+        padding: "8px 10px",
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "Inter, sans-serif",
+          fontSize: 12,
+          fontWeight: 600,
+          color: "#c5c9c6",
+          marginBottom: 4,
+        }}
+      >
+        {name}
+      </div>
+      {rows.map((r) => (
+        <div
+          key={r.key}
+          className="flex items-center gap-2"
+          style={{ lineHeight: "16px" }}
+        >
+          <span
             style={{
-              background: "linear-gradient(90deg, transparent, rgba(212,160,23,0.12), transparent)",
-              borderTop: "1px solid rgba(212,160,23,0.2)",
-              borderBottom: "1px solid rgba(212,160,23,0.2)",
+              display: "inline-block",
+              width: 10,
+              height: 10,
+              borderRadius: 2,
+              background: r.color,
+              flexShrink: 0,
+            }}
+          />
+          <span
+            style={{
+              fontFamily: "Inter, sans-serif",
+              fontSize: 11,
+              color: playerColor(r.owner),
+              minWidth: 70,
             }}
           >
-            <span className="text-[13px]">{CONTINENT_ICONS[continent.name] ?? "◆"}</span>
-            <span
-              className="text-[10px] tracking-widest uppercase"
-              style={{ fontFamily: "Cinzel, serif", color: "#9a8870", letterSpacing: "0.18em" }}
-            >
-              {continent.name}
-            </span>
-          </div>
-
-          {/* Territory grid */}
-          <div
-            className="grid grid-cols-2 gap-x-3 gap-y-4 rounded-xl p-4"
+            {playerName(r.owner)}
+          </span>
+          <span
             style={{
-              background: "rgba(255,255,255,0.012)",
-              border: "1px solid rgba(212,160,23,0.08)",
-              boxShadow: "inset 0 0 40px rgba(0,0,0,0.3)",
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: 10,
+              color: "#c5c9c6",
+              marginLeft: "auto",
             }}
           >
-            {continent.territories.map((id) => {
-              const state = byId[id];
-              if (!state) return null;
-              const isOwned =
-                state.militaryOwner === currentPlayerId ||
-                state.economicOwner === currentPlayerId;
-              return (
-                <Territory
-                  key={id}
-                  state={state}
-                  isHighlighted={highlighted.has(id)}
-                  isOwned={isOwned}
-                />
-              );
-            })}
-          </div>
+            {r.value}
+          </span>
         </div>
       ))}
     </div>

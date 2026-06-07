@@ -187,6 +187,8 @@ On territory hover:
 
 ## 4. CARD STACKS
 
+> **Implementation note:** The card hand is rendered as a retained fan-out arc (one card per action point, fanned with rotation and lift, cycling Military/Economic/Covert) rather than three discrete stacks. All drag, attack-arrow, empty-state, regeneration, styling, and sound behavior described in this section still applies to the fanned cards.
+
 ### 4.1 Dimensions and Positioning
 
 - Three stacks, centered horizontally at the bottom of the screen
