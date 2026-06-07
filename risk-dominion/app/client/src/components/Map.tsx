@@ -22,7 +22,8 @@ import { select } from "d3-selection";
 import { scaleLinear, scaleSqrt } from "d3-scale";
 import { Territory } from "./Territory";
 import { TERRITORIES_GEOJSON } from "../data/territories.geo";
-import { ADJACENCY, PLAYER_COLORS, DIMENSION_COLORS } from "../constants";
+import { ADJACENCY, PLAYER_COLORS, INTEL_THRESHOLD } from "../constants";
+import { isUnified } from "../utils/patternRenderer";
 import type { TerritoryState, VizSpec, EndGameState } from "../types";
 
 // ---- shared projected-territory model --------------------------------------
@@ -633,102 +634,162 @@ interface HoverCalloutProps {
   pos: [number, number]; // clientX, clientY
 }
 
+type DimKind = "military" | "economic" | "cultural" | "covert";
+
+// Small neutral dimension glyphs (color = player is reserved for the owner name,
+// so these stay text-secondary and only convey WHICH dimension a row is).
+function DimIcon({ kind }: { kind: DimKind }) {
+  const c = "#7d827e";
+  if (kind === "military") {
+    return (
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
+        <polygon points="8,3 14,11 11,11 8,7 5,11 2,11" fill={c} />
+      </svg>
+    );
+  }
+  if (kind === "economic") {
+    return (
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
+        <circle cx="8" cy="8" r="5.5" fill="none" stroke={c} strokeWidth="1.5" />
+        <line x1="8" y1="2" x2="8" y2="14" stroke={c} strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  if (kind === "cultural") {
+    return (
+      <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
+        <path d="M2,12 L12,2 M2,7 L7,2 M7,12 L12,7" stroke={c} strokeWidth="1.3" fill="none" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
+      <circle cx="8" cy="8" r="6" fill="none" stroke={c} strokeWidth="1.3" />
+      <circle cx="8" cy="8" r="2.3" fill={c} />
+    </svg>
+  );
+}
+
+// Plain-language descriptions of each dimension's stat.
+function militaryDesc(t: number): string {
+  if (t <= 0) return "undefended";
+  if (t <= 2) return "light garrison";
+  if (t <= 6) return "garrisoned";
+  return "strong garrison";
+}
+function economicDesc(c: number): string {
+  if (c <= 0) return "undeveloped";
+  if (c <= 9) return "modest economy";
+  if (c <= 19) return "developed economy";
+  return "strong economy";
+}
+function covertDesc(a: number): string {
+  if (a <= 0) return "no presence";
+  if (a < INTEL_THRESHOLD) return "light presence";
+  return "intel network";
+}
+function culturalDesc(pct: number): string {
+  if (pct <= 0) return "stable";
+  return `${pct}% to flip`;
+}
+
+// Overall control of the territory across all four dimensions.
+function controlStatus(state: TerritoryState): { label: string; owner: number } {
+  const u = isUnified(state);
+  if (u !== null) return { label: "UNIFIED", owner: u };
+  const allNeutral =
+    state.militaryOwner === 0 &&
+    state.economicOwner === 0 &&
+    state.covertOwner === 0 &&
+    state.culturalOwner === 0;
+  return { label: allNeutral ? "UNCLAIMED" : "CONTESTED", owner: 0 };
+}
+
 function HoverCallout({ state, name, pos }: HoverCalloutProps) {
-  const rows: {
-    key: string;
-    label: string;
-    color: string;
-    owner: number;
-    value: string;
-  }[] = [
-    {
-      key: "military",
-      label: "Military",
-      color: DIMENSION_COLORS.military,
-      owner: state.militaryOwner,
-      value: String(state.troopCount),
-    },
-    {
-      key: "economic",
-      label: "Economic",
-      color: DIMENSION_COLORS.economic,
-      owner: state.economicOwner,
-      value: String(state.capital),
-    },
-    {
-      key: "cultural",
-      label: "Cultural",
-      color: DIMENSION_COLORS.cultural,
-      owner: state.culturalOwner,
-      value: `${state.influencePct}%`,
-    },
-    {
-      key: "covert",
-      label: "Covert",
-      color: DIMENSION_COLORS.covert,
-      owner: state.covertOwner,
-      value: String(state.agentCount),
-    },
+  const rows: { key: DimKind; label: string; owner: number; desc: string }[] = [
+    { key: "military", label: "Military", owner: state.militaryOwner, desc: militaryDesc(state.troopCount) },
+    { key: "economic", label: "Economic", owner: state.economicOwner, desc: economicDesc(state.capital) },
+    { key: "cultural", label: "Cultural", owner: state.culturalOwner, desc: culturalDesc(state.influencePct) },
+    { key: "covert", label: "Covert", owner: state.covertOwner, desc: covertDesc(state.agentCount) },
   ];
+  const status = controlStatus(state);
+
+  // Position near the cursor, flipping away from the right/bottom viewport edges.
+  const W = 252;
+  const H = 132;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 720;
+  let left = pos[0] + 14;
+  let top = pos[1] + 14;
+  if (left + W > vw - 8) left = pos[0] - 14 - W;
+  if (top + H > vh - 8) top = pos[1] - 14 - H;
+  left = Math.max(8, left);
+  top = Math.max(8, top);
 
   return (
     <div
       className="pointer-events-none fixed z-50"
       style={{
-        left: pos[0] + 14,
-        top: pos[1] + 14,
-        background: "rgba(30, 33, 32, 0.92)",
+        left,
+        top,
+        width: W,
+        background: "rgba(30, 33, 32, 0.94)",
         border: "1px solid #3a3f3c",
-        borderRadius: 4,
+        borderRadius: 6,
         padding: "8px 10px",
       }}
     >
-      <div
-        style={{
-          fontFamily: "Inter, sans-serif",
-          fontSize: 12,
-          fontWeight: 600,
-          color: "#c5c9c6",
-          marginBottom: 4,
-        }}
-      >
-        {name}
-      </div>
-      {rows.map((r) => (
-        <div
-          key={r.key}
-          className="flex items-center gap-2"
-          style={{ lineHeight: "16px" }}
+      {/* Header: name + overall control status */}
+      <div className="flex items-baseline justify-between" style={{ gap: 8, marginBottom: 6 }}>
+        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 600, color: "#c5c9c6" }}>
+          {name}
+        </span>
+        <span
+          style={{
+            fontFamily: "Inter, sans-serif",
+            fontSize: 9,
+            letterSpacing: "0.08em",
+            color: status.label === "UNIFIED" ? "#d4a843" : "#7d827e",
+            whiteSpace: "nowrap",
+          }}
         >
-          <span
-            style={{
-              display: "inline-block",
-              width: 10,
-              height: 10,
-              borderRadius: 2,
-              background: r.color,
-              flexShrink: 0,
-            }}
-          />
+          {status.label}
+          {status.label === "UNIFIED" && (
+            <span style={{ color: playerColor(status.owner), marginLeft: 4 }}>{playerName(status.owner)}</span>
+          )}
+        </span>
+      </div>
+
+      {/* One labeled row per dimension */}
+      {rows.map((r) => (
+        <div key={r.key} className="flex items-center" style={{ gap: 6, lineHeight: "18px" }}>
+          <span className="flex items-center justify-center" style={{ width: 14, flexShrink: 0 }}>
+            <DimIcon kind={r.key} />
+          </span>
+          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 10, color: "#7d827e", width: 52, flexShrink: 0 }}>
+            {r.label}
+          </span>
           <span
             style={{
               fontFamily: "Inter, sans-serif",
               fontSize: 11,
-              color: playerColor(r.owner),
-              minWidth: 70,
+              color: r.owner ? playerColor(r.owner) : "#7d827e",
+              width: 60,
+              flexShrink: 0,
             }}
           >
             {playerName(r.owner)}
           </span>
           <span
             style={{
-              fontFamily: "JetBrains Mono, monospace",
+              fontFamily: "Inter, sans-serif",
               fontSize: 10,
               color: "#c5c9c6",
               marginLeft: "auto",
+              whiteSpace: "nowrap",
             }}
           >
-            {r.value}
+            {r.desc}
           </span>
         </div>
       ))}

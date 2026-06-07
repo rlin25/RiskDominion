@@ -511,7 +511,46 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
     if game_value(ctx, "status").is_some() {
         return Ok(());
     }
+    seed_game(ctx);
+    Ok(())
+}
 
+/// Wipe the current game and start a fresh, randomized one. Lets the player
+/// start over from the UI without a manual database reset.
+#[spacetimedb::reducer]
+pub fn reset_game(ctx: &ReducerContext) -> Result<(), String> {
+    clear_game_tables(ctx);
+    seed_game(ctx);
+    Ok(())
+}
+
+/// Delete every gameplay row so a fresh game can be seeded. Preserves
+/// `module_config` (the Anthropic API key). Scheduled timers are cleared here and
+/// re-armed by `seed_game`. Rows are collected before deletion to avoid mutating
+/// a table while iterating it.
+fn clear_game_tables(ctx: &ReducerContext) {
+    for r in ctx.db.military().iter().collect::<Vec<_>>() { ctx.db.military().territory_id().delete(r.territory_id); }
+    for r in ctx.db.economic().iter().collect::<Vec<_>>() { ctx.db.economic().territory_id().delete(r.territory_id); }
+    for r in ctx.db.covert().iter().collect::<Vec<_>>() { ctx.db.covert().territory_id().delete(r.territory_id); }
+    for r in ctx.db.cultural().iter().collect::<Vec<_>>() { ctx.db.cultural().territory_id().delete(r.territory_id); }
+    for r in ctx.db.players().iter().collect::<Vec<_>>() { ctx.db.players().player_id().delete(r.player_id); }
+    for r in ctx.db.game_state().iter().collect::<Vec<_>>() { ctx.db.game_state().key().delete(r.key); }
+    for r in ctx.db.event_feed().iter().collect::<Vec<_>>() { ctx.db.event_feed().id().delete(r.id); }
+    for r in ctx.db.strategist_log().iter().collect::<Vec<_>>() { ctx.db.strategist_log().id().delete(r.id); }
+    for r in ctx.db.chat_log().iter().collect::<Vec<_>>() { ctx.db.chat_log().id().delete(r.id); }
+    for r in ctx.db.chat_secret().iter().collect::<Vec<_>>() { ctx.db.chat_secret().chat_id().delete(r.chat_id); }
+    for r in ctx.db.ai_state().iter().collect::<Vec<_>>() { ctx.db.ai_state().ai_player_id().delete(r.ai_player_id); }
+    for r in ctx.db.ai_reasoning_log().iter().collect::<Vec<_>>() { ctx.db.ai_reasoning_log().id().delete(r.id); }
+    for r in ctx.db.ai_trust().iter().collect::<Vec<_>>() { ctx.db.ai_trust().id().delete(r.id); }
+    for r in ctx.db.regen_timer().iter().collect::<Vec<_>>() { ctx.db.regen_timer().scheduled_id().delete(r.scheduled_id); }
+    for r in ctx.db.cultural_timer().iter().collect::<Vec<_>>() { ctx.db.cultural_timer().scheduled_id().delete(r.scheduled_id); }
+    for r in ctx.db.ai_cycle_schedule().iter().collect::<Vec<_>>() { ctx.db.ai_cycle_schedule().scheduled_id().delete(r.scheduled_id); }
+    for r in ctx.db.strategist_schedule().iter().collect::<Vec<_>>() { ctx.db.strategist_schedule().scheduled_id().delete(r.scheduled_id); }
+}
+
+/// Seed a fresh game: players, randomized home territories (each player dominant
+/// in one random country, the rest neutral), AI cycles, timers, and trust.
+fn seed_game(ctx: &ReducerContext) {
     let ts = now_millis(ctx);
 
     // Players: 1 human + 3 AI.
@@ -631,7 +670,6 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
         None,
     );
     log::info!("Game started: {TOTAL_PLAYERS} players, {TOTAL_TERRITORIES} territories seeded.");
-    Ok(())
 }
 
 // ---- ACTION LOGIC (shared by reducers and the AI cycle) ----

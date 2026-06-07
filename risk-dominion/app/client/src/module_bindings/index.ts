@@ -38,6 +38,7 @@ import DeployAgentReducer from "./deploy_agent_reducer";
 import DismissStrategistAlertReducer from "./dismiss_strategist_alert_reducer";
 import EconomicInvestReducer from "./economic_invest_reducer";
 import MilitaryAttackReducer from "./military_attack_reducer";
+import ResetGameReducer from "./reset_game_reducer";
 import SendChatMessageReducer from "./send_chat_message_reducer";
 import SetConfigReducer from "./set_config_reducer";
 import StartGameReducer from "./start_game_reducer";
@@ -211,6 +212,7 @@ const reducersSchema = __reducers(
   __reducerSchema("dismiss_strategist_alert", DismissStrategistAlertReducer),
   __reducerSchema("economic_invest", EconomicInvestReducer),
   __reducerSchema("military_attack", MilitaryAttackReducer),
+  __reducerSchema("reset_game", ResetGameReducer),
   __reducerSchema("send_chat_message", SendChatMessageReducer),
   __reducerSchema("set_config", SetConfigReducer),
   __reducerSchema("start_game", StartGameReducer),

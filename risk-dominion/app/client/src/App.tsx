@@ -17,6 +17,7 @@ import type { CardType, EndGameState, VizSpec, ChatLogRow, EventFeedRow, Strateg
 import { Map as GameMap } from "./components/Map";
 import { CardHand, type HandCard } from "./components/CardHand";
 import { ColorLegend } from "./components/ColorLegend";
+import { NewGameButton } from "./components/NewGameButton";
 import { TitleScreen } from "./components/TitleScreen";
 import { CommandBar } from "./components/CommandBar";
 import { ChatWindow } from "./components/ChatWindow";
@@ -324,6 +325,7 @@ export default function App() {
       />
 
       <ColorLegend />
+      <NewGameButton />
 
       {/* Persistent: the card hand (fan-out arc) */}
       <CardHand hand={hand} actionPoints={actionPoints} gameEnded={gameEnded} />
