@@ -59,7 +59,6 @@ export default function App() {
   const [tickerHighlight, setTickerHighlight] = useState<number | null>(null);
   const [ownedHighlight, setOwnedHighlight] = useState(false);
   const [intelOpen, setIntelOpen] = useState(true);
-  const [chatOpen, setChatOpen] = useState(false);
   const [currentTimestamp, setCurrentTimestamp] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -232,33 +231,7 @@ export default function App() {
               {intelOpen ? "Hide Intel" : "Show Intel"}
             </button>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <button
-                onClick={() => setChatOpen((v) => !v)}
-                className="rounded border border-[#334455] px-2 py-1 font-ui text-[10px] text-text-secondary hover:text-text-primary"
-              >
-                {chatOpen ? "Hide Chat" : "Show Chat"}
-              </button>
-              {chatOpen && (
-                <div className="absolute right-0 top-full z-40 mt-2 w-[320px]">
-                  {/* arrow pointing up to the button */}
-                  <div className="absolute -top-2 right-6 h-0 w-0 border-x-8 border-b-8 border-x-transparent border-b-[#334455]" />
-                  <div className="h-[60vh] overflow-hidden rounded-lg border border-[#334455] shadow-2xl">
-                    <ChatPanel
-                      messages={chatLog}
-                      currentPlayerId={PLAYER_ID}
-                      onSendMessage={handleSendMessage}
-                      onTerritoryClick={handleEventClick}
-                      mode={mode}
-                      currentTimestamp={mode === "replay" ? currentTimestamp : null}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-            <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
-          </div>
+          <ActionBar actionPoints={actionPoints} playerColor={playerColor} />
         </div>
 
         {queryResult && (
@@ -289,6 +262,28 @@ export default function App() {
               eventFeed={eventFeed}
             />
           )}
+
+          {/* Thin handle on the right edge; hovering it (or the panel) slides the
+              chat sidebar in inline, squeezing the map left without covering it. */}
+          <div className="group flex h-full shrink-0">
+            <div className="w-0 overflow-hidden border-l border-[#334455] transition-[width] duration-200 ease-out group-hover:w-[300px]">
+              <div className="h-full w-[300px]">
+                <ChatPanel
+                  messages={chatLog}
+                  currentPlayerId={PLAYER_ID}
+                  onSendMessage={handleSendMessage}
+                  onTerritoryClick={handleEventClick}
+                  mode={mode}
+                  currentTimestamp={mode === "replay" ? currentTimestamp : null}
+                />
+              </div>
+            </div>
+            <div className="flex w-6 cursor-pointer items-center justify-center border-l border-[#334455] bg-bg-surface hover:bg-bg-surface-alt">
+              <span className="font-ui text-[10px] tracking-widest text-text-secondary [writing-mode:vertical-rl]">
+                CHAT
+              </span>
+            </div>
+          </div>
         </div>
 
         {mode === "player" && <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />}
