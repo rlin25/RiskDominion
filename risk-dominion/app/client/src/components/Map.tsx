@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   geoEqualEarth,
+  geoGraticule10,
   geoPath,
   type GeoPath,
   type GeoProjection,
@@ -124,7 +125,7 @@ export function Map(props: MapProps): JSX.Element {
   const { width, height } = size;
 
   // ---- projection + projected territories (memoized on size) ----
-  const { projected, projection, path } = useMemo(() => {
+  const { projected, projection, path, spherePath, graticulePath } = useMemo(() => {
     const proj: GeoProjection = geoEqualEarth().fitExtent(
       [
         [24, 24],
@@ -150,7 +151,12 @@ export function Map(props: MapProps): JSX.Element {
         ringsPx: rings,
       };
     });
-    return { projected: list, projection: proj, path: pathGen };
+    // Map furniture: the globe outline (sphere) and the lat/long grid (graticule)
+    // give the view an unmistakable "atlas" read behind the territories.
+    const spherePath = pathGen({ type: "Sphere" }) ?? "";
+    const graticulePath = pathGen(geoGraticule10()) ?? "";
+
+    return { projected: list, projection: proj, path: pathGen, spherePath, graticulePath };
   }, [width, height]);
 
   // void unused vars (projection/path are kept for clarity / future use)
@@ -237,7 +243,8 @@ export function Map(props: MapProps): JSX.Element {
     >
       <svg ref={svgRef} width={width} height={height}>
         <defs>
-          {/* Per-territory clip paths for the pattern layers. */}
+          {/* Per-territory clip paths so procedural pattern geometry is trimmed
+              to the territory shape. */}
           {projected.map((p) => (
             <clipPath key={`clip-${p.territoryId}`} id={`clip-${p.territoryId}`}>
               <path d={p.d} />
@@ -256,6 +263,11 @@ export function Map(props: MapProps): JSX.Element {
             <stop offset="0.92" stopColor="#1a1d1c" stopOpacity="0" />
             <stop offset="1" stopColor="#1a1d1c" stopOpacity="1" />
           </linearGradient>
+          {/* Deep-ocean radial wash inside the globe outline. */}
+          <radialGradient id="ocean-fill" cx="0.5" cy="0.45" r="0.75">
+            <stop offset="0" stopColor="#20302f" stopOpacity="0.55" />
+            <stop offset="1" stopColor="#161a19" stopOpacity="0.55" />
+          </radialGradient>
         </defs>
 
         {/* Transparent pan surface (the only drag-pannable target). */}
@@ -270,7 +282,20 @@ export function Map(props: MapProps): JSX.Element {
 
         {/* Zoom layer: everything that should pan/zoom together. */}
         <g transform={zoomTransform}>
-          {projected.map((p) => {
+          {/* Map furniture: ocean wash, globe outline, lat/long grid. */}
+          <path d={spherePath} fill="url(#ocean-fill)" stroke="#3a3f3c" strokeWidth={0.75} strokeOpacity={0.5} />
+          <path
+            d={graticulePath}
+            fill="none"
+            stroke="#3a3f3c"
+            strokeWidth={0.5}
+            strokeOpacity={0.28}
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+
+          <g>
+            {projected.map((p) => {
             const state =
               stateById.get(p.territoryId) ?? neutralState(p.territoryId);
             const dimmed =
@@ -288,6 +313,7 @@ export function Map(props: MapProps): JSX.Element {
               />
             );
           })}
+          </g>
 
           {attackMode && (
             <AttackArrowLayer

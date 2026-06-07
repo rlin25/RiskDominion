@@ -81,6 +81,17 @@ export default {
           from: { opacity: "0" },
           to: { opacity: "1" },
         },
+        // Centered command popup: scale + fade in (no translate, parent flex-centers)
+        popIn: {
+          from: { opacity: "0", transform: "scale(0.96)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
+        // Shake around center (pure translateX; parent flex-centers)
+        shakeX: {
+          "0%, 100%": { transform: "translateX(0)" },
+          "25%": { transform: "translateX(-5px)" },
+          "75%": { transform: "translateX(5px)" },
+        },
         // Gold count flash on regen
         goldFlash: {
           "0%": { color: "#d4a843" },
@@ -100,6 +111,8 @@ export default {
         "lose-pulse": "losePulse 1s ease-in-out infinite",
         "fade-in": "fadeIn 300ms ease-out forwards",
         "gold-flash": "goldFlash 300ms ease-out forwards",
+        "pop-in": "popIn 160ms ease-out",
+        "shake-x": "shakeX 200ms ease-in-out",
       },
     },
   },

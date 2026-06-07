@@ -24,13 +24,14 @@ const CARD_STYLE: CSSProperties = {
   padding: "6px 10px",
 };
 
-// The human's Strategist advisor (top-left). Shows proactive non-dismissed
-// strategist_log entries (auto-dismiss after 8s) plus an optional persistent
-// requested advice card with a close button.
+// The human's Strategist advisor (top-left). Only ONE alert is active at a time:
+// a newer proactive strategist_log entry replaces any current one, and a
+// user-requested advice card takes the single slot with priority. Proactive
+// alerts auto-dismiss after 8s; requested advice persists until dismissed.
 export function StrategistAdvice({ alerts, requested, onDismissRequested }: Props) {
-  const [cards, setCards] = useState<ProactiveCard[]>([]);
+  const [card, setCard] = useState<ProactiveCard | null>(null);
   const seen = useRef<Set<string>>(new Set());
-  const timers = useRef<number[]>([]);
+  const timer = useRef<number | null>(null);
   const baselined = useRef(false);
 
   useEffect(() => {
@@ -43,42 +44,25 @@ export function StrategistAdvice({ alerts, requested, onDismissRequested }: Prop
     }
     const fresh = alerts.filter((a) => !a.dismissed && !seen.current.has(String(a.id)));
     if (fresh.length === 0) return;
+    for (const a of fresh) seen.current.add(String(a.id));
 
-    const newCards: ProactiveCard[] = fresh.map((a) => {
-      const id = String(a.id);
-      seen.current.add(id);
-      const timer = window.setTimeout(() => {
-        setCards((prev) => prev.filter((c) => c.id !== id));
-      }, DISMISS_MS);
-      timers.current.push(timer);
-      return { id, text: a.notification };
-    });
-    setCards((prev) => [...prev, ...newCards]);
+    // Keep only the newest fresh alert (one active at a time).
+    const newest = fresh.reduce((a, b) => (Number(b.createdAt) >= Number(a.createdAt) ? b : a));
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    setCard({ id: String(newest.id), text: newest.notification });
+    timer.current = window.setTimeout(() => setCard(null), DISMISS_MS);
   }, [alerts]);
 
   useEffect(() => {
     return () => {
-      timers.current.forEach((t) => window.clearTimeout(t));
+      if (timer.current !== null) window.clearTimeout(timer.current);
     };
   }, []);
 
-  if (cards.length === 0 && requested === null) return null;
-
-  return (
-    <div className="fixed z-50 flex flex-col gap-2" style={{ top: 16, left: 16 }}>
-      {cards.map((c) => (
-        <div
-          key={c.id}
-          className="animate-notify-in"
-          style={CARD_STYLE}
-        >
-          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: "#c5c9c6" }}>
-            {c.text}
-          </span>
-        </div>
-      ))}
-
-      {requested !== null && (
+  // Requested advice (user-initiated) takes the single slot with priority.
+  if (requested !== null) {
+    return (
+      <div className="fixed z-50" style={{ top: 16, left: 16 }}>
         <div className="animate-notify-in flex items-start gap-2" style={CARD_STYLE}>
           <span
             className="flex-1"
@@ -96,7 +80,19 @@ export function StrategistAdvice({ alerts, requested, onDismissRequested }: Prop
             ×
           </button>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  if (!card) return null;
+
+  return (
+    <div className="fixed z-50" style={{ top: 16, left: 16 }}>
+      <div className="animate-notify-in" style={CARD_STYLE}>
+        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: "#c5c9c6" }}>
+          {card.text}
+        </span>
+      </div>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 // A single projected territory rendered inside the map's zoom layer. The base
-// <path> is the @dnd-kit droppable hit target; the dimension pattern layers and
-// label sit on top with pointer-events disabled so they never steal the drop.
+// <path> is the @dnd-kit droppable hit target; the procedural dimension pattern
+// layers and label sit on top with pointer-events disabled so they never steal
+// the drop. Memoized so map pan/zoom and hover do not re-render every territory.
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { PLAYER_COLORS } from "../constants";
 import type { TerritoryState } from "../types";
@@ -35,7 +36,7 @@ interface TerritoryComponentProps {
   onHover: (id: number | null, clientPos: [number, number] | null) => void;
 }
 
-export function Territory({
+function TerritoryImpl({
   proj,
   state,
   highlighted,
@@ -47,12 +48,10 @@ export function Territory({
   const unifiedOwner = isUnified(state);
 
   // Density mode (full pattern vs. single-dot fallback for tiny territories).
-  const { mode } = useMemo(
-    () => resolveSpacing(proj.areaPx, 8),
-    [proj.areaPx],
-  );
+  const { mode } = useMemo(() => resolveSpacing(proj.areaPx, 8), [proj.areaPx]);
 
-  // Build the four pattern arrays once per relevant change.
+  // Build the four procedural pattern arrays once per relevant change. These are
+  // the original textures: contour lines, dot grid, cross-hatch, poisson dots.
   const patterns = useMemo(() => {
     if (unifiedOwner !== null) {
       return { military: [], economic: [], cultural: [], covert: [] } as {
@@ -121,36 +120,20 @@ export function Territory({
         onMouseLeave={() => onHover(null, null)}
       />
 
-      {/* Dimension pattern layers (only when not unified). */}
+      {/* Procedural dimension pattern layers (only when not unified). */}
       {unifiedOwner === null && mode === "full" && (
         <>
           {state.militaryOwner > 0 && (
-            <PatternLines
-              clipId={clipId}
-              segs={patterns.military}
-              color={PLAYER_COLORS[state.militaryOwner]}
-            />
+            <PatternLines clipId={clipId} segs={patterns.military} color={PLAYER_COLORS[state.militaryOwner]} />
           )}
           {state.economicOwner > 0 && (
-            <PatternDots
-              clipId={clipId}
-              dots={patterns.economic}
-              color={PLAYER_COLORS[state.economicOwner]}
-            />
+            <PatternDots clipId={clipId} dots={patterns.economic} color={PLAYER_COLORS[state.economicOwner]} />
           )}
           {state.culturalOwner > 0 && (
-            <PatternLines
-              clipId={clipId}
-              segs={patterns.cultural}
-              color={PLAYER_COLORS[state.culturalOwner]}
-            />
+            <PatternLines clipId={clipId} segs={patterns.cultural} color={PLAYER_COLORS[state.culturalOwner]} />
           )}
           {state.covertOwner > 0 && (
-            <PatternDots
-              clipId={clipId}
-              dots={patterns.covert}
-              color={PLAYER_COLORS[state.covertOwner]}
-            />
+            <PatternDots clipId={clipId} dots={patterns.covert} color={PLAYER_COLORS[state.covertOwner]} />
           )}
         </>
       )}
@@ -181,17 +164,11 @@ export function Territory({
   );
 }
 
+export const Territory = memo(TerritoryImpl);
+
 // ---- pattern sub-layers (clipped, non-interactive) -------------------------
 
-function PatternLines({
-  clipId,
-  segs,
-  color,
-}: {
-  clipId: string;
-  segs: LineSeg[];
-  color: string;
-}) {
+function PatternLines({ clipId, segs, color }: { clipId: string; segs: LineSeg[]; color: string }) {
   return (
     <g clipPath={`url(#${clipId})`} opacity={0.4} pointerEvents="none">
       {segs.map((s, i) => (
@@ -210,15 +187,7 @@ function PatternLines({
   );
 }
 
-function PatternDots({
-  clipId,
-  dots,
-  color,
-}: {
-  clipId: string;
-  dots: Dot[];
-  color: string;
-}) {
+function PatternDots({ clipId, dots, color }: { clipId: string; dots: Dot[]; color: string }) {
   return (
     <g clipPath={`url(#${clipId})`} opacity={0.4} pointerEvents="none">
       {dots.map((d, i) => (
@@ -230,13 +199,7 @@ function PatternDots({
 
 // Up to 4 dots in a short horizontal row at the centroid, one per owned
 // dimension, coloured by that dimension's owner.
-function SingleDots({
-  centroid,
-  state,
-}: {
-  centroid: [number, number];
-  state: TerritoryState;
-}) {
+function SingleDots({ centroid, state }: { centroid: [number, number]; state: TerritoryState }) {
   const owners = [
     state.militaryOwner,
     state.economicOwner,
@@ -247,13 +210,7 @@ function SingleDots({
   return (
     <g pointerEvents="none" opacity={0.85}>
       {positions.map((pos, i) => (
-        <circle
-          key={i}
-          cx={pos[0]}
-          cy={pos[1]}
-          r={2}
-          fill={PLAYER_COLORS[owners[i]] ?? "#7d827e"}
-        />
+        <circle key={i} cx={pos[0]} cy={pos[1]} r={2} fill={PLAYER_COLORS[owners[i]] ?? "#7d827e"} />
       ))}
     </g>
   );

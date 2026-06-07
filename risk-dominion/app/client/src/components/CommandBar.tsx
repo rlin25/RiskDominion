@@ -123,18 +123,23 @@ export function CommandBar({
 
   return (
     <div
-      className="fixed left-1/2 z-[60] -translate-x-1/2"
-      style={{ top: 12, width: "60vw", maxWidth: 720 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center animate-fade-in"
+      style={{ background: "rgba(10,12,11,0.45)", backdropFilter: "blur(2px)" }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onDismiss();
+      }}
     >
+      <div className="relative" style={{ width: "60vw", maxWidth: 720, marginTop: "-6vh" }}>
       <div
         key={shakeKey}
-        className={`flex items-center gap-2 ${shaking ? "animate-cmd-shake" : "animate-cmd-down"}`}
+        className={`flex items-center gap-2 ${shaking ? "animate-shake-x" : "animate-pop-in"}`}
         style={{
-          height: 44,
-          background: "rgba(30,33,32,0.92)",
-          borderBottom: "1px solid #3a3f3c",
-          borderRadius: 6,
-          padding: "0 12px",
+          height: 48,
+          background: "rgba(30,33,32,0.97)",
+          border: "1px solid #3a3f3c",
+          borderRadius: 8,
+          padding: "0 14px",
+          boxShadow: "0 18px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(212,168,67,0.08)",
         }}
       >
         <button
@@ -197,11 +202,12 @@ export function CommandBar({
         <div
           className="absolute left-0"
           style={{
-            top: 44,
+            top: 56,
             width: "100%",
-            background: "rgba(30,33,32,0.95)",
+            background: "rgba(30,33,32,0.97)",
             border: "1px solid #3a3f3c",
             borderRadius: 6,
+            boxShadow: "0 18px 48px rgba(0,0,0,0.6)",
           }}
         >
           {COMMAND_SECTIONS.map((section, si) => (
@@ -250,6 +256,7 @@ export function CommandBar({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

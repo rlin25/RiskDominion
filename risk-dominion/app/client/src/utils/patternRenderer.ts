@@ -38,15 +38,64 @@ function mulberry32(seed: number): () => number {
 
 // ---- shared helpers ---------------------------------------------------------
 
-// Density scaling: larger territories get the base spacing; smaller ones get
-// sparser patterns; tiny ones fall back to a single descriptive dot per owner.
+// Density scaling. The spacing scales with sqrt(area) toward a fixed per-cell
+// budget, so a continent-sized territory produces roughly the same number of
+// pattern cells as a small one instead of tens of thousands. Spacing is floored
+// at `base` so small/medium territories keep the original look. Tiny territories
+// fall back to a single descriptive dot per owner.
+const CELL_BUDGET = 85; // approx pattern cells per territory across its area
+
 export function resolveSpacing(
   areaPx: number,
   base: number,
 ): { spacing: number; mode: "full" | "single-dot" } {
-  if (areaPx >= 2000) return { spacing: base, mode: "full" };
-  if (areaPx >= 1000) return { spacing: base * 2, mode: "full" };
-  return { spacing: base, mode: "single-dot" };
+  if (areaPx < 500) return { spacing: base, mode: "single-dot" };
+  const spacing = Math.max(base, Math.sqrt(areaPx / CELL_BUDGET));
+  return { spacing, mode: "full" };
+}
+
+// Douglas-Peucker polyline simplification. Real coastlines carry hundreds of
+// vertices; contouring them verbatim is what produced tens of thousands of
+// line segments. Reducing to a coarse outline first cuts that cost ~10x with no
+// visible change at map scale.
+function simplifyRing(ring: [number, number][], tol: number): [number, number][] {
+  const n = ring.length;
+  if (n <= 8) return ring;
+  const keep = new Array<boolean>(n).fill(false);
+  keep[0] = true;
+  keep[n - 1] = true;
+  const tol2 = tol * tol;
+  const stack: [number, number][] = [[0, n - 1]];
+  while (stack.length) {
+    const seg = stack.pop();
+    if (!seg) break;
+    const [s, e] = seg;
+    const [ax, ay] = ring[s];
+    const [bx, by] = ring[e];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy || 1;
+    let maxD = 0;
+    let idx = -1;
+    for (let i = s + 1; i < e; i++) {
+      const [px, py] = ring[i];
+      const t = ((px - ax) * dx + (py - ay) * dy) / len2;
+      const cx = ax + t * dx;
+      const cy = ay + t * dy;
+      const d2 = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+      if (d2 > maxD) {
+        maxD = d2;
+        idx = i;
+      }
+    }
+    if (maxD > tol2 && idx > 0) {
+      keep[idx] = true;
+      stack.push([s, idx], [idx, e]);
+    }
+  }
+  const out: [number, number][] = [];
+  for (let i = 0; i < n; i++) if (keep[i]) out.push(ring[i]);
+  return out;
 }
 
 function outerRing(input: PatternInput): [number, number][] {
@@ -134,11 +183,12 @@ export function militaryContours(input: PatternInput): LineSeg[] {
   const interval = spacing;
 
   const segs: LineSeg[] = [];
-  let ring = normalizeRing(ringRaw);
+  // Simplify the coastline before offsetting so a high-vertex ring does not
+  // explode into thousands of segments per nested contour.
+  let ring = simplifyRing(normalizeRing(ringRaw), 2.5);
   const startArea = Math.abs(ringArea(ring));
-  // Emit up to a sensible number of nested contours; stop once the ring
-  // collapses (area shrinks below a fraction of the original).
-  for (let step = 0; step < 8; step++) {
+  // Emit a capped number of nested contours; stop once the ring collapses.
+  for (let step = 0; step < 5; step++) {
     ring = offsetRingInward(ring, interval);
     const area = Math.abs(ringArea(ring));
     if (ring.length < 3 || area < startArea * 0.04) break;

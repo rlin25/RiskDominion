@@ -14,31 +14,41 @@ const LABEL: Record<CardType, string> = {
   covert: "DEPLOY",
 };
 
-// Geometric dimension icons (INTERFACE_CONTRACT v2.0 section 2.3), stroke-only,
-// rendered in the dimension's accent color.
+const SUBLABEL: Record<CardType, string> = {
+  military: "MILITARY",
+  economic: "ECONOMIC",
+  covert: "COVERT",
+};
+
+// Larger, more detailed dimension icons for a tactical-card feel.
 function CardIcon({ cardType, color }: { cardType: CardType; color: string }) {
   if (cardType === "military") {
-    // Upward chevron
+    // Stacked chevrons (an advancing spearhead).
     return (
-      <svg width="24" height="24" viewBox="0 0 24 24">
-        <polygon points="12,4 20,18 4,18" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+      <svg width="34" height="34" viewBox="0 0 32 32" style={{ filter: `drop-shadow(0 0 5px ${color}aa)` }}>
+        <polygon points="16,4 27,16 22,16 16,9 10,16 5,16" fill={color} />
+        <polygon points="16,14 27,26 22,26 16,19 10,26 5,26" fill={color} fillOpacity="0.65" />
       </svg>
     );
   }
   if (cardType === "economic") {
-    // Circle with vertical line
+    // Coin with a value bar.
     return (
-      <svg width="24" height="24" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="7" fill="none" stroke={color} strokeWidth="2" />
-        <line x1="12" y1="4" x2="12" y2="20" stroke={color} strokeWidth="2" />
+      <svg width="34" height="34" viewBox="0 0 32 32" style={{ filter: `drop-shadow(0 0 5px ${color}aa)` }}>
+        <circle cx="16" cy="16" r="11" fill="none" stroke={color} strokeWidth="2.5" />
+        <circle cx="16" cy="16" r="11" fill={color} fillOpacity="0.12" />
+        <line x1="16" y1="6" x2="16" y2="26" stroke={color} strokeWidth="2.5" />
+        <line x1="11" y1="11" x2="11" y2="21" stroke={color} strokeWidth="2" strokeOpacity="0.6" />
+        <line x1="21" y1="11" x2="21" y2="21" stroke={color} strokeWidth="2" strokeOpacity="0.6" />
       </svg>
     );
   }
-  // Covert: concentric circles
+  // Covert: concentric "watcher" rings.
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="8" fill="none" stroke={color} strokeWidth="2" />
-      <circle cx="12" cy="12" r="3" fill={color} />
+    <svg width="34" height="34" viewBox="0 0 32 32" style={{ filter: `drop-shadow(0 0 5px ${color}aa)` }}>
+      <circle cx="16" cy="16" r="12" fill="none" stroke={color} strokeWidth="2" strokeOpacity="0.5" />
+      <circle cx="16" cy="16" r="8" fill="none" stroke={color} strokeWidth="2.5" />
+      <circle cx="16" cy="16" r="3.5" fill={color} />
     </svg>
   );
 }
@@ -47,9 +57,13 @@ interface Props {
   id: string;
   cardType: CardType;
   disabled: boolean;
+  /** Fan rotation in degrees for the radial hand layout (0 = upright center). */
+  fanAngle?: number;
+  /** Distance (px) below the card to the shared fan pivot point. */
+  pivotPx?: number;
 }
 
-export function ActionCard({ id, cardType, disabled }: Props) {
+export function ActionCard({ id, cardType, disabled, fanAngle = 0, pivotPx = 300 }: Props) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id,
     data: { cardType },
@@ -59,47 +73,112 @@ export function ActionCard({ id, cardType, disabled }: Props) {
   const accent = ACCENT[cardType];
   const lifted = isDragging;
 
-  const style: React.CSSProperties = {
-    opacity: disabled ? 0.4 : lifted ? 0.9 : 1,
-    transform: transform
-      ? `translate3d(${transform.x}px, ${transform.y}px, 0) rotate(${lifted ? 2 : 0}deg) scale(${lifted ? 1.05 : 1})`
-      : undefined,
-    cursor: disabled ? "default" : lifted ? "grabbing" : "grab",
-    zIndex: lifted ? 100 : 1,
-    transition: lifted ? undefined : "transform 0.15s ease, box-shadow 0.15s ease",
-  };
+  // Resting state: rotate around a shared pivot well below the hand so the cards
+  // splay into a radial arc, like a held deck. While dragging, the card pops
+  // upright and follows the cursor (no fan rotation in the drag transform, so the
+  // pointer delta is not skewed by the card's angle).
+  const wrapStyle: React.CSSProperties = lifted
+    ? {
+        opacity: 0.95,
+        transform: `translate3d(${transform?.x ?? 0}px, ${transform?.y ?? 0}px, 0) rotate(2deg) scale(1.1)`,
+        transformOrigin: "center bottom",
+        cursor: "grabbing",
+        zIndex: 100,
+        filter: `drop-shadow(0 12px 20px rgba(0,0,0,0.6)) drop-shadow(0 0 14px ${accent}88)`,
+      }
+    : {
+        opacity: disabled ? 0.4 : 1,
+        transform: `rotate(${fanAngle}deg)`,
+        transformOrigin: `50% ${pivotPx}px`,
+        cursor: disabled ? "default" : "grab",
+        transition: "transform 0.18s ease, filter 0.18s ease",
+      };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...(disabled ? {} : listeners)}
-      {...attributes}
-      className="relative"
-    >
+    <div ref={setNodeRef} style={wrapStyle} {...(disabled ? {} : listeners)} {...attributes} className="select-none">
       <div
-        className="relative flex flex-col items-center justify-between rounded-md bg-bg-surface"
+        className="relative flex flex-col items-center overflow-hidden"
         style={{
-          width: 60,
-          height: 84,
-          border: "1px solid #3a3f3c",
-          borderLeft: `3px solid ${accent}`,
-          boxShadow: lifted ? "0 6px 16px rgba(0,0,0,0.5)" : "0 2px 8px rgba(0,0,0,0.3)",
+          width: 72,
+          height: 102,
+          borderRadius: 8,
+          background:
+            `radial-gradient(120% 70% at 50% 18%, ${accent}26 0%, transparent 55%),` +
+            "linear-gradient(160deg, #262a28 0%, #15191800 40%, #121514 100%)",
+          backgroundColor: "#1a1d1c",
+          border: `1px solid ${accent}`,
+          boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.04), inset 0 0 14px ${accent}22, 0 3px 10px rgba(0,0,0,0.45)`,
         }}
       >
-        {/* Count slot at top-right is rendered by the hand; the card centers its icon */}
-        <div className="flex flex-1 items-center justify-center pt-2">
+        {/* Corner ticks */}
+        <span style={cornerTick(accent, "tl")} />
+        <span style={cornerTick(accent, "tr")} />
+        <span style={cornerTick(accent, "bl")} />
+        <span style={cornerTick(accent, "br")} />
+
+        {/* Header: dimension name */}
+        <div
+          className="w-full pt-1.5 text-center"
+          style={{ fontFamily: "Inter, sans-serif", fontSize: 7.5, fontWeight: 600, letterSpacing: "0.18em", color: accent }}
+        >
+          {SUBLABEL[cardType]}
+        </div>
+
+        {/* Icon with a glowing disc */}
+        <div className="relative flex flex-1 items-center justify-center">
+          <div
+            style={{
+              position: "absolute",
+              width: 46,
+              height: 46,
+              borderRadius: "50%",
+              background: `radial-gradient(circle, ${accent}33 0%, transparent 70%)`,
+              border: `1px solid ${accent}55`,
+            }}
+          />
           <CardIcon cardType={cardType} color={accent} />
         </div>
-        <div className="w-full pb-1.5 text-center">
-          <span
-            className="font-ui"
-            style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.1em", color: accent }}
-          >
-            {LABEL[cardType]}
-          </span>
+
+        {/* Action banner */}
+        <div
+          className="w-full py-1 text-center"
+          style={{
+            background: `linear-gradient(0deg, ${accent}3a, ${accent}10)`,
+            borderTop: `1px solid ${accent}66`,
+            fontFamily: "Inter, sans-serif",
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: "0.14em",
+            color: "#eef0ee",
+            textShadow: `0 0 6px ${accent}cc`,
+          }}
+        >
+          {LABEL[cardType]}
         </div>
+
+        {/* Diagonal sheen */}
+        <span
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: "linear-gradient(125deg, transparent 42%, rgba(255,255,255,0.10) 50%, transparent 58%)",
+          }}
+        />
       </div>
     </div>
   );
+}
+
+function cornerTick(accent: string, pos: "tl" | "tr" | "bl" | "br"): React.CSSProperties {
+  const base: React.CSSProperties = {
+    position: "absolute",
+    width: 6,
+    height: 6,
+    borderColor: accent,
+    opacity: 0.8,
+  };
+  const m = 4;
+  if (pos === "tl") return { ...base, top: m, left: m, borderTop: "1px solid", borderLeft: "1px solid" };
+  if (pos === "tr") return { ...base, top: m, right: m, borderTop: "1px solid", borderRight: "1px solid" };
+  if (pos === "bl") return { ...base, bottom: m, left: m, borderBottom: "1px solid", borderLeft: "1px solid" };
+  return { ...base, bottom: m, right: m, borderBottom: "1px solid", borderRight: "1px solid" };
 }
