@@ -92,6 +92,11 @@ export default {
           "25%": { transform: "translateX(-5px)" },
           "75%": { transform: "translateX(5px)" },
         },
+        // Valid attack target glow pulse
+        targetPulse: {
+          "0%, 100%": { opacity: "0.14" },
+          "50%": { opacity: "0.34" },
+        },
         // Gold count flash on regen
         goldFlash: {
           "0%": { color: "#d4a843" },
@@ -113,6 +118,7 @@ export default {
         "gold-flash": "goldFlash 300ms ease-out forwards",
         "pop-in": "popIn 160ms ease-out",
         "shake-x": "shakeX 200ms ease-in-out",
+        "target-pulse": "targetPulse 1.1s ease-in-out infinite",
       },
     },
   },

@@ -24,7 +24,6 @@ import {
 const GOLD = "#d4a843";
 const LANDMASS = "#2d302e";
 const BORDER_SUBTLE = "#3a3f3c";
-const TEXT_PRIMARY = "#c5c9c6";
 const TEXT_SECONDARY = "#7d827e";
 
 interface TerritoryComponentProps {
@@ -95,11 +94,11 @@ function TerritoryImpl({
   }
   if (highlighted) {
     stroke = GOLD;
-    strokeWidth = 2;
+    strokeWidth = 2.5;
   }
   if (isOver) {
-    stroke = TEXT_PRIMARY;
-    strokeWidth = 2;
+    stroke = GOLD;
+    strokeWidth = 3;
   }
 
   const clipId = `clip-${proj.territoryId}`;
@@ -141,6 +140,18 @@ function TerritoryImpl({
       {/* Single-dot fallback for tiny territories: one r=2 dot per owned dim. */}
       {unifiedOwner === null && mode === "single-dot" && (
         <SingleDots centroid={proj.centroidPx} state={state} />
+      )}
+
+      {/* Valid attack target: pulsing gold wash so the target reads clearly. */}
+      {highlighted && (
+        <path
+          className="animate-target-pulse"
+          d={proj.d}
+          fill={GOLD}
+          stroke={GOLD}
+          strokeWidth={isOver ? 0 : 1}
+          pointerEvents="none"
+        />
       )}
 
       {/* Territory name label. */}
