@@ -15,7 +15,7 @@ import { buildTerritoryStates, getValidMilitaryTargets } from "./utils/territory
 import { HUMAN_PLAYER_ID } from "./constants";
 import type { CardType, EndGameState, VizSpec, ChatLogRow, EventFeedRow, StrategistLogRow } from "./types";
 import { Map as GameMap } from "./components/Map";
-import { CardHand } from "./components/CardHand";
+import { CardHand, type HandCard } from "./components/CardHand";
 import { ColorLegend } from "./components/ColorLegend";
 import { TitleScreen } from "./components/TitleScreen";
 import { CommandBar } from "./components/CommandBar";
@@ -35,6 +35,7 @@ import {
 
 const PLAYER_ID = HUMAN_PLAYER_ID;
 const MAX_CHATS = 3;
+const HAND_CYCLE: CardType[] = ["military", "economic", "covert"];
 
 export default function App() {
   const { military, economic, covert, cultural, players, gameState, eventFeed, strategistLog, chatLog, isReady } =
@@ -61,6 +62,12 @@ export default function App() {
   const [attackMode, setAttackMode] = useState(false);
   const [validTargets, setValidTargets] = useState<number[]>([]);
   const [isCardDragging, setIsCardDragging] = useState(false);
+
+  // Stable card-hand list (each card has its own id) so playing a card removes
+  // exactly that card. Length is reconciled to the human's action points. Card
+  // type is derived from the id (CYCLE[id % 3]) so all updates stay pure and
+  // StrictMode-safe (no ref mutation inside state updaters).
+  const [hand, setHand] = useState<HandCard[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const seedAttempted = useRef(false);
@@ -108,6 +115,26 @@ export default function App() {
       territoryId: lastVictoryEvent?.territoryId ?? unifiedByWinner?.territoryId ?? 0,
     };
   }, [gameEnded, winnerId, eventFeed, territories]);
+
+  // Keep the rendered hand length equal to the human's action points. Spent
+  // points are removed optimistically in handleDragEnd (the exact card played),
+  // so here we only need to append cards when points regenerate, or trim if the
+  // hand somehow runs long. Pure updater: new ids are max(id)+1 and the type is
+  // derived from the id, so StrictMode double-invocation is harmless.
+  useEffect(() => {
+    const target = gameEnded ? 0 : Math.max(0, actionPoints);
+    setHand((prev) => {
+      if (prev.length === target) return prev;
+      if (prev.length > target) return prev.slice(0, target);
+      const next = prev.slice();
+      let id = next.length ? Math.max(...next.map((c) => c.id)) + 1 : 0;
+      while (next.length < target) {
+        next.push({ id, type: HAND_CYCLE[id % 3] });
+        id++;
+      }
+      return next;
+    });
+  }, [actionPoints, gameEnded]);
 
   // ---- Sound: territory flips + cultural pressure thresholds ----
   const prevOwners = useRef<Map<number, string> | null>(null);
@@ -220,25 +247,35 @@ export default function App() {
 
   function handleDragEnd(event: DragEndEvent) {
     const cardType = event.active.data.current?.cardType as CardType | undefined;
+    const cardId = event.active.data.current?.cardId as number | undefined;
     const territoryId = event.over?.id as number | undefined;
     setAttackMode(false);
     setValidTargets([]);
     setIsCardDragging(false);
-    if (!cardType || territoryId === undefined) return;
+    if (!cardType || cardId === undefined || territoryId === undefined) return;
+
+    // Remove exactly the card that was played, immediately. The action-point
+    // decrement that follows then matches the hand length. If the reducer fails,
+    // restore the card so the hand stays in sync with action points.
+    const id = cardId;
+    const type = cardType;
+    function play(promise: Promise<void>, label: string) {
+      setHand((prev) => prev.filter((c) => c.id !== id));
+      promise
+        .then(() => playCardSound())
+        .catch((e) => {
+          console.warn(`${label}:`, e);
+          setHand((prev) => (prev.some((c) => c.id === id) ? prev : [...prev, { id, type }]));
+        });
+    }
 
     if (cardType === "military") {
       if (!getValidMilitaryTargets(military, PLAYER_ID).includes(territoryId)) return;
-      militaryAttack({ territoryId, playerId: PLAYER_ID })
-        .then(() => playCardSound())
-        .catch((e) => console.warn("military_attack:", e));
+      play(militaryAttack({ territoryId, playerId: PLAYER_ID }), "military_attack");
     } else if (cardType === "economic") {
-      economicInvest({ territoryId, playerId: PLAYER_ID })
-        .then(() => playCardSound())
-        .catch((e) => console.warn("economic_invest:", e));
+      play(economicInvest({ territoryId, playerId: PLAYER_ID }), "economic_invest");
     } else {
-      deployAgent({ territoryId, playerId: PLAYER_ID })
-        .then(() => playCardSound())
-        .catch((e) => console.warn("deploy_agent:", e));
+      play(deployAgent({ territoryId, playerId: PLAYER_ID }), "deploy_agent");
     }
   }
 
@@ -289,7 +326,7 @@ export default function App() {
       <ColorLegend />
 
       {/* Persistent: the card hand (fan-out arc) */}
-      <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />
+      <CardHand hand={hand} actionPoints={actionPoints} gameEnded={gameEnded} />
 
       {/* Temporary overlays */}
       {!titleScreenDone && <TitleScreen onDone={() => setTitleScreenDone(true)} />}

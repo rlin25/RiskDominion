@@ -56,17 +56,17 @@ function CardIcon({ cardType, color }: { cardType: CardType; color: string }) {
 interface Props {
   id: string;
   cardType: CardType;
+  /** Stable identity of this card in the hand, used to remove the played card. */
+  cardId: number;
   disabled: boolean;
   /** Fan rotation in degrees for the radial hand layout (0 = upright center). */
   fanAngle?: number;
-  /** Distance (px) below the card to the shared fan pivot point. */
-  pivotPx?: number;
 }
 
-export function ActionCard({ id, cardType, disabled, fanAngle = 0, pivotPx = 300 }: Props) {
+export function ActionCard({ id, cardType, cardId, disabled, fanAngle = 0 }: Props) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id,
-    data: { cardType },
+    data: { cardType, cardId },
     disabled,
   });
 
@@ -89,13 +89,13 @@ export function ActionCard({ id, cardType, disabled, fanAngle = 0, pivotPx = 300
     : {
         opacity: disabled ? 0.4 : 1,
         transform: `rotate(${fanAngle}deg)`,
-        transformOrigin: `50% ${pivotPx}px`,
+        transformOrigin: "50% 100%", // tilt about the card's own bottom center
         cursor: disabled ? "default" : "grab",
         transition: "transform 0.18s ease, filter 0.18s ease",
       };
 
   return (
-    <div ref={setNodeRef} style={wrapStyle} {...(disabled ? {} : listeners)} {...attributes} className="select-none">
+    <div ref={setNodeRef} data-card-id={cardId} style={wrapStyle} {...(disabled ? {} : listeners)} {...attributes} className="select-none">
       <div
         className="relative flex flex-col items-center overflow-hidden"
         style={{
