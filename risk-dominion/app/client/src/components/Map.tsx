@@ -13,11 +13,11 @@ export function Map({ territories, highlighted, currentPlayerId }: Props) {
   for (const t of territories) byId[t.territoryId] = t;
 
   return (
-    <div className="flex flex-1 items-center justify-center gap-10 p-6">
+    <div className="flex min-w-0 flex-1 items-center justify-center gap-10 overflow-x-auto p-6">
       {CONTINENTS.map((continent) => (
         <div
           key={continent.name}
-          className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-2xl bg-white/[0.015] p-4"
+          className="grid shrink-0 grid-cols-[auto_auto] gap-x-2 gap-y-3 rounded-2xl bg-white/[0.015] p-4"
         >
           {continent.territories.map((id) => {
             const state = byId[id];
