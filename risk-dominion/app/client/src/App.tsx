@@ -59,6 +59,7 @@ export default function App() {
   const [tickerHighlight, setTickerHighlight] = useState<number | null>(null);
   const [ownedHighlight, setOwnedHighlight] = useState(false);
   const [intelOpen, setIntelOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [currentTimestamp, setCurrentTimestamp] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -263,10 +264,12 @@ export default function App() {
             />
           )}
 
-          {/* Thin handle on the right edge; hovering it (or the panel) slides the
-              chat sidebar in inline, squeezing the map left without covering it. */}
-          <div className="group flex h-full shrink-0">
-            <div className="w-0 overflow-hidden border-l border-[#334455] transition-[width] duration-200 ease-out group-hover:w-[300px]">
+          {/* Small chat tab on the right edge; clicking it toggles the chat
+              sidebar inline, squeezing the map left without covering it. */}
+          <div className="flex h-full shrink-0">
+            <div
+              className={`overflow-hidden border-l border-[#334455] transition-[width] duration-200 ease-out ${chatOpen ? "w-[300px]" : "w-0"}`}
+            >
               <div className="h-full w-[300px]">
                 <ChatPanel
                   messages={chatLog}
@@ -278,10 +281,16 @@ export default function App() {
                 />
               </div>
             </div>
-            <div className="flex w-6 cursor-pointer items-center justify-center border-l border-[#334455] bg-bg-surface hover:bg-bg-surface-alt">
-              <span className="font-ui text-[10px] tracking-widest text-text-secondary [writing-mode:vertical-rl]">
-                CHAT
-              </span>
+            <div className="flex h-full items-center">
+              <button
+                onClick={() => setChatOpen((v) => !v)}
+                className="flex h-16 w-5 items-center justify-center rounded-l border border-[#334455] bg-bg-surface hover:bg-bg-surface-alt"
+                aria-label={chatOpen ? "Hide chat" : "Show chat"}
+              >
+                <span className="font-ui text-[9px] tracking-wider text-text-secondary [writing-mode:vertical-rl]">
+                  CHAT
+                </span>
+              </button>
             </div>
           </div>
         </div>
