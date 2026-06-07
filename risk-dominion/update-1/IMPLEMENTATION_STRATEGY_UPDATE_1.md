@@ -1,469 +1,375 @@
 # UX OVERHAUL — IMPLEMENTATION STRATEGY
 
-## Version 1.0
-## Scope: Complete UI/UX Overhaul — All Slices
+## Version 1.1
+## Scope: Complete Visual and Interaction Overhaul — All Slices
 ## Target: Human Team — After Claude Code Generation
 
 ---
 
 ## Principle 0: This Is the Final Polish
 
-The UI/UX overhaul is the last change before the demo. It transforms the game from technically impressive but visually confusing into a polished, beautiful, intuitive experience. Every visual element, every interaction pattern, every animation, and every sound trigger is being replaced or significantly modified.
+The UI/UX overhaul is the last change before the demo. It transforms the game from technically sound but visually rough into a polished, cohesive experience. The changes are: font swap from Cinzel to Rajdhani everywhere, emoji removal, warm parchment palette enforcement, five new components (TitleScreen, ColorLegend, CommandBar, ChatWindow, soundEngine), and restyling of existing components (IntelPanel, VictoryScreen, EventTicker, StrategistAlerts).
 
-This overhaul does not change game mechanics. Military combat, economic investment, cultural spread, covert operations, AI reasoning, trust scores, and the win condition remain exactly as they were. The overhaul changes how the game looks, feels, and responds to the player.
+This overhaul does not change game mechanics. Military combat, economic investment, cultural spread, covert operations, AI reasoning, trust scores, and the win condition remain exactly as they were. The hex map stays as-is. The fanned card hand stays as-is. Only the visual and interaction layer changes.
 
-The rule: the overhaul must pass every test step before the game is shown to judges. No exceptions.
-
-This document tells you how to validate the overhaul, how to debug it when validation fails, and what to fix before the demo.
+The rule: every test step below must pass before the game is shown to judges.
 
 ---
 
 ## 1. VALIDATION STRUCTURE
 
-The overhaul uses a single comprehensive validation pass. One test script covers every visual element and interaction pattern. The script follows the player experience — from loading the game to victory.
+One test script covers every visual and interaction element. Follow it from start to finish. If a step fails, stop and fix before continuing. Each step assumes the previous steps passed.
 
-Estimated time: 15-20 minutes.
-
-Execute the script from start to finish. If any step fails, stop and fix before continuing. Each step builds on the previous ones.
+Estimated time: 20-30 minutes.
 
 ---
 
-## 2. TEST SCRIPT
+## 2. PREREQUISITES
 
-### Prerequisites
+Before starting the test script:
 
-- SpacetimeDB server is running.
-- Frontend dev server is running.
-- One browser tab open to `http://localhost:5173`.
-- Anthropic API key configured in `.env` (needed for chat and queries).
-
----
-
-### Step 1: Title Screen
-
-**Action:** Load the game. Watch the screen.
-
-**Expected Result:**
-- The live map is visible, dimmed by a dark overlay.
-- "Risk: Dominion" appears centered in gold (#d4a843), Inter font, large.
-- The title holds for approximately 2 seconds.
-- The overlay and text fade out over about half a second.
-- The full-brightness map is revealed.
-
-**If the title doesn't appear:** Check the title screen component. Check that it renders on page load before the main game UI.
-
-**If the map isn't visible behind the title:** The dimming overlay may be fully opaque. Check opacity value (should be 60% of bg-ocean).
+- SpacetimeDB server is running and the module is published.
+- Frontend dev server is running (`npm run dev` in `app/client`).
+- One browser tab open at `http://localhost:5173`.
+- Anthropic API key is configured in the environment (needed for chat and AI queries).
+- Browser dev tools console is open to catch JavaScript errors.
 
 ---
 
-### Step 2: Map Renders with Geographic Territories
+## 3. TEST SCRIPT
+
+---
+
+### Step 1: Title Screen on Load
+
+**Action:** Hard-reload the page (Cmd+Shift+R or Ctrl+Shift+R). Watch the screen for the first 3 seconds.
+
+**Expected:**
+- A full-screen dark overlay appears immediately over the map.
+- The text "RISK: DOMINION" is visible, centered, in gold (#d4a017), Rajdhani font.
+- The hex map is dimly visible behind the overlay.
+- After approximately 2 seconds the overlay begins fading.
+- After the fade (approximately 0.5s) the map is fully visible and the overlay is gone from the DOM.
+
+**Debug if failing:**
+- Check that TitleScreen.tsx is rendered in App.tsx on initial load.
+- Check that TitleScreen unmounts (does not just set opacity:0) after the animation completes.
+- If the map is not visible behind the overlay, check that the TitleScreen overlay uses `position: fixed` and `z-index` above the map but that the map is rendered underneath it.
+
+---
+
+### Step 2: Hex Map Renders with Continent Banners (No Emoji, Rajdhani Text)
 
 **Action:** Look at the map after the title fades.
 
-**Expected Result:**
-- The map shows recognizable continent shapes — Americas (left), Europe and Africa (center), Asia and Oceania (right).
-- Territories have irregular, jagged borders within the continents.
-- Territory names are visible at very small size, low opacity, positioned near each territory.
-- The color legend is visible in the bottom-left corner: four colored squares with "You", "Zhao", "Consortium", "Prophet".
-- The map can be panned by dragging and zoomed by scrolling.
+**Expected:**
+- Three continent columns are visible: Americas (left), Europe-Africa (center), Asia-Oceania (right).
+- Each column has a banner above it. The banner text reads the continent name in uppercase Rajdhani, gold-dim color, wide letter-spacing.
+- No emoji characters appear anywhere on the banner or on the map (no ⚔, no 🏛, no 🌏).
+- The world silhouette SVG background is visible as a very faint gold-tinted landmass shape behind the hex grid.
+- Hex tiles are arranged in a 2-column grid within each continent group.
 
-**If the map doesn't show geographic shapes:** Check GeoJSON data loading, D3 projection setup, and SVG rendering.
-
-**If territories are uniform hexagons instead of irregular shapes:** The old territory rendering is still active. The overhaul must replace the hex grid with the GeoJSON-based D3 map.
-
-**If territory names are missing:** Check that territory name labels are rendered at the territory centroids with the correct font and opacity.
-
-**If the color legend is missing:** Check the legend component. Verify it's positioned bottom-left with the correct colors.
+**Debug if failing:**
+- No emoji: open Map.tsx and confirm `CONTINENT_ICONS` map is removed and the `<span>` that rendered emoji is gone.
+- Cinzel still showing: inspect the banner text element in browser DevTools. The computed font-family must be Rajdhani, not Cinzel.
+- Font not loading: check `index.html` for the Google Fonts link. It must include `Rajdhani:wght@500;600;700`.
 
 ---
 
-### Step 3: Territory Hover Data Callout
+### Step 3: Territory Hover Shows Tooltip Data
 
-**Action:** Hover the mouse over any territory. Hold for a moment.
+**Action:** Hover the mouse cursor over any territory hex tile and hold for 0.5 seconds.
 
-**Expected Result:**
-- After a brief delay, a small floating card appears near the territory.
-- The card shows the territory name, then four rows with dimension icons, owner names, and values.
-- A thin line connects the card to the territory.
-- Moving the mouse away makes the card disappear immediately.
+**Expected:**
+- A tooltip or title callout appears (may be the native browser `title` attribute tooltip or a custom hover card).
+- The callout shows: territory name, troop count, capital status, agent count, influence percentage.
+- Moving the mouse off the hex hides the callout.
 
-**If no callout appears:** Check the hover event handler on territory SVG paths. Check the delay (150ms).
-
-**If the callout shows wrong data:** Check that dimension table subscriptions are delivering current ownership data.
-
-**If the leader line is missing:** Check the SVG line element connecting callout to territory centroid.
+**Debug if failing:**
+- Check Territory.tsx. The `title` prop on the outer div encodes all four dimension values.
+- If a custom hover card is implemented, check that the mouseenter/mouseleave handlers are bound to the hex container.
 
 ---
 
-### Step 4: Territory Ownership Patterns
+### Step 4: Fanned Card Hand Visible at Bottom
 
-**Action:** Look at several different territories. Find one owned by multiple players.
+**Action:** Look at the bottom section of the screen while in player mode (no `?spectator=true` or `?replay=true` in the URL).
 
-**Expected Result:**
-- Territories with one owner across all dimensions: solid player color, no visible patterns.
-- Territories with multiple owners: visible texture patterns combining. Diagonal lines for Military, dots for Economic, crosshatch for Cultural, small circles for Covert.
-- Patterns are subtle — visible on inspection but not screaming.
-- Unified territories (one player owns all four dimensions): solid color with a subtle gold border.
+**Expected:**
+- A row of fanned cards is visible along the bottom edge.
+- Cards are arranged in a fan arc (each card rotated slightly relative to its neighbors).
+- Each card shows a type icon (sword, coin stack, or eye) and a label at the bottom.
+- Card labels read "ATTACK", "INVEST", or "DEPLOY" in Rajdhani font (not Cinzel).
+- The card count reflects the player's current action points.
 
-**If patterns don't appear:** Check D3 procedural pattern generation. Check that pattern rendering is tied to dimension ownership data.
-
-**If patterns are too prominent or too faint:** Adjust pattern opacity (should be 40% of owner color).
-
-**If small territories look cluttered:** Check the small territory rule (reduce density by 50% for territories under 2000 square pixels).
-
----
-
-### Step 5: Card Stacks
-
-**Action:** Look at the bottom center of the screen.
-
-**Expected Result:**
-- Three stacks of cards are visible: red-accented (Military), gold-accented (Economic), purple-accented (Covert).
-- Each top card shows a geometric icon and a count number in the top-right corner.
-- Cards beneath the top card are visible as offset layers, creating depth.
-- The stacks have subtle shadows.
-- Gaps between stacks are even.
-
-**If stacks don't appear:** Check the card stack component. Verify it receives action point data from subscriptions.
-
-**If counts are wrong:** Check that action point values from the players table subscription are correctly mapped to each stack.
-
-**If offset layers don't show:** Check the stack rendering logic — cards beneath should be offset 3px down and right per level.
+**Debug if failing:**
+- Cinzel still on labels: open ActionCard.tsx in DevTools, confirm computed font-family is Rajdhani.
+- Cards missing: check that `gameEnded` is false and `actionPoints > 0`.
+- Fan angles wrong: check the `angle` and `yLift` math in CardHand.tsx — these must not be changed.
 
 ---
 
-### Step 6: Military Attack Arrows
+### Step 5: Card Drag Highlights Valid Targets
 
-**Action:** Click and hold (or start dragging) the top card of the Military stack.
+**Action:** Click and hold (begin dragging) a Military card.
 
-**Expected Result:**
-- Dashed lines appear from each of the player's adjacent territories to every valid attack target.
-- Small particles travel along each line from source to target.
-- Valid target territories are subtly highlighted.
-- Non-valid territories remain unchanged.
-- Releasing the card over empty space or an invalid target makes the arrows disappear.
+**Expected:**
+- While dragging, a set of territory hex tiles becomes visually highlighted (gold border, dashed ring, or glow).
+- Only adjacent enemy territories are highlighted (territories where the opponent has military ownership adjacent to player-owned territories).
+- Releasing over empty space cancels without action.
 
-**If arrows don't appear:** Check the drag-start event handler. Verify it computes valid targets from the military table and adjacency map.
+**Action:** Click and hold an Economic or Covert card.
 
-**If arrows point to wrong territories:** Check the adjacency data and the valid target computation.
+**Expected:**
+- All 12 territory hex tiles become highlighted.
 
-**If particles don't animate:** Check the D3 animation loop for particle movement along the dashed lines.
-
----
-
-### Step 7: Execute a Card Action
-
-**Action:** Drag a Military card onto a valid adjacent target territory. Release.
-
-**Expected Result:**
-- The card animates back to the stack.
-- The count number decrements.
-- The territory ownership updates (patterns change if ownership changed).
-- The card play sound triggers (a short click).
-
-**If the action doesn't execute:** Check the reducer call. Verify the drag-end handler calls the correct reducer with the correct parameters.
-
-**If the count doesn't decrement:** Check the action point subscription update. The count should reflect the new action point value.
-
-**If no sound plays:** Check the Web Audio API context. Check that the card play sound trigger fires on successful reducer calls.
+**Debug if failing:**
+- Check the `handleDragStart` function in App.tsx.
+- For Military: `getValidMilitaryTargets(military, PLAYER_ID)` must return the correct set.
+- For Economic/Covert: `Array.from({ length: TOTAL_TERRITORIES }, (_, i) => i + 1)` must produce ids 1–12.
+- Highlight rendering: check that Territory.tsx `isHighlighted` prop triggers the dashed ring SVG polygon.
 
 ---
 
-### Step 8: Command Bar Appears
+### Step 6: Card Drop Executes Action and Updates Territory
 
-**Action:** Press the Enter key.
+**Action:** Drag a Military card and drop it onto a highlighted (valid adjacent enemy) territory.
 
-**Expected Result:**
-- A bar slides down from the top of the screen, centered.
-- It shows a gold `>` prompt on the left and a text input field.
-- The placeholder text reads "Type a command or question..."
-- The bar has a dark background with slight transparency.
+**Expected:**
+- The drag ends cleanly.
+- The `militaryAttack` reducer is called with the correct `territoryId` and `playerId`.
+- Within 1-2 seconds, the territory state updates (the military quadrant color changes to reflect new ownership or the troop count updates).
+- The `highlighted` set clears and no tiles remain highlighted.
 
-**If the bar doesn't appear:** Check the keydown event listener for Enter. Check that the command bar component mounts on keypress.
-
-**If the bar appears in the wrong position:** Check CSS positioning — should be top center, 60% width, 12px from top.
-
-**If the `>` prompt is wrong color:** Should be #d4a843 (gold).
-
----
-
-### Step 9: Command Bar Dropdown
-
-**Action:** Click the `>` prompt.
-
-**Expected Result:**
-- A dropdown menu appears below the command bar.
-- It has categorized sections: INTEL, CHAT, EVENTS, ADVICE.
-- Each section has a small header and options.
-- Hovering an option highlights it in subtle gold.
-- At the bottom: "or type anything..." in italic.
-
-**If the dropdown doesn't appear:** Check the click handler on the `>` prompt.
-
-**If sections are missing:** Check the dropdown rendering logic for all four categories.
-
-**If the "or type anything..." hint is missing:** Add the hint text at the bottom of the dropdown.
+**Debug if failing:**
+- Check `handleDragEnd` in App.tsx. Confirm it calls `militaryAttack({ territoryId, playerId: PLAYER_ID })`.
+- If the reducer is called but the territory doesn't update, check the SpacetimeDB subscription and `buildTerritoryStates`.
+- If the drop does nothing, confirm `event.over?.id` is a valid territory id (number, not string).
 
 ---
 
-### Step 10: Open Chat via Command Bar
+### Step 7: Enter Key Summons Command Bar
 
-**Action:** Type "chat with Zhao" in the command bar and press Enter.
+**Action:** Press the Enter key while no input is focused.
 
-**Expected Result:**
-- The command bar dismisses.
-- A chat window appears in the bottom-right corner of the screen.
-- The window header shows Zhao's portrait, name, and a close button.
-- The message area shows conversation history (may be empty if this is the first chat).
-- An input field is at the bottom.
+**Expected:**
+- The CommandBar slides or fades into view.
+- It shows a dark surface background (not the map background, a distinct elevated surface).
+- A gold `>` prompt character is visible on the left.
+- A text input field is focused and ready for input.
+- Placeholder text reads something like "Type a command or question..."
+- The input uses JetBrains Mono font.
 
-**If the chat window doesn't appear:** Check the command parsing logic. "chat with Zhao" should trigger the chat window for player_id 2.
-
-**If the window appears in the wrong position:** Check fixed positioning — bottom-right corner.
-
-**If Zhao's portrait is missing:** Check the AI portrait asset loading. Portraits should be generated or loaded as specified.
-
----
-
-### Step 11: AI Chat Response
-
-**Action:** Type a message in the chat input. Press Enter.
-
-**Expected Result:**
-- Your message appears in the chat window, aligned right.
-- Within a few seconds, Zhao responds with a message aligned left.
-- Zhao's response is short — one sentence, under 100 characters.
-- Zhao's portrait appears next to his message.
-- The response is in character (aggressive, threatening, or strategic).
-
-**If no response appears:** Check the real-time chat pipeline. Check the Claude API call.
-
-**If the response is too long:** Check the AI prompt for the character limit instruction. The prompt must specify "Keep your response to one short sentence, no more than 100 characters."
-
-**If the response is out of character:** Check Zhao's persona description in the chat prompt.
+**Debug if failing:**
+- Check the `onKey` handler in App.tsx. The Enter key case must call `setCommandBarOpen(true)` or equivalent.
+- Confirm CommandBar.tsx is mounted and controlled by this state.
+- If the bar appears but is not focused, check that CommandBar calls `inputRef.current?.focus()` on mount.
 
 ---
 
-### Step 12: Query Visualization
+### Step 8: Command Bar Dropdown Shows Correct Sections
 
-**Action:** Press Enter to summon the command bar. Type "where am I weakest" and press Enter.
+**Action:** With the CommandBar open, click the `>` prompt character.
 
-**Expected Result:**
-- The command bar dismisses.
-- Territories on the map change appearance — a heat map overlay shades them by vulnerability.
-- A small text caption appears: something like "3 territories vulnerable. North Africa is your weakest position."
-- After several seconds, the visualization fades and the map returns to normal.
+**Expected:**
+- A dropdown panel appears below the command bar.
+- The dropdown contains four labeled sections: INTEL, CHAT, EVENTS, ADVICE.
+- Each section has at least one selectable option.
+- Hovering an option highlights it (subtle gold background or border).
+- The dropdown includes a hint at the bottom such as "or type anything..." in a secondary text style.
 
-**If no visualization appears:** Check the query pipeline. Check Claude response parsing for the visualization type and data.
+**Action:** Press Escape.
 
-**If the wrong visualization type appears:** "Where am I weakest" should produce a heat map. Check the query prompt's visualization selection logic.
+**Expected:**
+- The dropdown closes.
+- The CommandBar dismisses.
+- Focus returns to the document.
 
-**If the caption is missing:** Check that the text caption is rendered alongside the visualization.
-
----
-
-### Step 13: Empty Card Stack State
-
-**Action:** Use all action points by executing actions rapidly. Watch the card stacks.
-
-**Expected Result:**
-- When a stack's count reaches 0, the top card dims (opacity drops).
-- A slow pulse animation runs on the dimmed stack — brightness subtly oscillates.
-- After 4 seconds, a new card slides onto the stack, the count increments, and the stack brightens.
-
-**If stacks don't dim:** Check the empty state styling for card stacks. Opacity should be 0.4.
-
-**If the pulse animation doesn't run:** Check the CSS animation for the empty state. It should match the 4-second regeneration interval.
-
-**If cards don't regenerate:** Check the action point regeneration scheduled reducer. Verify it's set to 4 seconds.
+**Debug if failing:**
+- Check CommandBar.tsx click handler on the `>` span.
+- Confirm all four sections are rendered in the dropdown.
+- Check that Escape key dismisses both the dropdown and the CommandBar.
 
 ---
 
-### Step 14: Victory Animation
+### Step 9: "chat with Zhao" Opens Chat Window
 
-**Action:** Play the game until the player unifies 5 territories. (Temporarily lower the win threshold for faster testing.)
+**Action:** Press Enter to open the CommandBar. Type `chat with Zhao` and press Enter.
 
-**Expected Result:**
-- When the fifth territory unifies, a ring of the player's color expands from that territory across the map.
-- After the shockwave, all territories pulse gently in the player's color.
-- After a brief pause, a "Victory" overlay appears — centered card with gold text.
-- The victory sound plays (ascending three-note sequence).
+**Expected:**
+- The CommandBar dismisses.
+- A ChatWindow panel appears in the bottom-right corner of the screen.
+- The panel header shows Zhao's name in Rajdhani font and a close button.
+- The message area is visible (may be empty if no prior conversation).
+- A text input field is at the bottom for composing messages.
 
-**If the shockwave doesn't appear:** Check the victory animation trigger in the win condition handler. Check the SVG/CSS animation for the expanding ring.
-
-**If the overlay doesn't appear:** Check the victory overlay component. It should render after a 1-second pause.
-
-**If no sound plays:** Check the victory sound trigger in the Web Audio API.
-
----
-
-### Step 15: Defeat Animation
-
-**Action:** Start a new game. Allow an AI opponent to win. (Or temporarily force an AI victory.)
-
-**Expected Result:**
-- The territory that sealed the loss is highlighted with a pulsing border in the opponent's color.
-- All other territories dim.
-- After 2 seconds, a "Defeat" overlay appears.
-- The losing territory name is shown.
-- The defeat sound plays (descending two-note sequence).
-
-**If the territory isn't highlighted:** Check the defeat animation trigger. The losing territory should be identified from the game state at the moment of loss.
-
-**If territories don't dim:** Check the dimming animation — all non-losing territories should reduce to 40% brightness.
-
-**If no sound plays:** Check the defeat sound trigger.
+**Debug if failing:**
+- Check CommandBar.tsx command parsing logic. The string "chat with Zhao" (case-insensitive) must trigger opening a chat with playerId 2 (Zhao's id from `AI_PLAYERS` in constants.ts).
+- Check that App.tsx state includes a `chatWindowTarget` or equivalent that ChatWindow.tsx reads.
+- Check ChatWindow.tsx positioning: `position: fixed`, `bottom`, `right` CSS values.
 
 ---
 
-## 3. TRIAGE TABLE
+### Step 10: Query Result Shades Hex Tiles as Heatmap
 
-| Step | Symptom | Most Likely Cause | Check |
-|------|---------|-------------------|-------|
-| 1 | No title screen | Component not mounted | App.tsx — title screen should render on initial load |
-| 1 | Title doesn't fade | CSS animation missing | Check fade-out animation duration and trigger |
-| 2 | Hexagons instead of geographic map | Old rendering still active | Map component — must use D3 GeoJSON, not hex grid |
-| 2 | Map is blank | GeoJSON data not loaded | Check GeoJSON file loading, D3 projection |
-| 2 | No color legend | Legend component missing | Check bottom-left corner rendering |
-| 3 | No hover callout | Hover event not bound | Territory SVG paths — add mouseenter/mouseleave |
-| 3 | Wrong data in callout | Subscription data not passed | Check dimension table subscriptions |
-| 4 | No patterns on territories | D3 pattern generation not running | Check procedural pattern code |
-| 4 | Patterns wrong color | Color mapping error | Pattern color should match dimension owner's player color |
-| 4 | Small territories unreadable | Small territory rule not applied | Check area calculation and density reduction |
-| 5 | Card stacks missing | Component not rendered | App.tsx — verify card stack component |
-| 5 | Wrong count on stacks | Action point data not connected | Players table subscription |
-| 6 | No attack arrows | Drag-start handler missing | Military card drag event |
-| 6 | Arrows point wrong | Adjacency data incorrect | Check adjacency map and valid target logic |
-| 7 | Action doesn't execute | Reducer not called | Drag-end handler, reducer call |
-| 7 | No card play sound | Web Audio not initialized | Check AudioContext creation, trigger condition |
-| 8 | Command bar doesn't appear | Keydown listener missing | App.tsx — Enter key handler |
-| 8 | Command bar wrong size/position | CSS incorrect | Check width (60%), position (top center), height (44px) |
-| 9 | Dropdown doesn't appear | Click handler on `>` missing | Command bar component |
-| 9 | Dropdown missing sections | Rendering logic incomplete | Check all four categories rendered |
-| 10 | Chat window doesn't open | Command parsing wrong | "chat with Zhao" should map to player_id 2 |
-| 10 | Chat window wrong position | CSS positioning | Should be bottom-right, fixed |
-| 11 | AI doesn't respond | Real-time chat pipeline broken | Check Claude API call for chat |
-| 11 | AI response too long | Character limit not in prompt | Add limit instruction to AI chat prompt |
-| 12 | No visualization | Query pipeline broken | Check Claude response, visualization renderer |
-| 12 | Wrong visualization type | Type selection wrong | Check query prompt's visualization selection |
-| 13 | Stacks don't dim at zero | Empty state styling missing | Card stack component — opacity 0.4 when count=0 |
-| 13 | Cards don't regenerate | Regeneration interval wrong | Check scheduled reducer (should be 4s) |
-| 14 | No victory shockwave | Animation not triggered | Win condition handler |
-| 14 | No victory sound | Sound trigger missing | Web Audio API — victory sequence |
-| 15 | No defeat highlight | Defeat animation not triggered | Game end handler for opponent victory |
-| 15 | No defeat sound | Sound trigger missing | Web Audio API — defeat sequence |
+**Action:** Use the QueryBar (top of screen) or the CommandBar to submit a query such as "where am I weakest".
+
+**Expected:**
+- The hex tiles on the map change shade to reflect vulnerability (darker or more saturated tiles indicate higher vulnerability).
+- A short caption appears on or near the map: for example, "3 territories vulnerable. North Africa is your weakest position."
+- After 10 seconds, the heatmap shading fades and tiles return to normal coloring.
+
+**Debug if failing:**
+- Check App.tsx `queryHighlights` and `queryResult` state.
+- Check ResultsPanel.tsx or the heatmap overlay rendering — it must read tile ids from `queryHighlights` and apply a visual modifier.
+- Check the 10-second auto-dismiss timer.
 
 ---
 
-## 4. POST-VALIDATION FIX PRIORITIES
+### Step 11: Color Legend Visible Bottom-Left
 
-### Priority 1: Showstopper Bugs
+**Action:** Look at the bottom-left corner of the screen during normal gameplay.
 
-- Game doesn't load (white screen, crash).
-- Map doesn't render.
-- Cards can't be dragged or actions don't execute.
-- Command bar doesn't work.
-- Any regression that breaks existing game logic.
+**Expected:**
+- The ColorLegend component is visible.
+- It shows four rows, one per player: a colored square matching the player's hex color, and the player's name in Rajdhani.
+- "You" (Player 1, blue) appears first, followed by Zhao (red), Consortium (gold/orange), Prophet (purple).
+- The legend is at approximately 60% opacity in its resting state and does not cover or obscure hex tiles or the card hand.
 
-### Priority 2: Visual Accuracy
-
-- Territory patterns match AESTHETIC.md v2.0 specifications (correct pattern types, colors, opacity).
-- Colors match the palette exactly (hex codes in Section 1 of AESTHETIC.md v2.0).
-- Fonts load correctly (JetBrains Mono for data, Inter for UI).
-- Card stack dimensions, spacing, and depth are correct.
-- Command bar size, position, and styling are correct.
-- Chat window size and layout are correct.
-- Color legend shows correct colors and names.
-
-### Priority 3: Interaction Fidelity
-
-- Command bar summons and dismisses correctly.
-- Dropdown opens on `>` click and shows all categorized options.
-- Chat windows open, display messages, and respond to input.
-- AI responses are within the 100-character limit.
-- Query visualizations render the correct type for the question.
-- Attack arrows appear on Military card pickup and disappear on drop.
-- Overlays respect fixed positions (chat bottom-right, intel top-right, events top-center, advice top-left).
-- Card stack empty state dims and pulses correctly.
-
-### Priority 4: Animation Quality
-
-- All transitions use specified durations and easing.
-- Victory shockwave expands smoothly across the map.
-- Defeat dimming and highlight work correctly.
-- Title screen fades in and out smoothly.
-- Command bar slide animation is smooth.
-- Chat window fade-in is smooth.
-
-### Priority 5: Sound
-
-- All five sound triggers fire at the correct moments.
-- Volumes are appropriate (not too loud, not inaudible).
-- No audio glitches or pops.
-- Web Audio API context is created once and reused.
-
-### Priority 6: Polish
-
-- Title screen timing feels right (2-second hold is comfortable).
-- Overlay opacities feel right (not too dark, not too faint).
-- Color legend is readable but unobtrusive.
-- Card stack depth reads clearly as stacked cards.
-- Territory patterns are visible but not overwhelming.
-- Territory names are readable at their low opacity.
+**Debug if failing:**
+- Confirm ColorLegend.tsx is imported and rendered in App.tsx (or in Map.tsx).
+- Check positioning: `position: fixed` or `position: absolute`, `bottom`, `left`, with appropriate margin.
+- Check that PLAYER_COLORS and AI_PLAYERS from constants.ts are used for the color squares and names.
 
 ---
 
-## 5. READINESS GATE
+### Step 12: Victory Animation Plays on Win
 
-Before the game is shown to judges, all of the following must be true:
+**Action:** Play until the win condition triggers, or temporarily lower `WIN_UNIFIED_TERRITORIES` in constants.ts to 2 and force a win.
 
-1. **All 15 test steps pass** with no errors or workarounds.
-2. **Map renders with geographic shapes**, territory patterns, hover callouts, and color legend.
-3. **Card stacks function correctly** — drag, count decrement, empty state dim/pulse, regeneration animation.
-4. **Command bar** summons on Enter, shows dropdown on `>` click, accepts text input, handles unrecognized input with shake.
-5. **Chat windows** open via command bar, display messages, AI responds within 100 characters, close properly.
-6. **Query visualizations** render on the map in response to natural language questions.
-7. **Attack arrows** appear on Military card pickup and disappear on drop.
-8. **Victory and defeat animations** play completely with sound.
-9. **All sound triggers** fire for card play, territory flip, cultural pressure, victory, and defeat.
-10. **No overlay covers** the card stacks or command bar.
-11. **Title screen** fades correctly on load.
-12. **All existing game logic** functions unchanged — actions, AI cycles, cultural spread, intel, chat system.
-13. **Server compiles** with `cargo build` — zero errors.
-14. **Client compiles** with `npm run build` — zero errors.
-15. **No known showstopper bugs.**
+**Expected:**
+- When the game ends with the human player winning, the VictoryScreen component renders.
+- A shockwave ring (expanding circle or polygon) animates outward from the winning territory hex.
+- After the ring animation completes (~1.5s), a victory overlay card appears with win text in Rajdhani/gold.
+- A sound plays: the victory ascending sequence (C5-E5-G5 or equivalent synthesized tones).
 
-If any condition is not met, fix it before the demo.
+**Debug if failing:**
+- Check VictoryScreen.tsx for the CSS keyframe animation on the shockwave ring.
+- Check soundEngine.ts — `playSoundEvent('victory')` must be called on VictoryScreen mount.
+- If no sound: check that AudioContext is created and that the Web Audio API is unblocked (requires a prior user interaction; card drag counts).
+
+---
+
+### Step 13: Sound Triggers Fire at Correct Moments
+
+**Action:** With audio output enabled, perform these actions in sequence and listen:
+- Drag and drop a card successfully.
+- Watch a territory ownership change (opponent's turn or own action).
+- Wait for cultural influence to tick on a contested territory.
+
+**Expected:**
+- Card play: a short high-pitched tone (~800Hz, ~50ms) fires when a reducer call completes successfully.
+- Territory flip: a low thud (~120Hz, ~150ms) fires when a territory changes military ownership.
+- Cultural pressure: a soft oscillating tone (~200-400Hz) fires when cultural influence ticks on a contested territory.
+
+**Debug if failing:**
+- Check that soundEngine.ts exports `playSoundEvent` and that the function is called from the correct event handlers.
+- If AudioContext is suspended: confirm that a user gesture (card drag, click) has occurred before the first sound attempt. Web Audio requires a prior gesture.
+- Use browser DevTools console to check for "AudioContext suspended" or "NotAllowedError".
+
+---
+
+### Step 14: npm run build Passes with Zero Errors
+
+**Action:** In the `app/client` directory, run `npm run build`.
+
+**Expected:**
+- The build completes without TypeScript errors, missing import errors, or Vite bundling errors.
+- No warnings about missing font files or missing modules.
+
+**Debug if failing:**
+- TypeScript error on new type: check that CommandBarState, ChatWindowState, SoundEvent, HeatmapEntry are exported from types.ts.
+- Missing import: check that all new components (TitleScreen, ColorLegend, CommandBar, ChatWindow, soundEngine) exist at their declared paths.
+- Tailwind class not found: check tailwind.config.js for the Rajdhani font token update.
+
+---
+
+## 4. TRIAGE TABLE
+
+| Step | Symptom | Most Likely Cause | Fix Location |
+|------|---------|-------------------|--------------|
+| 1 | No title screen | TitleScreen not mounted | App.tsx — add TitleScreen render at root level |
+| 1 | Title doesn't fade | CSS animation not defined | TitleScreen.tsx — check keyframe for fadeOut |
+| 1 | Title stays forever | Unmount callback missing | TitleScreen.tsx — setTimeout to call onDone after 2.8s |
+| 2 | Emoji still visible | CONTINENT_ICONS not removed | Map.tsx — remove the map constant and the rendering span |
+| 2 | Banner still Cinzel | Font swap missed | Map.tsx — replace fontFamily string on banner span |
+| 2 | Rajdhani not loading | index.html link wrong | index.html — verify Rajdhani in Google Fonts URL |
+| 3 | No tooltip data | title prop missing or empty | Territory.tsx — confirm title attribute string |
+| 4 | Card labels still Cinzel | Font swap missed | ActionCard.tsx — replace both fontFamily strings |
+| 4 | Empty state label Cinzel | Font swap missed | CardHand.tsx — replace fontFamily string on empty label |
+| 5 | No highlight on Military drag | handleDragStart not computing targets | App.tsx — check getValidMilitaryTargets call |
+| 5 | All tiles highlight for Military | Target logic ignores adjacency | App.tsx — confirm Military branch, not the else branch |
+| 6 | Drop has no effect | territoryId is string, not number | App.tsx handleDragEnd — cast event.over.id to number |
+| 6 | Reducer called but no update | Subscription stale | useSubscriptions.ts — check SpacetimeDB 2.4.1 hook wiring |
+| 7 | Enter does not open CommandBar | Hotkey handler uses old logic | App.tsx onKey — add Enter case for CommandBar |
+| 7 | CommandBar not focused on open | No autoFocus or focus call | CommandBar.tsx — call inputRef.current?.focus() on mount |
+| 8 | Dropdown missing sections | Rendering logic incomplete | CommandBar.tsx — add all four section headers and options |
+| 9 | Chat command not recognized | Parser too strict | CommandBar.tsx — case-insensitive match on "chat with {name}" |
+| 9 | ChatWindow wrong position | CSS values incorrect | ChatWindow.tsx — position: fixed, bottom: 16px, right: 16px |
+| 10 | No heatmap on query | queryHighlights not applied | App.tsx / Map.tsx — confirm queryHighlights passed as prop |
+| 10 | Heatmap never fades | Auto-dismiss timer missing | App.tsx — setTimeout 10s to clear queryHighlights |
+| 11 | ColorLegend missing | Component not rendered | App.tsx or Map.tsx — add ColorLegend import and render |
+| 11 | Wrong colors in legend | Using wrong constant | ColorLegend.tsx — use PLAYER_COLORS and AI_PLAYERS |
+| 12 | No shockwave animation | CSS keyframe missing | VictoryScreen.tsx — add @keyframes expand ring |
+| 12 | No victory sound | playSoundEvent not called | VictoryScreen.tsx — call playSoundEvent('victory') on mount |
+| 13 | No sound at all | AudioContext blocked | Confirm user gesture preceded first sound; check console |
+| 13 | Wrong sound timing | Trigger in wrong handler | soundEngine.ts calls — move to correct event callback |
+| 14 | TypeScript build error | New type not exported | types.ts — add and export all new interfaces |
+| 14 | Missing module | New file path wrong | Check that all five new files exist at declared paths |
+
+---
+
+## 5. READINESS GATE CHECKLIST
+
+Before the game is shown to judges, every item on this list must be true. Check each box manually.
+
+- [ ] `npm run build` in `app/client` completes with zero errors.
+- [ ] Title screen appears on load, fades correctly, and unmounts from the DOM.
+- [ ] Hex map is visible after title fades. Continent banners have Rajdhani text. No emoji anywhere on screen.
+- [ ] All 12 territory hex tiles render with correct quadrant fills, troop counts, and name labels in Rajdhani.
+- [ ] Fanned card hand is visible in player mode. Cards have Rajdhani labels.
+- [ ] Military card drag highlights valid adjacent targets only. Economic and Covert drag highlights all territories.
+- [ ] Card drop calls the correct reducer. Territory state updates within 2 seconds.
+- [ ] Enter key opens CommandBar. Escape dismisses it. JetBrains Mono input field is focused on open.
+- [ ] Clicking `>` in CommandBar shows dropdown with INTEL, CHAT, EVENTS, ADVICE sections.
+- [ ] "chat with Zhao" opens ChatWindow bottom-right. AI responds in 100 characters or fewer.
+- [ ] Query result shades hex tiles as heatmap. Caption appears. Auto-dismisses after 10 seconds.
+- [ ] ColorLegend visible bottom-left with four player entries, correct colors, Rajdhani labels.
+- [ ] VictoryScreen shows shockwave ring animation when human player wins. Sound plays.
+- [ ] Five sound events fire: card play, territory flip, cultural pressure, victory, defeat.
+- [ ] No Cinzel font reference remains in any file in `app/client/src`.
+- [ ] No emoji character appears anywhere in any file in `app/client/src`.
+- [ ] All existing game logic works: actions, AI cycles, cultural spread, intel, chat pipeline, trust scores, replay, spectator mode.
+- [ ] PlayerIndicator.tsx, ReplayControls.tsx, SpectatorOverlay.tsx, QueryBar.tsx, ResultsPanel.tsx, and ChatPanel.tsx all still exist and are imported where they were before.
 
 ---
 
 ## 6. MANUAL ITERATION NOTES
 
-- **Visual comparison:** Keep AESTHETIC.md v2.0 open during validation. Compare every element against the spec. Colors, sizes, fonts, spacing — everything is specified exactly.
-- **D3 debugging:** If territory rendering or patterns aren't working, check the browser console for D3 errors. Verify GeoJSON data is valid. Check that the SVG container is properly sized.
-- **Sound testing:** Use headphones during sound validation. The cultural pressure sounds are very quiet by design — they should be barely perceptible.
-- **Performance check:** On a lower-powered machine, verify that animations don't stutter. If they do, the animation system should simplify (the spec includes a frame rate check at 30fps).
-- **Demo dry run:** After all 15 steps pass, do one full playthrough as if it were the demo. Follow the demo arc from UX_OVERHAUL_DECISIONS.md. Note anything that feels slow, awkward, or confusing.
+- **Font verification:** After building, open the browser Network tab and filter by "Rajdhani". Confirm the font file is downloaded. If it is not, the Google Fonts link in index.html is wrong.
+- **Emoji audit:** After generation, run `grep -r "[\xF0\x9F\x80-\xFF]" app/client/src` or search the codebase for the specific removed emoji (⚔ 🏛 🌏) to confirm they are gone.
+- **Cinzel audit:** Run `grep -r "Cinzel" app/client/src` to confirm zero results after the overhaul.
+- **Sound testing:** Web Audio API requires a user gesture before the first sound. Click or drag a card at least once before testing sound triggers. If sounds are still silent after a gesture, check the browser console for "AudioContext was not allowed to start".
+- **Demo dry run:** After all steps pass, do one full playthrough: load, title fades, inspect map, drag a card, execute an action, open the command bar, chat with Zhao, check the legend, play to victory. Note anything that feels slow or broken.
 
 ---
 
 ## 7. FINAL NOTE
 
-This is the last validation document. After the overhaul passes all checks, Risk: Dominion is complete — mechanically deep, visually stunning, and ready for judges.
+After this validation passes, Risk: Dominion is visually complete and ready for judges. The overhaul delivers: a coherent warm parchment visual identity, Rajdhani as the display font everywhere, emoji-free continent banners, a title screen arrival moment, a command bar for all non-card interactions, chat windows with terse AI responses, a heatmap query system on the existing hex map, a color legend, and a victory animation with sound — all without touching a single line of game logic.
 
-The journey from the original Slice 1 hex grid to this overhaul:
-- The map now looks like a real world, not a board game.
-- The interface is two elements — map and cards — not a dozen panels.
-- The command bar unifies every non-action interaction into one input.
-- The AI has a face, a voice, and a personality.
-- Queries produce visualizations, not text walls.
-- Victory and defeat have emotional weight.
-- Sound makes the game feel physical.
-
-Validate. Polish. Demo. Win.
+Validate. Polish. Demo.
 
 ---
 
-## End of UX Overhaul Implementation Strategy
-
-This is the final validation document. After this, the game is ready for judges.
+## End of UX Overhaul Implementation Strategy v1.1
