@@ -1,16 +1,15 @@
 # UIUX.md — Risk: Dominion Interaction Design
 
-## Version 1.0
-## Scope: Complete UI/UX Overhaul — All Slices
-## Companion: AESTHETIC.md v2.0, INTERFACE_CONTRACT_UX_OVERHAUL.md
+## Version 1.1
+## Scope: UI/UX Reference — All Slices
+## Companion: AESTHETIC.md v2.1, INTERFACE_CONTRACT_UPDATE_1.md
+## Reflects: Current codebase (SpacetimeDB 2.4.1, React + dnd-kit, hex grid map)
 
 ---
 
 ## 0. DOCUMENT PURPOSE
 
-This document specifies how every interaction works in Risk: Dominion. It does not specify how things look (see AESTHETIC.md v2.0) or exact pixel values (see INTERFACE_CONTRACT_UX_OVERHAUL.md). It specifies behavior — what happens when the player does something, step by step.
-
-Each section describes one interaction flow: what triggers it, the sequence of events, the state changes, what the player sees and hears, and how the flow ends.
+This document specifies how every interaction works in Risk: Dominion. It does not specify visual appearance (see AESTHETIC.md v2.1) or pixel-level component specs (see INTERFACE_CONTRACT_UPDATE_1.md). It specifies behavior: what happens when the player does something, step by step.
 
 ---
 
@@ -19,454 +18,289 @@ Each section describes one interaction flow: what triggers it, the sequence of e
 **Trigger:** Player opens the application in a browser.
 
 **Sequence:**
-1. SpacetimeDB connection established. All table subscriptions activated.
-2. Game state begins updating in the background (AI cycles, cultural spread, etc.).
-3. TitleScreen component renders: full-viewport dark overlay with "Risk: Dominion" in gold.
-4. Overlay and text fade in over 300ms.
-5. Hold for 2000ms. The live map is visible and updating behind the overlay.
-6. Overlay and text fade out over 500ms.
-7. TitleScreen unmounts. `titleScreenDone` state set to `true`.
-8. Map and CardHand components are now interactive.
-9. Color legend is visible. Territory names are visible at low opacity.
-10. Game is fully playable.
+1. SpacetimeDB connection established via `DbConnection.builder()` with the configured URI and module name.
+2. Table subscriptions activate: military, economic, cultural, covert, players, gameState, eventFeed, chatLog, aiReasoningLog, strategistLog.
+3. Game state begins updating in the background (AI cycles, cultural spread, etc.).
+4. Loading screen renders: "ESTABLISHING COMMAND LINK..." in Orbitron font, centered.
+5. Once the SpacetimeDB connection resolves, loading screen unmounts.
+6. Top bar, hex map, card hand, and DISPATCHES ticker become visible and interactive.
+7. Game is fully playable.
 
-**Edge case:** If the game ends before the title screen fades, the VictoryScreen does not render until the title screen has completed its fade-out. Queue the victory state and render after TitleScreen unmounts.
+**Edge case:** If game has already ended (`gameState.status === 'ended'`), render VictoryScreen immediately after load completes.
 
 ---
 
 ## 2. CARD ACTION FLOW
 
+Cards are implemented via dnd-kit (`useDraggable` / `useDroppable`). The fanned card hand is the primary action interface.
+
 ### 2.1 Pick Up Card
 
-**Trigger:** `mousedown` on the top card of any card stack where `count > 0`.
+**Trigger:** Player initiates a drag on a non-disabled `ActionCard`.
 
 **Sequence:**
-1. Card enters drag state: lifts 4px, scales to 1.05, shadow intensifies.
-2. If the card is Military type:
-   - `attackMode` state set to `true`.
-   - Map renders attack arrows: dashed lines from player's adjacent Military-controlled territories to valid attack targets.
-   - Valid target territories highlight with gold border.
-   - Particles animate along arrows.
-3. If the card is Economic or Covert type: no map changes. All territories are valid targets.
-4. If command bar is open: dismiss command bar immediately (no animation).
-5. Card follows cursor during drag.
+1. dnd-kit fires `onDragStart`. Card enters drag state: lifts (translateY −4px), scales 1.08, rotates 4deg, shadow intensifies.
+2. If Military card:
+   - `attackMode` state set to `true` in App.tsx.
+   - Adjacent enemy territories highlight as valid attack targets (gold border, dashed ring).
+3. If Economic or Covert: no map changes. All territories are valid drop targets.
+4. Card follows cursor via dnd-kit transform.
 
 ### 2.2 Valid Drop
 
-**Trigger:** `mouseup` while card is over a valid target territory.
+**Trigger:** dnd-kit `onDragEnd` fires with `over.id` = a valid territory ID.
 
 **Sequence:**
-1. Card animates back to stack position (200ms ease-out).
-2. Appropriate reducer called: `military_attack(territory_id, 1)`, `economic_invest(territory_id, 1)`, or `deploy_agent(territory_id, 1)`.
-3. `attackMode` set to `false`. Attack arrows and highlights removed from map.
-4. On reducer success response:
-   - Action point subscription updates. Card stack count decrements.
-   - `playCardSound()` triggered.
-   - If ownership changed: territory patterns update, `playTerritoryFlipSound()` triggered.
-5. On reducer error response: no state change. Card remains in stack. No sound.
+1. Appropriate SpacetimeDB reducer called:
+   - Military card: `reducers.militaryAttack({ targetTerritoryId, troops: 1 })`
+   - Economic card: `reducers.economicInvest({ targetTerritoryId, amount: 1 })`
+   - Covert card: `reducers.deployAgent({ targetTerritoryId })`
+2. `attackMode` set to `false`. All territory highlights cleared.
+3. SpacetimeDB subscription delivers updated dimension state. Hex quadrant fills and medallion number re-render reactively.
+4. Player's action point count decrements in subscription, ActionBar pip empties.
 
 ### 2.3 Invalid Drop
 
-**Trigger:** `mouseup` while card is NOT over a valid target territory.
+**Trigger:** dnd-kit `onDragEnd` fires with `over` = null or non-droppable target.
 
 **Sequence:**
-1. Card snaps back to stack position (200ms ease-out).
-2. `attackMode` set to `false`. Attack arrows and highlights removed.
-3. No reducer called. No sound.
+1. Card returns to its fan position (dnd-kit default behavior).
+2. `attackMode` set to `false`. Highlights cleared.
+3. No reducer called.
 
-### 2.4 Regeneration
+### 2.4 Disabled Card State
 
-**Trigger:** Action point regeneration from server (every 4 seconds while `action_points < 10`).
-
-**Sequence:**
-1. Subscription delivers updated `players` table row.
-2. Corresponding card stack count increments.
-3. New card slides onto top of stack from above (200ms ease-out).
-4. Count number flashes gold for 300ms.
-5. If stack was in empty state (count was 0): stack returns to full opacity, pulse animation stops.
-6. No sound triggered.
-
-### 2.5 Empty State
-
-**Condition:** `count === 0` for a card stack.
+**Condition:** Player's action point count for that dimension is 0, or game has ended.
 
 **Behavior:**
-- Stack renders at 40% opacity.
-- Slow pulse animation runs continuously (opacity 0.4 → 0.55 → 0.4 over 4 seconds).
-- Cards are not draggable. Cursor is default, not grab.
-- Regeneration exits empty state when count becomes 1.
+- Card at 30% opacity, `border: 1.5px solid #3d3525`.
+- Cursor `not-allowed`. `disabled` prop passed to `useDraggable` so drag is blocked.
+- No shimmer on hover.
+
+### 2.5 Action Point Regeneration
+
+**Trigger:** SpacetimeDB subscription delivers updated `players` row with increased `actionPoints`.
+
+**Sequence:**
+1. React re-renders CardHand with updated enabled/disabled state for cards.
+2. Newly enabled cards animate in with `animate-float-up`, staggered.
+3. Corresponding ActionBar pip fills with `animate-pip-fill`.
 
 ---
 
-## 3. COMMAND BAR FLOW
+## 3. HEX MAP INTERACTIONS
 
-### 3.1 Summon
+### 3.1 Territory Hover
 
-**Trigger:** `Enter` key or `T` key pressed while command bar is hidden AND title screen has completed.
+**Trigger:** Mouse enters a territory hex SVG.
 
-**Sequence:**
-1. `commandBarVisible` set to `true`.
-2. CommandBar component mounts with slide-down animation (200ms).
-3. Input field auto-focuses. Cursor blinks in input.
-4. Placeholder text visible: "Type a command or question..."
-5. `>` prompt visible in gold.
+**Behavior:**
+1. Territory hex scales up to 1.1x (CSS hover, `transformOrigin: center 75%`).
+2. Territory name label brightens.
+3. Native browser tooltip (via `title` attribute) shows: `{name} — troops {n}, capital {n}, agents {n}, influence {n}%`.
 
-**Edge case:** If command bar is already visible, `Enter` executes the current input. `T` types the letter "t" in the input field.
+### 3.2 Territory as Drop Target
 
-### 3.2 Type Input
+**Trigger:** dnd-kit active drag hovers over a `useDroppable` territory.
 
-**Trigger:** Player types characters while command bar input is focused.
+**Behavior:**
+1. `isOver = true` → territory border switches to gold (`#d4a017`), 2.5px.
+2. Dashed animated highlight ring appears around hex perimeter.
+3. Drop-shadow glow activates.
 
-**Sequence:**
-1. Characters appear in the input field.
-2. No other behavior triggered. Dropdown remains closed.
+On drag exit or drop: `isOver = false`, border returns to default state.
 
-### 3.3 Open Dropdown
+### 3.3 Attack Mode Map State
 
-**Trigger:** Player clicks the `>` prompt.
+**Trigger:** `attackMode === true` (Military card picked up).
 
-**Sequence:**
-1. Dropdown appears below the command bar with categorized sections.
-2. Dropdown uses the same width as the command bar.
-3. Player can click any option to execute that command.
-4. Player can click the `>` again or press Escape to close the dropdown.
-5. While dropdown is open, typing in the input field does NOT close the dropdown. Both can be active.
+**Behavior:**
+- Valid attack target territories (adjacent, not Military-owned by player): gold border applied via `isHighlighted` prop.
+- Non-valid territories: unchanged.
 
-### 3.4 Execute Command
-
-**Trigger:** `Enter` key pressed while command bar input has text.
-
-**Sequence:**
-1. Input text is parsed. Leading/trailing whitespace trimmed. Case-insensitive matching.
-2. Command matched against known patterns:
-   - Contains "zhao" AND ("plan" OR "intel" OR "thinking"): open intel for player_id 2
-   - Contains "consortium" AND ("plan" OR "intel" OR "thinking"): open intel for player_id 3
-   - Contains "prophet" AND ("plan" OR "intel" OR "thinking"): open intel for player_id 4
-   - Contains "chat" AND "zhao": open chat with player_id 2
-   - Contains "chat" AND "consortium": open chat with player_id 3
-   - Contains "chat" AND "prophet": open chat with player_id 4
-   - Contains "happening" OR "events" OR "news": show recent event notifications
-   - Contains "how am i doing" OR "status" OR "progress": request Strategist advice
-   - Contains "attack" OR "where should i": request tactical advice from Strategist
-   - Contains "weak" OR "weakest" OR "vulnerable": run query for weakness heat map
-   - Contains "winning" OR "who is winning": run query for victory progress
-   - Otherwise: treat as natural language query. Send to `query_database`.
-3. Command bar dismissed: `commandBarVisible` set to `false`, slide-up animation (200ms).
-4. Command action executed (see relevant flow sections for chat, intel, query, notifications, advice).
-5. Input field cleared.
-
-### 3.5 Execute from Dropdown
-
-**Trigger:** Player clicks an option in the dropdown.
-
-**Sequence:**
-1. Dropdown closes.
-2. The option's text is treated as if the player typed it. Execute Command flow continues from step 2.
-3. Command bar dismissed.
-
-### 3.6 Unrecognized Input
-
-**Trigger:** Enter pressed with text that doesn't match any known command pattern AND the natural language query returns an error or empty result.
-
-**Sequence:**
-1. Command bar plays shake animation (3 oscillations, 200ms).
-2. Error message appears below the bar: "I didn't understand that. Try 'help' for options." in Inter, 11px, text-secondary.
-3. Input field is NOT cleared. Player can edit and try again.
-4. Error message disappears after 3 seconds.
-5. Command bar remains open.
-
-### 3.7 Dismiss
-
-**Trigger:** `Escape` key pressed, OR player clicks outside the command bar, OR a card drag starts.
-
-**Sequence:**
-1. `commandBarVisible` set to `false`.
-2. Dropdown closes if open.
-3. CommandBar unmounts with slide-up animation (200ms).
-4. Input field cleared.
-5. Error message cleared.
+**Reset:** `attackMode = false` on any drag end.
 
 ---
 
-## 4. CHAT FLOW
+## 4. INTEL FLOW
 
-### 4.1 Open Chat
+### 4.1 Query Intel
 
-**Trigger:** Command executed for "chat with {AI name}".
-
-**Sequence:**
-1. AI's player_id added to `activeChats` array if not already present.
-2. ChatWindow component mounts for that AI with fade-in + scale animation (200ms).
-3. Chat window appears at bottom-right. If other chat windows are open, stacks above them.
-4. Message history for that AI loaded from `chat_log` subscription data, filtered by `(sender_id = 1 AND recipient_id = ai_id) OR (sender_id = ai_id AND recipient_id = 1) OR (recipient_id IS NULL AND sender_id = ai_id)`. Most recent messages shown.
-5. Auto-scroll to bottom of message area.
-6. Input field focused.
-
-### 4.2 Send Message
-
-**Trigger:** Player types text and presses `Enter` in chat input.
+**Trigger:** Player clicks an AI button in the IntelPanel.
 
 **Sequence:**
-1. Input text trimmed. If empty, nothing happens.
-2. Player message rendered immediately in the chat window: right-aligned, text only.
-3. `send_chat_message(1, text, recipient_id, false, null)` reducer called. `recipient_id` is the AI's player_id for DMs, or null for global (if global chat is supported).
-4. Input field cleared.
-5. Message area scrolls to bottom.
-6. AI response expected within 2-5 seconds via the real-time chat pipeline.
+1. Button shows loading state: "Querying {name}..." label.
+2. `useProcedure(procedures.getIntel)({ aiPlayerId })` resolves asynchronously.
+3. `onHighlight(res.territoriesReferenced)` callback fires — App.tsx updates `highlighted` Set.
+4. IntelPanel renders deliberation chain: each subordinate's reasoning + recommendations, commander entry last.
+5. If no data: "No intelligence available yet. {name} has not completed a planning cycle."
 
-### 4.3 Receive AI Response
+### 4.2 Territory Highlights from Intel
 
-**Trigger:** AI sends a chat message (via real-time chat pipeline, subscription delivers new `chat_log` row).
+**Trigger:** `highlighted` Set updated in App.tsx from IntelPanel callback.
 
-**Sequence:**
-1. New message appears in the appropriate chat window.
-2. AI message rendered left-aligned with portrait, name, and text.
-3. Message area scrolls to bottom.
-4. If chat window for that AI is not open: a notification dot appears near the command bar `>` prompt (persistent until chat is opened).
-5. If chat window is open but minimized or behind another window: the window's header subtly pulses in the AI's color for 2 seconds.
-
-**AI Response Constraints:**
-- Response must be 100 characters or fewer — one short sentence.
-- Response time: 2-5 seconds (real-time pipeline, separate from action cycle).
-- Response is in character based on AI persona.
-
-### 4.4 Close Chat
-
-**Trigger:** Player clicks close button, presses `Escape`, or clicks outside the chat window.
-
-**Sequence:**
-1. AI's player_id removed from `activeChats` array.
-2. ChatWindow unmounts with fade-out animation (150ms).
-3. Remaining chat windows shift to fill the gap (if any).
-
-### 4.5 Chat with Multiple AIs
-
-- Multiple chat windows can be open simultaneously.
-- Each window is independent. Sending a message in one does not affect others.
-- Windows stack vertically at bottom-right. Newest at the bottom.
-- Maximum 3 chat windows visible. If a 4th is opened, the oldest (topmost) closes automatically.
+**Behavior:** Territory components with IDs in `highlighted` receive `isHighlighted={true}`, rendering gold border and dashed ring.
 
 ---
 
-## 5. QUERY FLOW
+## 5. CHAT FLOW
 
-### 5.1 Execute Query
+### 5.1 Send Message
 
-**Trigger:** Command executed that maps to a natural language query (or explicit query command).
+**Trigger:** Player types in ChatPanel input and presses Enter.
 
 **Sequence:**
-1. Command bar dismissed.
-2. Query text sent to `query_database` reducer.
-3. Loading indicator: subtle pulse on the `>` prompt area (if command bar were open) or a small "..." indicator in the bottom-right corner. Disappears when response arrives.
-4. On response:
-   - Parse `visualization` field from response JSON.
-   - Render the specified visualization type on the map (heat map, flow lines, proportional symbols, bar chart, comparison table).
-   - Render text caption near the visualization.
-   - Visualization fades in over 300ms.
-   - No sound triggered.
-5. Visualization auto-dismisses after 10 seconds (fade out over 300ms), OR immediately if:
-   - Player starts a new query.
-   - Player starts dragging a card.
-   - Player presses Escape.
+1. Input trimmed. Empty input: no action.
+2. `reducers.sendChatMessage({ recipientId, text, isPublic: false })` called.
+3. Message appears in chat history via subscription update.
+4. AI response arrives within 2–5 seconds via `chatLog` subscription delivering a new row.
 
-### 5.2 Visualization Types
+### 5.2 Receive AI Response
 
-The query response specifies `visualization.type`. The frontend has pre-built renderers for each type:
+**Trigger:** Subscription delivers new `chatLog` row from an AI player.
 
-- `heatmap`: Apply color scale to all territory fills based on `visualization.data` values.
-- `flow`: Draw animated lines with particles between territory pairs specified in `visualization.data`.
-- `symbols`: Draw proportional circles on territories specified in `visualization.data`.
-- `bar`: Render a bar chart card overlay with `visualization.data` values.
-- `table`: Render a comparison table card overlay with `visualization.data` rows.
-
-### 5.3 Query Error
-
-If `query_database` returns an error or timeout:
-- No visualization rendered.
-- Brief event notification appears: "Query failed. Try again." (auto-dismisses after 4 seconds).
-- No shake animation (shake is only for command bar unrecognized input, not query failures).
+**Behavior:**
+- Message rendered in ChatPanel, left-aligned, with AI name in player color.
+- Responses are 100 characters or fewer (enforced server-side in AI prompt).
 
 ---
 
-## 6. INTEL FLOW
+## 6. QUERY FLOW
 
-### 6.1 Open Intel
+### 6.1 Submit Query
 
-**Trigger:** Command executed for "show me {AI name}'s plans".
-
-**Sequence:**
-1. `showIntel` state set to the AI's player_id.
-2. IntelPanel component mounts at top-right with fade-in + scale animation (200ms).
-3. Most recent `ai_reasoning_log` rows for that AI queried and displayed.
-4. Deliberation chain rendered: each subordinate's reasoning and recommendations, commander's final decision.
-5. If no reasoning log exists yet: panel shows "No intelligence available yet. {AI name} has not completed a planning cycle."
-
-### 6.2 Navigate Intel
-
-- Scroll vertically through the deliberation chain.
-- Subordinate entries are collapsed by default (show name and role only). Click to expand reasoning text.
-- Commander entry is always expanded.
-- No other interactions within the intel panel.
-
-### 6.3 Close Intel
-
-**Trigger:** Close button, Escape key, or clicking outside the panel.
+**Trigger:** Player selects a canned query or types a custom query in QueryBar.
 
 **Sequence:**
-1. `showIntel` set to `null`.
-2. IntelPanel unmounts with fade-out animation (150ms).
+1. `reducers.queryDatabase({ queryText })` (or `reducers.queryDatabaseCanned({ queryId })` for canned queries) called.
+2. QueryBar enters loading state.
+3. Subscription delivers `QueryResult`. ResultsPanel renders the response text or structured data.
+
+### 6.2 Autocomplete
+
+**Trigger:** Player types in QueryBar input.
+
+**Sequence:**
+1. If query text length > 2, `reducers.getAutocomplete({ prefix })` called.
+2. Autocomplete suggestions rendered in dropdown below input.
+3. Player can click a suggestion to use it as the query.
 
 ---
 
 ## 7. NOTIFICATION FLOW
 
-### 7.1 Event Notifications
+### 7.1 Event Feed (DISPATCHES)
 
-**Trigger:** New row inserted into `event_feed` table. Subscription delivers the row.
+**Trigger:** New row in `eventFeed` table subscription.
 
-**Sequence:**
-1. Event notification card created with the event text and appropriate border color.
-2. Card appears at top-center with slide-down + fade-in animation (200ms).
-3. If 3 notifications are already visible: the oldest is dismissed immediately (no animation).
-4. After 4 seconds: card fades out (200ms) and is removed.
-5. No sound triggered.
+**Behavior:**
+- EventTicker renders the event with type-appropriate prefix icon and text.
+- Marquee animation for overflow content.
+- Events accumulate up to `EVENT_FEED_MAX_DISPLAY` (50).
 
-### 7.2 Strategist Advice
+### 7.2 Strategist Alerts
 
-**Trigger:** Strategist cycle completes and generates notifications, OR player requests advice via command bar.
+**Trigger:** New row in `strategistLog` table subscription.
 
-**Sequence:**
-1. Advice card created at top-left with gold border.
-2. Appears with same animation as event notifications.
-3. Auto-dismisses after 8 seconds (longer than events — advice is more substantive).
-4. If player requested advice via command bar: card persists until dismissed by player (close button or Escape).
+**Behavior:**
+- StrategistAlerts component renders the advice text.
+- Strategic recommendations based on current game state from Strategist AI.
 
 ---
 
-## 8. VICTORY/DEFEAT FLOW
+## 8. VICTORY / DEFEAT FLOW
 
 ### 8.1 Victory
 
-**Trigger:** `game_state.status` changes to `'ended'` and `game_state.winner` is the player's name.
+**Trigger:** `gameState.status === 'ended'` AND `gameState.winner` equals the human player's name.
 
 **Sequence:**
-1. All open overlays dismissed immediately (chat windows, intel panel, command bar).
-2. Card stacks remain visible but are not draggable.
-3. Victory animation plays:
-   - Shockwave ring expands from winning territory across map (1500ms).
-   - `playVictorySound()` triggered at shockwave start.
-   - After shockwave: all territories pulse in winner's color.
-4. 1000ms pause.
-5. Victory overlay fades in (300ms): "Victory" in gold.
-6. After overlay appears: command bar is summonable again. Player can query or chat post-game.
+1. VictoryScreen renders as absolute overlay.
+2. Crown SVG, decorative lines, winner name animate in with `animate-victory-reveal`.
+3. "DOMINION ACHIEVED" label, winner name in their color, "CONQUERS ALL" subtitle.
+4. "VICTORY IS YOURS" status in success green.
+5. CardHand remains visible but cards are disabled (game over).
 
 ### 8.2 Defeat
 
-**Trigger:** `game_state.status` changes to `'ended'` and `game_state.winner` is NOT the player's name.
+**Trigger:** `gameState.status === 'ended'` AND `gameState.winner` is NOT the human player.
 
 **Sequence:**
-1. All open overlays dismissed immediately.
-2. Card stacks remain visible but are not draggable.
-3. Defeat animation plays:
-   - Losing territory identified and highlighted with pulsing border.
-   - All other territories dim to 40% brightness (500ms transition).
-   - `playDefeatSound()` triggered.
-   - Hold for 2000ms.
-4. Defeat overlay fades in (300ms): "Defeat" in gold, losing territory name below.
-5. After overlay appears: command bar is summonable. Player can query or chat post-game.
+1. VictoryScreen renders with `didWin={false}`.
+2. Crown in winning AI's player color.
+3. "Your campaign ends here." status in muted secondary color.
 
 ---
 
-## 9. KEYBOARD SHORTCUTS
+## 9. INPUT RULES
 
-| Key | Condition | Action |
-|-----|-----------|--------|
-| `Enter` | Command bar hidden, title screen done | Summon command bar |
-| `Enter` | Command bar open, input has text | Execute command |
-| `T` | Command bar hidden, no input focused, title screen done | Summon command bar |
-| `Escape` | Any overlay open | Dismiss all overlays (command bar, chat, intel) |
-| `Escape` | Card being dragged | Cancel drag, return card to stack |
+| Key | Context | Action |
+|-----|---------|--------|
+| `Enter` | QueryBar input focused | Submit query |
+| `Enter` | ChatPanel input focused | Send chat message |
+| `Escape` | dnd-kit drag active | Cancel drag (dnd-kit handles natively) |
 
-**Chat tab shortcuts from Slice 6 are removed.** Chat is accessed only through the command bar.
-
-**Card hotkeys from Slice 5 are removed.** Cards are dragged, not selected by keyboard.
-
-**WASD navigation from Slice 5 is removed.** Map is panned by mouse drag.
+No global keyboard shortcuts beyond component-local inputs.
 
 ---
 
 ## 10. STATE MANAGEMENT
 
-### 10.1 App-Level State
+### 10.1 App-Level UI State
 
 ```typescript
-interface AppState {
-  // UI State
-  commandBarVisible: boolean;
-  activeChats: number[];        // player_ids of open chat windows
-  showIntel: number | null;     // ai_player_id or null
-  titleScreenDone: boolean;
-  attackMode: boolean;          // true when Military card is being dragged
-  
-  // Game State (from subscriptions)
-  military: MilitaryRow[];
-  economic: EconomicRow[];
-  cultural: CulturalRow[];
-  covert: CovertRow[];
-  players: PlayerRow[];
-  gameState: GameStateRow[];
-  eventFeed: EventFeedRow[];
-  chatLog: ChatLogRow[];
-  aiReasoningLog: AIReasoningLogRow[];
-  strategistLog: StrategistLogRow[];
-}
+// App.tsx
+const [attackMode, setAttackMode]   = useState<boolean>(false);
+const [highlighted, setHighlighted] = useState<Set<number>>(new Set());
 ```
 
-### 10.2 State Flow
+### 10.2 SpacetimeDB Subscription State
 
-- Game state flows FROM subscriptions TO all components via props. No component mutates game state directly.
-- UI state is managed in App.tsx and passed down as props and callbacks.
-- Overlay components (CommandBar, ChatWindow, IntelPanel) receive dismiss callbacks.
-- CardHand receives game state and calls reducers. It does not manage overlay state.
+```typescript
+// All game state — reactive via SpacetimeDB WebSocket
+const military      = useTable(tables.military);
+const economic      = useTable(tables.economic);
+const cultural      = useTable(tables.cultural);
+const covert        = useTable(tables.covert);
+const players       = useTable(tables.players);
+const gameState     = useTable(tables.gameState);
+const eventFeed     = useTable(tables.eventFeed);
+const chatLog       = useTable(tables.chatLog);
+const aiReasoning   = useTable(tables.aiReasoningLog);
+const strategistLog = useTable(tables.strategistLog);
+```
 
----
+### 10.3 Rules
 
-## 11. OVERLAY MANAGEMENT
-
-### 11.1 Rules
-
-- Only one instance of each overlay type can be open at a time (one intel panel, one command bar).
-- Multiple chat windows can be open simultaneously (max 3).
-- Opening a new overlay does NOT automatically close others (except: opening intel closes any previous intel).
-- Escape key closes ALL overlays.
-- Starting a card drag closes the command bar only (not chat or intel).
-
-### 11.2 Dismiss Priority
-
-When multiple overlays are open and Escape is pressed:
-1. Dropdown (if open)
-2. Command bar (if open)
-3. Intel panel (if open)
-4. All chat windows
-5. Card drag (if active)
-
-One press of Escape dismisses the highest priority open overlay. Multiple presses dismiss each in sequence.
+- Game state flows FROM subscriptions TO components via props.
+- No component mutates game state directly.
+- Reducers are called by leaf components to trigger server-side changes.
+- After a reducer call, components wait for subscription update — no optimistic local state mutation for game data.
+- UI state (attackMode, highlighted) is managed in App.tsx and passed as props.
 
 ---
 
-## 12. SOUND TRIGGER SUMMARY
+## 11. COMPONENT RESPONSIBILITY MAP
 
-| Event | Function | When |
-|-------|----------|------|
-| Card played | `playCardSound()` | After successful reducer response |
-| Territory ownership change | `playTerritoryFlipSound()` | After `dimension_owner_change` |
-| Cultural pressure 30% | `playCulturalPressureSound(1)` | When any territory's influence crosses 30% |
-| Cultural pressure 40% | `playCulturalPressureSound(2)` | When any territory's influence crosses 40% |
-| Victory | `playVictorySound()` | When game ends with player as winner |
-| Defeat | `playDefeatSound()` | When game ends with AI as winner |
+| Component | Role |
+|-----------|------|
+| `App.tsx` | Root layout, DnD context provider, UI state (attackMode, highlighted) |
+| `Map.tsx` | Continent column layout, world silhouette background |
+| `Territory.tsx` | Hex SVG render, quadrant fills, dnd-kit drop target |
+| `CardHand.tsx` | Fan layout, card positioning, entry animations |
+| `ActionCard.tsx` | Card visuals, dnd-kit drag source |
+| `ActionBar.tsx` | Action point pip row |
+| `EventTicker.tsx` | DISPATCHES panel and marquee feed |
+| `IntelPanel.tsx` | AI intel buttons and deliberation display |
+| `VictoryScreen.tsx` | Win/loss overlay |
+| `ChatPanel.tsx` | Chat history and message input |
+| `QueryBar.tsx` | Query input and canned query buttons |
+| `ResultsPanel.tsx` | Query result display |
+| `StrategistAlerts.tsx` | Strategist advice display |
+| `PlayerIndicator.tsx` | Player color/status indicator |
 
 ---
 
-## End of UIUX.md
+## End of UIUX.md v1.1
 
-This document specifies every interaction pattern, user flow, state transition, and behavioral rule for the Risk: Dominion frontend. Use this document alongside AESTHETIC.md v2.0 (visual design) and INTERFACE_CONTRACT_UX_OVERHAUL.md (exact component specifications) during implementation. Every trigger, every sequence, every edge case is defined. Ready for generation.
+This document specifies every interaction pattern, user flow, and state management rule for Risk: Dominion as it currently exists in the codebase. Use alongside AESTHETIC.md v2.1 (visual design) and INTERFACE_CONTRACT_UPDATE_1.md (component specs).

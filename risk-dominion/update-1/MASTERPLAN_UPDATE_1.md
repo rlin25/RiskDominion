@@ -1,183 +1,138 @@
-# UI/UX OVERHAUL — MASTERPLAN
+# VISUAL OVERHAUL — MASTERPLAN
 
-## Version 1.0
-## Scope: Complete Visual and Interaction Overhaul — All Slices
-## Target: Claude Code Generation
+## Version 1.1
+## Scope: Visual and Font Overhaul — All Slices
+## Reflects: Current codebase (SpacetimeDB 2.4.1, React + TypeScript + Vite + Tailwind CSS + dnd-kit)
 
 ---
 
 ## 0. DOCUMENT PURPOSE
 
-This masterplan is the entry point for implementing the complete UI/UX overhaul of Risk: Dominion. It tells you what to read, what to generate, in what order, and what constraints apply.
+This masterplan defines what files need to change to complete the visual overhaul of Risk: Dominion. It tells you what to read, what to modify, in what order, and what constraints apply.
 
-This overhaul replaces the entire visual and interaction layer of the frontend. Game mechanics, reducers, AI systems, and database operations remain completely unchanged.
+This overhaul refines the visual and interaction layer — updating fonts, removing emojis, and polishing aesthetics. Game mechanics, reducers, AI systems, and database operations remain completely unchanged. The hex grid map is preserved.
 
 ---
 
 ## 1. BEFORE YOU BEGIN
 
-Read every existing file in the frontend codebase. Understand the current component tree, styling approach, and interaction patterns before making any changes.
+Read every existing file in the frontend codebase. Understand the current component tree, styling approach, and interaction patterns.
 
-Read these supporting documents for detailed specifications:
-- `AESTHETIC.md` (v2.0 — exact visual design system: colors, fonts, dimensions, animations)
-- `UIUX.md` (interaction patterns, user flows, state management, keyboard shortcuts)
-- `INTERFACE_CONTRACT_UX_OVERHAUL.md` (exact component specifications with pixel values and D3 patterns)
-- `UX_OVERHAUL_DECISIONS.md` (design philosophy and rationale)
+Read these supporting documents:
+- `AESTHETIC.md` v2.1 — exact visual design system: colors, fonts, dimensions, animations
+- `UIUX.md` v1.1 — interaction patterns, user flows, state management
+- `INTERFACE_CONTRACT_UPDATE_1.md` — exact component specs with pixel values
+- `DECISIONS_UPDATE_1.md` — design philosophy and rationale
 
 ---
 
 ## 2. CRITICAL CONSTRAINTS
 
-These paradigm shifts define the overhaul. They override any previous implementation:
+These rules define the overhaul. They override any previous documentation:
 
-1. **The persistent UI is exactly two elements:** the full-screen D3 geographic map and the three card stacks at bottom center. Everything else is temporary and summoned through the command bar.
+1. **The hex grid map stays.** Do not introduce D3.js geographic projection. The map is SVG hexagon territories grouped into three continent columns. This is intentional and must not be changed.
 
-2. **Replace the hex grid entirely.** Use a D3.js geographic world map with GeoJSON data. Territories are irregular polygonal shapes within continent outlines. No hexagons anywhere.
+2. **Replace Cinzel with Rajdhani.** Cinzel feels too formal for a strategy game. Rajdhani (wght 500/600/700) has a bold, military-technical edge that fits. Update `index.html`, `tailwind.config.js`, and every component that references Cinzel inline or via `font-display`.
 
-3. **Territory ownership is shown through procedural D3 patterns** (diagonal lines, dots, crosshatch, circles) that overlay additively. Unified territories are solid color with gold border. No X-split quadrants.
+3. **Preserve the fanned card hand.** The fan arc layout with rotation and parabolic vertical offset is the current card aesthetic and must be preserved. Do not change to three stacks.
 
-4. **The command bar is the single interface** for all non-card interactions. Hidden by default. Summoned by Enter or T key. Dismissed by Escape or card drag. It handles chat, intel, queries, events, and advice.
+4. **Preserve portrait card dimensions and icons.** Cards are 78×112px with sword/coin/eye SVG icons. These stay exactly as implemented.
 
-5. **Chat windows open via the command bar.** Fixed bottom-right. AI responses must be 100 characters or fewer — enforced in the AI prompt.
+5. **Remove emoji from continent banners.** Map.tsx currently uses `⚔ 🏛 🌏` next to continent names. Remove all emojis. Continent name text only, styled with Rajdhani.
 
-6. **Query results render as D3 visualizations on the map** (heat maps, flow lines, symbols, bar charts, tables). They fade after 10 seconds. No separate results panel.
+6. **No D3.js dependency.** Do not add d3 to package.json.
 
-7. **Sound uses Web Audio API only.** No audio files. Exact frequencies and durations are specified in the interface contract.
-
-8. **All game mechanics, reducers, AI systems, and database operations remain completely unchanged.** This is a visual and interaction overhaul only.
+7. **All existing game features must continue to function:** actions, AI cycles, cultural spread, intel, chat, queries, trust scores, win conditions, SpacetimeDB subscriptions.
 
 ---
 
 ## 3. FILE LIST
 
-### MODIFIED (16 files)
+### MODIFIED (8 files)
 
-These files keep their paths but their internal logic and rendering may be completely rewritten to match the overhaul specs. Preserve only game logic unrelated to visual rendering.
+1. `app/client/index.html` — Replace Cinzel font link with Rajdhani
+2. `app/client/tailwind.config.js` — Update `font-display` token from Cinzel to Rajdhani
+3. `app/client/src/components/Map.tsx` — Remove emoji icons from continent banners
+4. `app/client/src/components/Territory.tsx` — Update inline Cinzel references to Rajdhani
+5. `app/client/src/components/ActionCard.tsx` — Update inline Cinzel references to Rajdhani
+6. `app/client/src/components/CardHand.tsx` — Update inline Cinzel references to Rajdhani
+7. `app/client/src/components/VictoryScreen.tsx` — Update inline Cinzel references to Rajdhani
+8. `app/client/src/components/IntelPanel.tsx` — Update inline Cinzel references to Rajdhani
 
-1. `client/package.json` — add d3 dependency
-2. `client/src/constants.ts` — new color tokens, sound constants
-3. `client/src/types.ts` — new type interfaces
-4. `client/src/utils/territoryHelpers.ts` — updated for pattern-based ownership
-5. `client/src/components/ActionCard.tsx` — card stack styling
-6. `client/src/components/Territory.tsx` — D3 geographic rendering, patterns, hover callout
-7. `client/src/components/Map.tsx` — D3 geographic map, attack arrows, zoom/pan
-8. `client/src/components/CardHand.tsx` — three stacks layout, drag behavior
-9. `client/src/components/IntelPanel.tsx` — visual restyling
-10. `client/src/components/VictoryScreen.tsx` — new animations
-11. `client/src/components/EventTicker.tsx` — replaced with temporary notification cards
-12. `client/src/components/StrategistAlerts.tsx` — restyled as advice cards
-13. `client/src/components/QueryBar.tsx` — gutted, logic moved to CommandBar
-14. `client/src/components/ResultsPanel.tsx` — gutted, replaced by D3 map visualizations
-15. `client/src/hooks/useSubscriptions.ts` — updated for new component data needs
-16. `client/src/App.tsx` — layout, state, overlay management
+### NEW (0 files)
 
-### NEW (6 files)
+No new files required.
 
-17. `client/src/utils/soundEngine.ts` — Web Audio API sound synthesis
-18. `client/src/utils/patternRenderer.ts` — D3 procedural territory patterns
-19. `client/src/components/ColorLegend.tsx` — persistent map legend
-20. `client/src/components/TitleScreen.tsx` — arrival moment
-21. `client/src/components/ChatWindow.tsx` — temporary chat overlay
-22. `client/src/components/CommandBar.tsx` — unified command interface
+### DELETED (0 files)
 
-### DELETED (3 files)
+No files to delete. All existing components remain.
 
-Before deleting, search the entire codebase for imports of these files. Remove all import statements and usages. Then delete:
-
-- `client/src/components/PlayerIndicator.tsx`
-- `client/src/components/ReplayControls.tsx`
-- `client/src/components/SpectatorOverlay.tsx`
+Files that currently exist and must NOT be deleted:
+- `PlayerIndicator.tsx`
+- `ReplayControls.tsx`
+- `SpectatorOverlay.tsx`
+- `QueryBar.tsx`
+- `ResultsPanel.tsx`
+- `ChatPanel.tsx`
+- `StrategistAlerts.tsx`
+- `ActionBar.tsx`
+- `EventTicker.tsx`
 
 ---
 
 ## 4. GENERATION ORDER
 
-Generate files in this sequence. Each file must only reference types and utilities that already exist or were generated earlier.
-
-1. `client/package.json` (MODIFIED)
-2. `client/src/constants.ts` (MODIFIED)
-3. `client/src/types.ts` (MODIFIED)
-4. `client/src/utils/soundEngine.ts` (NEW)
-5. `client/src/utils/patternRenderer.ts` (NEW)
-6. `client/src/utils/territoryHelpers.ts` (MODIFIED)
-7. `client/src/components/ColorLegend.tsx` (NEW)
-8. `client/src/components/TitleScreen.tsx` (NEW)
-9. `client/src/components/ActionCard.tsx` (MODIFIED)
-10. `client/src/components/ChatWindow.tsx` (NEW)
-11. `client/src/components/CommandBar.tsx` (NEW)
-12. `client/src/components/Territory.tsx` (MODIFIED)
-13. `client/src/components/Map.tsx` (MODIFIED)
-14. `client/src/components/CardHand.tsx` (MODIFIED)
-15. `client/src/components/IntelPanel.tsx` (MODIFIED)
-16. `client/src/components/VictoryScreen.tsx` (MODIFIED)
-17. `client/src/components/EventTicker.tsx` (MODIFIED)
-18. `client/src/components/StrategistAlerts.tsx` (MODIFIED)
-19. `client/src/components/QueryBar.tsx` (MODIFIED)
-20. `client/src/components/ResultsPanel.tsx` (MODIFIED)
-21. `client/src/hooks/useSubscriptions.ts` (MODIFIED)
-22. `client/src/App.tsx` (MODIFIED)
+1. `app/client/index.html` (MODIFIED) — font swap
+2. `app/client/tailwind.config.js` (MODIFIED) — Tailwind font token
+3. `app/client/src/components/Map.tsx` (MODIFIED) — remove emojis
+4. `app/client/src/components/ActionCard.tsx` (MODIFIED) — font update
+5. `app/client/src/components/Territory.tsx` (MODIFIED) — font update
+6. `app/client/src/components/CardHand.tsx` (MODIFIED) — font update
+7. `app/client/src/components/VictoryScreen.tsx` (MODIFIED) — font update
+8. `app/client/src/components/IntelPanel.tsx` (MODIFIED) — font update
 
 ---
 
 ## 5. IMPLEMENTATION REFERENCES
 
-For exact specifications, refer to:
-
-- **Colors, fonts, dimensions, animations:** `AESTHETIC.md` v2.0
-- **Interaction flows, state management, keyboard shortcuts:** `UIUX.md`
-- **Component specifications with pixel values, D3 patterns, sound frequencies:** `INTERFACE_CONTRACT_UX_OVERHAUL.md`
-- **Design philosophy and rationale:** `UX_OVERHAUL_DECISIONS.md`
-
-If any detail is ambiguous between documents, `INTERFACE_CONTRACT_UX_OVERHAUL.md` is the authoritative implementation spec.
+- **Colors, dimensions, animations:** `AESTHETIC.md` v2.1
+- **Interaction flows, state management:** `UIUX.md` v1.1
+- **Component specs with exact values:** `INTERFACE_CONTRACT_UPDATE_1.md`
+- **Design philosophy:** `DECISIONS_UPDATE_1.md`
 
 ---
 
 ## 6. SCOPE BOUNDARY
 
-This is a visual and interaction overhaul only.
+**Do change:**
+- Font from Cinzel to Rajdhani everywhere it appears
+- Emoji removal from continent banners
+- Any UI polish consistent with AESTHETIC.md v2.1
 
-**Do change:** Every visual element, every interaction pattern, every animation, every sound trigger, the component tree, state management for UI, keyboard shortcuts.
-
-**Do NOT change:** Game mechanics, reducer logic, AI systems, database operations, table schemas, subscription patterns, server code, slice-specific functionality, win conditions, action point logic, cultural spread calculations, trust score updates.
-
-All existing game features must continue to function exactly as before: actions, AI cycles, cultural spread, intel, chat system, trust scores, query system, replay, spectator mode.
-
----
-
-## 7. GENERATION RULES
-
-1. **Modify existing files in place.** MODIFIED files may have their internal logic and rendering completely rewritten. The file path stays the same. Preserve only game logic unrelated to visual rendering.
-2. **Mark every output file** as MODIFIED, NEW, or DELETED at the top.
-3. **Use D3.js for all map rendering, pattern generation, query visualizations, and attack arrows.**
-4. **Tailwind CSS for all styling.** Use the extended configuration from AESTHETIC.md.
-5. **No emojis. No em dashes. No custom CSS files.**
-6. **All colors from the palette in AESTHETIC.md.** No other colors.
-7. **All fonts: JetBrains Mono or Inter.** No other fonts.
-8. **Sound: Web Audio API only.** No audio files.
-9. **Before deleting any file:** search for and remove all imports referencing that file.
+**Do NOT change:**
+- Hex grid map structure and layout
+- Territory.tsx quadrant fill logic
+- CardHand.tsx fan layout
+- ActionCard.tsx card dimensions and icons
+- dnd-kit drag/drop behavior
+- SpacetimeDB subscription or reducer calls
+- Game mechanics, AI systems, or database schema
 
 ---
 
-## 8. SUCCESS CRITERIA
+## 7. SUCCESS CRITERIA
 
 After applying all modifications:
 
-1. Compile without errors (`npm run build`).
-2. Map renders as D3 geographic world map with irregular territories and procedural patterns.
-3. Title screen appears and fades correctly.
-4. Three card stacks function: drag, count, empty state, regeneration.
-5. Attack arrows appear on Military pickup and disappear on drop.
-6. Territory hover shows data callout with leader line.
-7. Command bar summons on Enter, shows dropdown, executes commands, shakes on bad input.
-8. Chat windows open via command bar, AI responds within 100 characters.
-9. Query visualizations render on map and fade after 10 seconds.
-10. Victory and defeat animations play completely with sound.
-11. All sound triggers fire at correct moments.
-12. Color legend visible with correct colors and names.
-13. All existing game logic functions unchanged.
+1. `npm run build` compiles without errors.
+2. Hex map renders correctly with continent banners — no emoji, Rajdhani text only.
+3. All cards show Rajdhani labels instead of Cinzel.
+4. Territory name labels use Rajdhani.
+5. VictoryScreen uses Rajdhani for "Dominion Achieved", winner name, "CONQUERS ALL".
+6. IntelPanel headers use Rajdhani.
+7. No other visual regressions.
+8. All existing game logic functions unchanged.
 
 ---
 
-## End of UI/UX Overhaul Masterplan
-
-Read the existing codebase. Read all supporting documents. Apply every modification in the order specified. Output every changed file with MODIFIED, NEW, or DELETED at the top. This is the final masterplan. After generation, Risk: Dominion is complete. Generate now.
+## End of Visual Overhaul Masterplan v1.1
