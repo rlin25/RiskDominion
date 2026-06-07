@@ -1,0 +1,56 @@
+You are in the project root directory. You are implementing the complete UI/UX overhaul of Risk: Dominion — replacing the entire visual and interaction layer of the frontend. This is the final change before the demo.
+
+Before generating any changes, read every existing file in the frontend codebase. Understand the current component tree, styling approach, and interaction patterns.
+
+Read these files in full before generating:
+- MASTERPLAN_UX_OVERHAUL.md (your authoritative spec — every component, every visual element, every interaction pattern)
+- AESTHETIC.md (the updated v2.0 visual design system — exact colors, fonts, dimensions, animations, sound specs)
+- UIUX.md (interaction patterns and component behavior)
+- UX_OVERHAUL_DECISIONS.md (design philosophy and locked decisions)
+
+Modify the existing frontend codebase. Do not regenerate from scratch. Do not change any game mechanics, reducer logic, or database operations. Apply the changes specified in the masterplan in the order specified. Output every changed file with MODIFIED, NEW, or DELETED at the top.
+
+Key constraints:
+- This is a visual and interaction overhaul only. All game logic, reducers, AI systems, and database operations remain completely unchanged.
+- The persistent UI is exactly two elements: the full-screen D3 geographic map and the three card stacks at bottom center. Everything else is temporary and summoned through the command bar.
+- Replace the hex grid entirely with a D3.js geographic world map using GeoJSON data. Territories are irregular polygonal shapes within continent outlines. No hexagons anywhere.
+- Territory ownership is shown through procedural D3-generated texture patterns (diagonal lines for Military, dots for Economic, crosshatch for Cultural, circles for Covert). Patterns overlay additively. Unified territories are solid color with gold border. No X-split quadrants.
+- Use the exact color palette: bg-ocean #1a1d1c, bg-landmass #2d302e, bg-surface #1e2120, player-1 #5b8cbe, player-2 #c4554d, player-3 #c4944d, player-4 #8b6bae, gold #d4a843, success #5a9e6f, text-primary #c5c9c6, text-secondary #7d827e, border-subtle #3a3f3c, neutral-empty #2a2d2c. No other colors.
+- Use JetBrains Mono for all data, numbers, timestamps, query input, chat messages, tooltip content. Use Inter for all UI labels, territory names, headers, AI names, buttons. No other fonts.
+- The command bar is the single interface for all non-card interactions. It is hidden by default. Summoned by pressing Enter or T. Dismissed by Escape or when a card drag starts. It appears at top center, 60% width, with a gold > prompt. Clicking the > opens a categorized dropdown. Unrecognized input triggers a shake animation.
+- Chat windows open via the command bar. Fixed position bottom-right. 280x320px. AI responses must be 100 characters or fewer — one short sentence, terse and punchy. Enforce this in the AI prompt.
+- Query results render as D3 visualizations directly on the map: heat maps, flow lines, proportional symbols, bar charts, or comparison tables. They fade after 10 seconds. No separate results panel.
+- Attack arrows: on Military card pickup, dashed lines with traveling particles appear from adjacent player territories to valid targets. Valid targets highlight. Arrows disappear on drop.
+- Territory hover: after 150ms, a data callout card appears near the territory with a leader line. Shows all four dimension values. Disappears on mouse leave.
+- Sound uses Web Audio API only. No audio files. Exact frequencies: card play 800Hz/50ms, territory flip 120Hz/150ms, cultural pressure 200-400Hz, victory C5-E5-G5 sequence, defeat G4-C4 sequence. All synthesized via OscillatorNode.
+- Card stacks: three stacks at bottom center, 24px from bottom, 16px gap. Each card 60x84px. Top card shows dimension icon (24px SVG) and count (JetBrains Mono 18px). Offset layers beneath (3px down/right, max 5 visible). Empty state: opacity 0.4 with 4-second pulse matching regeneration. Drag: lifts 4px, scales 1.05.
+- Victory: shockwave ring expands from unified territory across map (1.5s). Territories pulse in winner's color. Overlay after 1s pause. Defeat: losing territory highlighted with pulsing border, all others dim to 40%. Overlay after 2s.
+- Title screen: "Risk: Dominion" in gold on dark overlay, fades in 300ms, holds 2s, fades out 500ms. Map is live behind it.
+- Color legend: bottom-left corner, transparent background, four colored squares with names, 60% opacity normally.
+- Delete these files entirely: PlayerIndicator.tsx, ReplayControls.tsx, SpectatorOverlay.tsx.
+- Overlays must never cover the card stacks (bottom center) or the command bar (when open).
+- Add d3 to package.json dependencies.
+- All styling via Tailwind CSS using the extended configuration. No custom CSS files. No emojis. No em dashes.
+
+Scope boundary:
+- This is a visual and interaction overhaul. Do NOT change any game mechanics, reducer logic, AI systems, database operations, or slice-specific functionality.
+- All existing game features must continue to work exactly as before: actions, AI cycles, cultural spread, intel, chat system, trust scores, query system, replay, spectator mode.
+
+If the masterplan is ambiguous on a detail, use AESTHETIC.md and UIUX.md for exact specifications. If still ambiguous, choose the simpler visual implementation that matches the Alive Intelligence philosophy.
+
+Success criteria. After applying all modifications:
+1. Compile without errors (npm run build).
+2. Map renders as D3 geographic world map with irregular territory shapes and procedural patterns.
+3. Title screen appears and fades correctly.
+4. Three card stacks at bottom center function: drag, count, empty state, regeneration.
+5. Attack arrows appear on Military pickup and disappear on drop.
+6. Territory hover shows data callout with leader line.
+7. Command bar summons on Enter, shows dropdown on > click, executes commands, shakes on bad input.
+8. Chat windows open via command bar, AI responds within 100 characters, close properly.
+9. Query visualizations render on map and fade after 10 seconds.
+10. Victory and defeat animations play completely with sound.
+11. All sound triggers fire at correct moments.
+12. Color legend visible with correct colors and names.
+13. All existing game logic functions unchanged.
+
+This is the final generation. After this, Risk: Dominion is complete. Generate now. Output every changed file. Mark each as MODIFIED, NEW, or DELETED.

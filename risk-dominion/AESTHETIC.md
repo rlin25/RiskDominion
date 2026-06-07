@@ -1,408 +1,530 @@
 # AESTHETIC.md — Risk: Dominion Visual Design System
 
-## Version 1.0
-## Scope: All Slices (1–7)
-## Target: Claude Code Generation — Visual Consistency Across the Entire Project
+## Version 2.0
+## Scope: Complete Visual Overhaul — All Slices
+## Replaces: AESTHETIC.md v1.0 in its entirety
 
 ---
 
 ## 0. PURPOSE
 
-This document defines the visual identity of Risk: Dominion. Every slice, every component, every state must conform to these rules. The goal is a cohesive "dark command center" aesthetic that balances strategy board game warmth with database-driven precision.
+This document specifies the exact visual design of Risk: Dominion. Every color, font, dimension, animation, and rendering rule is defined here. Claude Code must implement these specifications exactly.
 
-No emojis. No em dashes. No custom CSS files. All styling via Tailwind utility classes or inline SVG attributes.
-
----
-
-## 1. VISUAL TONE
-
-**Dark command center.** Deep navy-black backgrounds. Neon-bright territory colors. Glowing highlights. Geometric precision. The player is commanding a living database that happens to render as a world map.
-
-**Keywords:** tactical, precise, luminous, geometric, data-driven, board game heritage, high contrast.
-
-**Antithesis:** flat, pastel, playful, skeuomorphic, cluttered, AI-generated-looking.
+The companion document UIUX.md specifies interaction patterns and component behavior.
 
 ---
 
-## 2. COLOR PALETTE
+## 1. COLOR PALETTE
 
-### 2.1 Background Colors
-
-| Token | Hex | Usage |
-|-------|-----|-------|
-| `bg-root` | `#0A0A1A` | Main screen background behind the map |
-| `bg-surface` | `#1A1A2E` | Cards, panels, query bar, results table |
-| `bg-surface-alt` | `#222240` | Alternating row in data tables, hover states |
-| `bg-ticker` | `#0D0D1A` | Event ticker background |
-
-### 2.2 Text Colors
+### 1.1 Background Colors
 
 | Token | Hex | Usage |
 |-------|-----|-------|
-| `text-primary` | `#E0E0E0` | All primary text, territory names, card labels |
-| `text-secondary` | `#8899AA` | Placeholder text, timestamps, secondary data |
-| `text-accent` | `#FFD700` | Victory text, critical alerts |
+| `bg-ocean` | `#1a1d1c` | Map background (ocean/void) |
+| `bg-landmass` | `#2d302e` | Default territory fill before patterns |
+| `bg-surface` | `#1e2120` | Overlays, chat windows, cards |
+| `bg-overlay` | `#1e2120` at 92% opacity | Command bar, temporary surfaces |
 
-### 2.3 Player Colors
+### 1.2 Player Colors
 
 | Token | Hex | Player |
 |-------|-----|--------|
-| `player-1` | `#4488FF` | Player 1 (human, blue) |
-| `player-2` | `#FF4444` | Player 2 / Zhao (red) |
-| `player-3` | `#FFAA00` | Consortium (orange) — arrives Slice 2 |
-| `player-4` | `#AA44FF` | Prophet (purple) — arrives Slice 2 |
+| `player-1` | `#5b8cbe` | Human player |
+| `player-2` | `#c4554d` | Zhao |
+| `player-3` | `#c4944d` | Consortium |
+| `player-4` | `#8b6bae` | Prophet |
 
-### 2.4 Dimension Accent Colors
-
-Used on cards and dimension-specific UI elements:
-
-| Token | Hex | Dimension |
-|-------|-----|-----------|
-| `dim-military` | `#FF6666` | Military card left border, attack indicators |
-| `dim-economic` | `#FFCC44` | Economic card left border, invest indicators |
-| `dim-cultural` | `#44DDAA` | Cultural indicators — arrives Slice 3 |
-| `dim-covert` | `#AA44FF` | Covert card left border, intel indicators — arrives Slice 2 |
-
-### 2.5 Functional Colors
+### 1.3 Functional Colors
 
 | Token | Hex | Usage |
 |-------|-----|-------|
-| `highlight` | `#FFD700` | Territory highlight glow, focus rings, selected states |
-| `success` | `#44CC66` | Victory elements, positive deltas |
-| `warning` | `#FF8844` | AI timeout warnings, intel insufficient |
-| `neutral` | `#2A2A3E` | Empty quadrant (no owner), disabled card state |
+| `gold` | `#d4a843` | `>` prompt, highlights, victory text, dropdown hover |
+| `success` | `#5a9e6f` | Victory elements |
+| `text-primary` | `#c5c9c6` | All primary text |
+| `text-secondary` | `#7d827e` | Supporting text, timestamps, placeholder |
+| `border-subtle` | `#3a3f3c` | Panel borders, dividers |
+| `neutral-empty` | `#2a2d2c` | Unowned territory areas |
 
 ---
 
-## 3. TYPOGRAPHY
+## 2. TYPOGRAPHY
 
-### 3.1 Font Families
+### 2.1 Font Families
 
-| Role | Font | Source | Usage |
-|------|------|--------|-------|
-| UI / Game Interface | **Orbitron** | Google Fonts (weights: 400, 500, 700) | Territory names, card labels, player names, buttons, headers, victory text |
-| Data / Database Output | **JetBrains Mono** | Google Fonts (weights: 400, 500) | Query results, data tables, timestamps, action point numbers, intel text, ticker events |
+| Role | Font | Source | Weights |
+|------|------|--------|---------|
+| Data | JetBrains Mono | Google Fonts | 400, 500 |
+| UI | Inter | Google Fonts | 400, 600 |
 
-### 3.2 Type Scale
-
-| Size | UI (Orbitron) | Data (JetBrains Mono) |
-|------|---------------|----------------------|
-| `xs` (10px) | Territory name on map | — |
-| `sm` (11px) | Card cost indicator, canned query pills | Ticker event text |
-| `base` (13px) | Card labels, player indicator | Query input text, data table cells |
-| `lg` (16px) | Action bar number, panel titles | Intel report text |
-| `xl` (20px) | Victory text | — |
-| `2xl` (28px) | Victory headline | — |
-
-### 3.3 Font Loading
-
+Font loading:
 ```html
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 ```
 
-Tailwind config extension:
-```javascript
-theme: {
-  extend: {
-    fontFamily: {
-      ui: ['Orbitron', 'sans-serif'],
-      data: ['JetBrains Mono', 'monospace'],
-    }
-  }
-}
-```
+### 2.2 Type Scale
 
----
+| Size | Data (JetBrains Mono) | UI (Inter) |
+|------|----------------------|------------|
+| 9px | — | Territory names (low opacity), legend |
+| 10px | Query results table | Color legend names |
+| 11px | Chat messages, tooltip body | Dropdown options |
+| 13px | Command bar input | Chat header AI name |
+| 14px | — | Overlay headers |
+| 16px | — | Command bar prompt |
+| 28px | — | Victory/Defeat title |
 
-## 4. MAP AND TERRITORIES
-
-### 4.1 Map Layout
-
-- 12 hexagonal territories arranged in a honeycomb grid.
-- Three continent groups: Americas (left, 4 hexes), Europe-Africa (center, 4 hexes), Asia-Oceania (right, 4 hexes).
-- Each continent group has a subtle background tint: a very low-opacity ellipse or rounded rectangle in a continent-themed color behind its hexes. Not bright. Barely perceptible. Acts as a visual grouping cue.
-- Adjacent territories share a hex edge. Cross-continent adjacency (e.g., North America to Western Europe) is shown by a thin 1px connecting line in `#334455` between the two hexes.
-
-### 4.2 Territory Hexagon
-
-- Size: approximately 70px from flat edge to flat edge (width ~80px).
-- Stroke: 1.5px `#334455`.
-- Fill: X-split into four triangular quadrants meeting at the center point.
-  - Each quadrant is a triangle defined by: center point + two adjacent vertices of the hexagon.
-  - Quadrant fill = owning player's color. If no owner, fill = `neutral` (#2A2A3E).
-  - In Slice 1 (two dimensions): Top-left and bottom-right quadrants = Military and Economic. Top-right and bottom-left = neutral.
-  - In Slice 3 (four dimensions): All four quadrants active.
-- Internal quadrant divider lines: 0.5px `#334455`, drawn from center to vertex and center to edge midpoints.
-
-### 4.3 Territory States
-
-| State | Visual |
-|-------|--------|
-| **Default** | Quadrants filled per ownership. 1.5px border `#334455`. |
-| **Owned (current player has any dimension)** | Border brightens to `text-secondary` (#8899AA), 2px. |
-| **Highlighted (drag target or query result)** | Outer glow: `box-shadow: 0 0 12px 4px rgba(255, 215, 0, 0.5)`. Border `#FFD700`. |
-| **Hover** | Slight scale increase `transform: scale(1.08)`. Border brightens. Cursor pointer. |
-| **Neutral (no owner in any dimension)** | All quadrants `#2A2A3E`. Dim appearance. |
-
-### 4.4 Territory Labels
-
-- Territory name below each hexagon.
-- Font: Orbitron, 10px, `text-primary` (#E0E0E0).
-- Centered horizontally below the hex. Single line. No truncation (names are short).
-
----
-
-## 5. ACTION CARDS
-
-### 5.1 Card Container
-
-- Shape: horizontal rounded rectangle.
-- Dimensions: 90px width × 55px height. Border radius: 8px.
-- Background: `bg-surface` (#1A1A2E).
-- Left border: 3px solid dimension accent color.
-  - Military: `dim-military` (#FF6666)
-  - Economic: `dim-economic` (#FFCC44)
-  - Covert: `dim-covert` (#AA44FF) — arrives Slice 2
-- Shadow: `0 2px 8px rgba(0, 0, 0, 0.3)`.
-
-### 5.2 Card Content
-
-- Center icon: geometric SVG shape, 20px, colored with the dimension accent.
-  - Military: upward-pointing chevron. An equilateral triangle pointing up, stroke-only, 2px stroke.
-  - Economic: circle with a vertical line through it. A circle (radius 8px) with a vertical line from top to bottom, stroke-only, 2px stroke. The line extends 2px above and below the circle.
-  - Covert: concentric circles. Outer circle radius 8px, inner circle radius 3px, stroke-only, 2px stroke. — arrives Slice 2
-- Below icon: label text in Orbitron, 13px, `text-primary`.
-  - Military: "ATTACK"
-  - Economic: "INVEST"
-  - Covert: "DEPLOY" — arrives Slice 2
-- Top-right corner: cost indicator. A small circle (14px diameter) with "1" in JetBrains Mono, 9px, `text-secondary`. The circle border is 1px `text-secondary`.
-
-### 5.3 Card States
-
-| State | Visual |
-|-------|--------|
-| **Available** | Full opacity. Shadow present. Cursor grab. |
-| **Dragging** | Opacity 0.85. Slight rotation (2 degrees). Shadow increases to `0 4px 16px rgba(0, 0, 0, 0.5)`. Cursor grabbing. |
-| **Disabled (0 action points)** | Opacity 0.35. No shadow. Cursor not-allowed. All content muted. |
-| **Returning (invalid drop)** | Snaps back to hand position over 200ms ease-out. No visual change during snap. |
-
-### 5.4 Card Hand
-
-- Fixed bar at the bottom of the viewport.
-- Background: `bg-surface` (#1A1A2E) at 90% opacity with a 1px top border `#334455`.
-- Height: 80px. Full width.
-- Cards are centered horizontally in a row with 12px gaps.
-- New card enters: slides up from below the hand bar over 200ms ease-out.
-
----
-
-## 6. ANIMATION SYSTEM
-
-All animations use `ease-out` timing. No bouncing. No spring physics. No staggered delays. Precise and mechanical.
-
-| Element | Property | Duration | Easing |
-|---------|----------|----------|--------|
-| Territory color change | background-color | 300ms | ease-out |
-| Territory highlight glow | box-shadow | 150ms | ease-out |
-| Territory hover scale | transform | 150ms | ease-out |
-| Card enter hand | transform (translateY) | 200ms | ease-out |
-| Card return to hand | transform (translateY) | 200ms | ease-out |
-| Action bar fill | width | 300ms | ease-out |
-| Victory overlay | opacity | 400ms | ease-out |
-| Results panel slide | transform (translateY) | 250ms | ease-out |
-| Ticker scroll | transform (translateX) | Continuous linear, speed ~30px/s |
-
----
-
-## 7. QUERY BAR AND RESULTS (Slice 4)
-
-### 7.1 Query Bar
-
-- Position: top of screen, full width.
-- Height: 36px.
-- Background: `bg-surface` (#1A1A2E). Bottom border: 1px `#334455`.
-- Layout: `>` prompt character in JetBrains Mono, 13px, `text-accent` (#FFD700), followed by the text input.
-- Text input: JetBrains Mono, 13px, `text-primary`, placeholder `text-secondary`. No border. No outline. Background transparent. Full remaining width.
-- Placeholder text: "Ask anything about the game state..."
-
-### 7.2 Canned Query Buttons
-
-- Row of 10 pill-shaped buttons directly below the query bar.
-- Height: 24px. Padding: 6px 12px. Border radius: 12px (fully rounded).
-- Background: `bg-surface-alt` (#222240). Text: Orbitron, 11px, `text-secondary`.
-- Hover: border becomes `highlight` (#FFD700), 1px. Text becomes `text-primary`.
-- Gap between buttons: 8px.
-
-### 7.3 Results Panel
-
-- Appears between the query buttons and the map.
-- Background: `bg-surface` (#1A1A2E) at 95% opacity. Border: 1px `#334455`. Border radius: 4px.
-- Slides down from the query bar area over 250ms ease-out.
-- Content:
-  - Summary text: Orbitron, 14px, `text-primary`. Top of panel, with a 1px bottom border `#334455`. Padding: 8px 12px.
-  - Data table: JetBrains Mono, 13px, `text-primary`. Alternating row backgrounds: `bg-surface` and `bg-surface-alt`. Column headers: Orbitron, 11px, `text-accent` (#FFD700). Cell padding: 6px 12px. Row border: 0.5px `#334455`.
-- Close button: small "×" in top-right corner. Orbitron, 16px, `text-secondary`. Hover: `text-primary`.
-
----
-
-## 8. EVENT TICKER (Slice 4)
-
-- Fixed bar at the very bottom of the viewport, below the card hand.
-- Height: 28px. Background: `bg-ticker` (#0D0D1A). Top border: 1px `#334455`.
-- Content scrolls right-to-left continuously. Linear animation, speed approximately 30px/s.
-- Each event:
-  - Player color indicator: a small square (8×8px, border-radius 2px) filled with the relevant player's color.
-  - Event text: JetBrains Mono, 11px, `text-primary`.
-  - Separator between events: a middot character (`·`) in `text-secondary`, with 8px spacing on each side.
-- Hover: scrolling pauses. Cursor pointer.
-- Clicking an event with a territory reference: highlights that territory on the map for 3 seconds.
-
----
-
-## 9. ACTION BAR
-
-- Position: top-right corner of the screen.
-- A horizontal bar with a border and fill.
-- Width: 160px. Height: 20px. Border radius: 4px.
-- Border: 1px `text-secondary` (#8899AA).
-- Background (empty): `neutral` (#2A2A3E).
-- Fill: the current player's color. Width transitions proportionally to `actionPoints / maxActionPoints` over 300ms ease-out.
-- Text overlay: JetBrains Mono, 12px, `text-primary`, centered. Reads "5/10" etc.
-
----
-
-## 10. PLAYER INDICATOR
-
-- Position: top-left corner of the screen.
-- A colored dot (10px diameter, filled with current player's color) followed by "You are Player X" in Orbitron, 12px, `text-secondary`.
-- Simple. Unobtrusive. Always visible.
-
----
-
-## 11. VICTORY SCREEN
-
-- Full-screen overlay. Background: `bg-root` (#0A0A1A) at 90% opacity. Fades in over 400ms ease-out.
-- Centered content:
-  - Winner announcement: Orbitron, 28px, `text-accent` (#FFD700). Reads "{Winner} wins!"
-  - Subtitle: Orbitron, 16px, `text-primary`. Reads "You win!" (if current player won) or "You lose." (if current player lost).
-  - A decorative geometric element: a large hexagon outline (matching the territory hexagons but 120px wide, stroke 2px, player winner's color) behind the text.
-- No restart button. The game state is final for the session.
-
----
-
-## 12. SCREEN LAYOUT (ALL SLICES)
-
-```
-┌────────────────────────────────────────────────┐
-│ Player Indicator          Action Bar            │  ← top bar area
-├────────────────────────────────────────────────┤
-│ [> Ask anything about the game state..._____]  │  ← query bar (Slice 4)
-│ [Pill] [Pill] [Pill] [Pill] [Pill] ...         │  ← canned queries (Slice 4)
-├────────────────────────────────────────────────┤
-│                                                │
-│               HEX MAP AREA                     │  ← fills remaining space
-│      (12 hex territories, 3 continents)        │
-│                                                │
-├────────────────────────────────────────────────┤
-│  [Card] [Card] [Card] [Card] [Card]            │  ← card hand (fixed, 80px)
-├────────────────────────────────────────────────┤
-│ ■ Event text · ■ Event text · ■ Event text ... │  ← ticker (Slice 4, fixed, 28px)
-└────────────────────────────────────────────────┘
-```
-
----
-
-## 13. GEOMETRIC ICON SPECIFICATIONS
-
-All icons are simple SVG paths. No emojis. No icon fonts. No raster images.
-
-### 13.1 Military (Attack)
-
-```
-<svg width="20" height="20" viewBox="0 0 20 20">
-  <polygon points="10,3 17,16 3,16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-</svg>
-```
-An upward-pointing triangle. Color: `dim-military` (#FF6666).
-
-### 13.2 Economic (Invest)
-
-```
-<svg width="20" height="20" viewBox="0 0 20 20">
-  <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
-  <line x1="10" y1="2" x2="10" y2="18" stroke="currentColor" stroke-width="2"/>
-</svg>
-```
-A circle with a vertical line through it, extending slightly beyond the circle. Color: `dim-economic` (#FFCC44).
-
-### 13.3 Covert (Deploy) — Slice 2+
-
-```
-<svg width="20" height="20" viewBox="0 0 20 20">
-  <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="2"/>
-  <circle cx="10" cy="10" r="3" fill="currentColor"/>
-</svg>
-```
-Concentric circles. Outer ring stroke-only, inner dot filled. Color: `dim-covert` (#AA44FF).
-
----
-
-## 14. PROHIBITIONS
-
-These must never appear in the generated code:
-
-- **No emojis.** No Unicode emoji characters anywhere. Use geometric SVG icons instead.
-- **No em dashes.** Use standard hyphens or middots (·) for separators.
-- **No custom CSS files.** All styling must be Tailwind utility classes or inline SVG attributes.
-- **No rounded corners above 8px** except for fully rounded pills (border-radius 12px+).
-- **No box shadows with colors other than `#000000` (black) at varying opacities or `#FFD700` (gold) for highlights.**
-- **No font weights above 700.**
-- **No animations longer than 400ms except the ticker scroll.**
-- **No color gradients.** Solid colors only.
-
----
-
-## 15. TAILWIND CONFIGURATION REFERENCE
+### 2.3 Tailwind Configuration
 
 ```javascript
-// tailwind.config.js
 module.exports = {
-  content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        'bg-root': '#0A0A1A',
-        'bg-surface': '#1A1A2E',
-        'bg-surface-alt': '#222240',
-        'bg-ticker': '#0D0D1A',
-        'text-primary': '#E0E0E0',
-        'text-secondary': '#8899AA',
-        'text-accent': '#FFD700',
-        'player-1': '#4488FF',
-        'player-2': '#FF4444',
-        'player-3': '#FFAA00',
-        'player-4': '#AA44FF',
-        'dim-military': '#FF6666',
-        'dim-economic': '#FFCC44',
-        'dim-cultural': '#44DDAA',
-        'dim-covert': '#AA44FF',
-        'highlight': '#FFD700',
-        'success': '#44CC66',
-        'warning': '#FF8844',
-        'neutral': '#2A2A3E',
+        'bg-ocean': '#1a1d1c',
+        'bg-landmass': '#2d302e',
+        'bg-surface': '#1e2120',
+        'player-1': '#5b8cbe',
+        'player-2': '#c4554d',
+        'player-3': '#c4944d',
+        'player-4': '#8b6bae',
+        'gold': '#d4a843',
+        'success': '#5a9e6f',
+        'text-primary': '#c5c9c6',
+        'text-secondary': '#7d827e',
+        'border-subtle': '#3a3f3c',
+        'neutral-empty': '#2a2d2c',
       },
       fontFamily: {
-        ui: ['Orbitron', 'sans-serif'],
         data: ['JetBrains Mono', 'monospace'],
+        ui: ['Inter', 'sans-serif'],
+      },
+      opacity: {
+        '92': '0.92',
       },
     },
   },
-  plugins: [],
 };
 ```
 
 ---
 
-## End of AESTHETIC.md
+## 3. MAP AND TERRITORIES
 
-Every generated component must reference this document for colors, fonts, spacing, and animation values. Use the Tailwind config tokens defined here. Never hardcode hex values or font families in component code. The visual identity of Risk: Dominion is a single, coherent system. Maintain it across all seven slices.
+### 3.1 Map Layout
+
+- Full world map rendered via D3.js geographic projection
+- Continents: Americas, Europe, Africa, Asia, Oceania
+- 12 territories total, defined as GeoJSON polygon features
+- Projection: Mercator or Equal Earth
+- Map extends beyond viewport. Pan by dragging. Zoom by scroll wheel (scale extent: 1x to 4x)
+- Edge fades: subtle dark gradient at viewport edges indicating more map is available
+
+### 3.2 Territory Rendering
+
+- Each territory is a GeoJSON feature rendered as an SVG path via D3
+- Fill: `bg-landmass` (#2d302e) as base color
+- Stroke: `border-subtle` (#3a3f3c), 1px
+- Patterns overlay on the base fill to indicate dimensional ownership (see Section 3.3)
+- Territory name: Inter, 9px, `text-secondary` (#7d827e) at 40% opacity. Positioned at territory centroid. On hover: opacity transitions to 100% over 200ms
+- Hover: territory stroke brightens to `text-primary` (#c5c9c6), 2px. Data callout appears (see Section 3.5)
+
+### 3.3 Ownership Patterns
+
+Territory ownership is communicated through procedural texture patterns generated via D3. Each dimension owner contributes a pattern.
+
+**Pattern Definitions:**
+
+- **Military:** Contour-parallel lines. Generated from the territory's perimeter inward. 1px stroke, owner's color at 40% opacity. Line spacing: 6px.
+- **Economic:** Dot stipple. Points placed on a jittered grid within the territory bounds. Point diameter: 1.5px. Spacing: 8px. Owner's color at 40% opacity.
+- **Cultural:** Crosshatch. Lines at 45 and -45 degrees from territory centroid. 1px stroke, owner's color at 40% opacity. Spacing: 10px.
+- **Covert:** Small circles. Poisson disk sampling within territory bounds. Circle diameter: 2px. Minimum distance between circles: 8px. Owner's color at 40% opacity.
+
+**Pattern Combination:**
+- Multiple patterns overlay additively within the territory
+- A territory owned by one player across all dimensions: solid player color, no patterns
+- A territory with two owners: two patterns combine
+- A territory with three or four owners: all patterns combine
+- Unified territory (one player owns all four dimensions): solid player color with subtle 1px gold border
+
+**Small Territory Rule:**
+- If a territory's area is less than 2000 square pixels at default zoom, reduce pattern density by 50% (double all spacing values)
+- If area is less than 1000 square pixels, replace patterns with a single small colored dot (4px diameter) in the territory's label area per dimension owner
+
+### 3.4 Attack Arrows
+
+When a Military card is picked up from the stack:
+- Thin dashed lines (2px stroke, player-1 color, 60% opacity) appear from each of the player's adjacent territories to every valid attack target
+- A small particle (4px circle, player-1 color, 80% opacity) travels along each line from source to target
+- Particle duration: 800ms per traversal, looping
+- Arrows and particles disappear when the card is dropped or the action completes
+
+### 3.5 Territory Data Callout
+
+On territory hover:
+- A small floating card appears near the territory, offset 12px from the cursor or territory edge
+- Background: `bg-surface` (#1e2120) at 92% opacity
+- Border: 1px `border-subtle` (#3a3f3c)
+- Border radius: 4px
+- Padding: 8px 10px
+- Content: territory name (Inter, 12px, text-primary), then four rows showing dimension owner and value
+- Each row: dimension icon (10px) + owner name (Inter, 10px, owner color) + value (JetBrains Mono, 10px, text-primary)
+- A thin leader line (1px, border-subtle) connects the callout to the territory centroid
+- Appears on hover after 150ms delay. Disappears immediately on mouse leave.
+
+### 3.6 Color Legend
+
+- Position: bottom-left corner of the map viewport, 16px from edges
+- Four rows, each with:
+  - 10px × 10px colored square (border-radius: 2px)
+  - Player name in Inter, 10px, text-secondary
+- Row colors: `player-1`, `player-2`, `player-3`, `player-4`
+- Names: "You", "Zhao", "Consortium", "Prophet"
+- Background: none (transparent)
+- Opacity: 60% normally, 100% on hover of the legend area
+- Always visible
+
+---
+
+## 4. CARD STACKS
+
+### 4.1 Dimensions and Positioning
+
+- Three stacks, centered horizontally at the bottom of the screen
+- Distance from bottom edge: 24px
+- Gap between stacks: 16px
+- Each card: 60px wide, 84px tall
+- Border radius: 6px
+- Background: `bg-surface` (#1e2120)
+- Border: 1px `border-subtle` (#3a3f3c)
+- Left border accent: 3px solid, colored by dimension
+  - Military: `#c4554d` (Zhao's red, repurposed as the military dimension color)
+  - Economic: `#c4944d` (amber)
+  - Covert: `#8b6bae` (violet)
+
+### 4.2 Card Content
+
+- Dimension icon: centered, 24px, rendered in the dimension's accent color
+  - Military: upward chevron (SVG polygon, stroke-only, 2px)
+  - Economic: circle with vertical line (SVG, stroke-only, 2px)
+  - Covert: concentric circles (SVG, outer stroke 2px, inner filled)
+- Count number: JetBrains Mono, 18px, `text-primary` (#c5c9c6), positioned top-right corner, 8px from edges
+
+### 4.3 Stack Visual
+
+- Cards beneath the top card are offset 3px down and 3px right per level
+- Maximum 5 offset layers visible. A stack of 10 shows the top card + 5 offset beneath
+- Cards beneath are slightly darker (opacity decreases by 8% per level)
+- The stack has a subtle drop shadow: `0 2px 8px rgba(0,0,0,0.3)`
+
+### 4.4 Empty State
+
+- When action points for a dimension are 0, the top card appears dimmed: opacity 0.4
+- A subtle pulse animation runs on the stack: opacity oscillates between 0.4 and 0.55 over 4 seconds (matching regeneration interval)
+- The count shows "0" in `text-secondary` (#7d827e)
+- Cards are not draggable in this state
+
+### 4.5 Drag State
+
+- On pickup (mousedown/touchstart on the top card): card lifts 4px up, scales to 1.05, shadow intensifies
+- During drag: card follows cursor, slight rotation (2 degrees), opacity 0.9
+- On valid drop: card animates back to stack, shrinking, as the count decrements
+- On invalid drop (released over non-target): card snaps back to stack over 200ms ease-out
+
+### 4.6 Regeneration Animation
+
+- When an action point regenerates: a new card slides onto the top of the stack from above, 200ms ease-out
+- The count number updates with a brief flash of `gold` (#d4a843) for 300ms
+
+---
+
+## 5. COMMAND BAR
+
+### 5.1 Dimensions and Positioning
+
+- Hidden by default. Summoned by pressing Enter or T.
+- Position: top center of screen, 12px from top edge
+- Width: 60% of viewport width, max-width 720px
+- Height: 44px
+- Background: `bg-surface` (#1e2120) at 92% opacity
+- Border: 1px `border-subtle` (#3a3f3c), bottom border only
+- Border radius: 6px
+- Appear animation: slide down from top edge + fade in, 200ms ease-out
+- Dismiss animation: slide up + fade out, 200ms ease-in. Also dismisses on Escape.
+
+### 5.2 Input Area
+
+- `>` prompt: JetBrains Mono, 16px, `gold` (#d4a843), positioned 12px from left edge, vertically centered
+- Text input: JetBrains Mono, 14px, `text-primary` (#c5c9c6), no border, no outline, transparent background
+- Placeholder: "Type a command or question..." in `text-secondary` (#7d827e)
+- Input spans from the prompt to the right edge, with 12px right padding
+- On Enter: execute command, dismiss bar, show result
+- Auto-dismiss: if the player starts dragging a card while the bar is open, the bar dismisses immediately. Action takes priority.
+
+### 5.3 Dropdown
+
+- Appears on click of the `>` prompt
+- Position: directly below the command bar, same width
+- Background: `bg-surface` (#1e2120) at 95% opacity
+- Border: 1px `border-subtle` (#3a3f3c), all sides
+- Border radius: 6px
+- Sections with headers and dividers:
+
+```
+INTEL
+  Show me Zhao's plans
+  Show me Consortium's plans
+  Show me Prophet's plans
+────────────────────
+CHAT
+  Chat with Zhao
+  Chat with Consortium
+  Chat with Prophet
+────────────────────
+EVENTS
+  What's happening?
+────────────────────
+ADVICE
+  How am I doing?
+  Where should I attack?
+────────────────────
+  or type anything...
+```
+
+- Section headers: Inter, 9px, `text-secondary` (#7d827e), uppercase, 8px padding-left, 4px padding-top
+- Options: Inter, 11px, `text-primary`, 10px padding-left, 8px padding-vertical
+- Hover on option: background `gold` at 10% opacity
+- Dividers: 0.5px `border-subtle`
+- Final hint "or type anything...": Inter, 10px, italic, `text-secondary`, centered
+
+### 5.4 Shake Animation (Unrecognized Input)
+
+- Triggered when the command bar cannot parse the input
+- CSS animation: `translateX` by ±4px, 3 oscillations, 200ms total
+- After shake: a brief message appears below the input for 3 seconds: "I didn't understand that. Try 'help' for options." in Inter, 11px, `text-secondary`
+
+---
+
+## 6. CHAT WINDOWS
+
+### 6.1 Dimensions and Positioning
+
+- Fixed position: bottom-right corner of screen
+- Size: 280px wide, 320px tall
+- Background: `bg-surface` (#1e2120) at 92% opacity
+- Border: 1px `border-subtle` (#3a3f3c)
+- Border radius: 6px
+- Multiple chat windows stack vertically with 12px gap. Newest at the bottom.
+- Appear animation: fade in + scale from 0.95 to 1.0, 200ms ease-out
+- Dismiss: close button, Escape, or clicking outside. Fade out, 150ms.
+
+### 6.2 Header
+
+- AI portrait: 32px × 32px, circular, positioned 8px from left
+- AI name: Inter, 14px, AI's player color, vertically centered next to portrait
+- Close button: "×" character, Inter, 16px, `text-secondary`, positioned 8px from right. Hover: `text-primary`.
+
+### 6.3 Message Area
+
+- Scrollable area between header and input
+- Messages:
+  - AI messages: aligned left. Portrait (24px, circular), name (Inter, 10px, AI color), message text (JetBrains Mono, 11px, text-primary). All in a row.
+  - Player messages: aligned right. Message text only (JetBrains Mono, 11px, text-primary, text-right).
+  - Timestamp on hover: JetBrains Mono, 9px, text-secondary, appears below the message.
+- Padding: 8px
+- Message gap: 8px between messages
+- Auto-scroll to bottom on new message
+
+### 6.4 Input Area
+
+- Position: bottom of window
+- Full width input field, JetBrains Mono, 13px, text-primary
+- Background: `bg-surface` slightly lighter
+- Placeholder: "Message {AI name}..." in text-secondary
+- Border top: 0.5px border-subtle
+- Send on Enter. Input clears after send.
+
+### 6.5 AI Response Character Limit
+
+- AI responses are limited to approximately 75-100 characters
+- One short sentence per response
+- The AI prompt instructs: "Keep your response to one short sentence, no more than 100 characters. Be terse and punchy."
+- The compact window never requires scrolling during a single exchange
+
+---
+
+## 7. QUERY VISUALIZATIONS
+
+All visualizations render directly on the map using D3. They fade in over 300ms and fade out after 10 seconds or on click-away.
+
+### 7.1 Heat Map
+
+- Territories shaded by data intensity
+- Gradient: territory base color (low) → `gold` (#d4a843) (medium) → `player-2` (#c4554d) (high)
+- Opacity: 60% overlay on territory fill
+- Applied to all territories simultaneously via D3 color scale
+
+### 7.2 Flow Lines
+
+- Animated dashed lines between territories
+- 2px stroke, owner color, 60% opacity
+- Dash pattern: 8px dash, 6px gap
+- Particle: 4px circle, owner color, 80% opacity, travels along the line
+- Particle speed: 1 second to traverse the full line
+- Lines appear sequentially with 100ms stagger between each
+
+### 7.3 Proportional Symbols
+
+- Circles overlaid on territory centroids
+- Radius proportional to data value (min 8px, max 32px)
+- Fill: owner color at 50% opacity
+- Stroke: 1px, owner color
+- Scale animation on appear: from 0 to full radius, 300ms ease-out
+
+### 7.4 Bar Chart
+
+- Semi-transparent card overlay in open map space
+- Card style: same as chat window background and border
+- Bars: horizontal, 12px height, owner colors
+- Labels: JetBrains Mono, 10px, text-primary
+- Axes: subtle, border-subtle color
+
+### 7.5 Comparison Table
+
+- Structured data card overlay
+- Card style: same as bar chart
+- Columns and rows in JetBrains Mono
+- Column headers: Inter, 10px, `gold`
+- Cell values: JetBrains Mono, 10px, text-primary
+- Row dividers: 0.5px border-subtle
+
+---
+
+## 8. INTEL DISPLAY
+
+Intel appears as an overlay in the top-right quadrant of the map when summoned via command bar.
+
+### 8.1 Dimensions
+
+- Size: 360px wide, auto height (max 500px, scrollable)
+- Position: top-right, 16px from top and right edges
+- Background: `bg-surface` (#1e2120) at 92% opacity
+- Border: 1px `border-subtle`
+- Border radius: 6px
+
+### 8.2 Content
+
+- Header: AI portrait (32px) + name (Inter, 14px, AI color) + close button
+- Deliberation chain: each subordinate shown as a row
+  - Subordinate portrait (24px)
+  - Subordinate name and role (Inter, 11px, AI color for name, text-secondary for role)
+  - Reasoning text (JetBrains Mono, 11px, text-primary)
+  - Recommendations shown as small colored tags
+- Commander row shown last, slightly larger, with final action tags
+- Separators: 0.5px border-subtle between subordinates
+
+---
+
+## 9. EVENT NOTIFICATIONS
+
+### 9.1 Display
+
+- Position: top-center, below the command bar if open, otherwise 60px from top
+- Small card: max 300px wide, auto height
+- Background: `bg-surface` at 85% opacity
+- Border-left: 3px solid, colored by event type (military=player-2 red, economic=amber, cultural=violet, covert=violet, system=gold)
+- Content: event text in JetBrains Mono, 11px, text-primary
+- Appear: fade in + slide down 8px, 200ms
+- Auto-dismiss: fade out after 4 seconds
+- Maximum 3 visible at once. Older ones dismissed first.
+
+---
+
+## 10. STRATEGIST ADVICE
+
+### 10.1 Display
+
+- Position: top-left quadrant, 16px from top and left edges
+- Card style: same as event notifications
+- Border-left: 3px solid `gold` (#d4a843)
+- Content: advice text in Inter, 12px, text-primary
+- Appear and dismiss same as event notifications
+- Summoned via command bar or appears proactively (existing Strategist cycle)
+
+---
+
+## 11. TITLE SCREEN
+
+- On page load: the live map is visible, dimmed by a dark overlay (bg-ocean at 60% opacity)
+- Centered text: "Risk: Dominion" in Inter, 36px, `gold` (#d4a843)
+- Text fades in over 300ms, holds for 2 seconds
+- Overlay and text fade out simultaneously over 500ms
+- The full-brightness map is revealed
+- Game is immediately playable
+
+---
+
+## 12. VICTORY AND DEFEAT
+
+### 12.1 Victory
+
+- Trigger: fifth territory unified
+- Shockwave: a ring of the winner's color expands from the unified territory's centroid
+  - 2px stroke, radius from 0 to covering entire map viewport
+  - Duration: 1.5 seconds, ease-out
+- After shockwave: all territories pulse gently in winner's color
+  - Opacity oscillates between 10% and 30%, 2-second cycle
+- After 1-second pause: victory overlay appears
+  - Centered card, bg-surface at 95% opacity
+  - "Victory" in Inter, 28px, `gold`
+  - Winner's color accent border, 2px
+- Command bar remains active post-game
+
+### 12.2 Defeat
+
+- Trigger: opponent unifies fifth territory
+- The losing territory is highlighted: pulsing border, 3px, opponent's color, opacity 60-100%, 1-second cycle
+- All other territories dim to 40% brightness over 500ms
+- Duration: 2 seconds
+- Defeat overlay appears: same card style as victory
+  - "Defeat" in Inter, 28px, `gold`
+  - Territory name below in Inter, 16px, text-secondary
+- Command bar remains active post-game
+
+---
+
+## 13. SOUND DESIGN
+
+All sounds generated via Web Audio API. No audio files. One AudioContext created on page load.
+
+### 13.1 Sound Definitions
+
+- **Card play:** Sine wave, 800Hz, 50ms duration, quick fade out (gain exponential ramp to 0 over last 20ms). Volume: -18dB.
+- **Territory flip:** Sine wave, 120Hz, 150ms duration, frequency ramp to 80Hz over duration. Volume: -15dB.
+- **Cultural pressure (30% threshold):** Sine wave, 200Hz to 300Hz over 200ms. Volume: -28dB.
+- **Cultural pressure (40% threshold):** Sine wave, 300Hz to 400Hz over 200ms. Volume: -26dB.
+- **Victory:** Three sequential sine wave tones: C5 (523Hz, 150ms), E5 (659Hz, 150ms), G5 (784Hz, 150ms). 100ms gaps between. Volume: -12dB.
+- **Defeat:** Two sequential sine wave tones: G4 (392Hz, 300ms), C4 (262Hz, 300ms). 200ms gap. Volume: -15dB.
+
+### 13.2 Trigger Conditions
+
+- Card play: on successful reducer call for military_attack, economic_invest, or deploy_agent
+- Territory flip: on any dimension_owner_change
+- Cultural pressure: when influence_pct crosses 30% and 40% thresholds
+- Victory/Defeat: on game end
+
+---
+
+## 14. ANIMATION PRINCIPLES
+
+- All durations: 150-500ms unless specified otherwise
+- All easing: ease-out for appears, ease-in for dismisses
+- No bouncing, no spring physics, no staggered children unless specified
+- Territory color transitions: 300ms ease-out on fill changes
+- Map pan/zoom: immediate (no animation) for responsiveness
+- If frame rate drops below 30fps, disable all non-essential animations (particles, pulses, shockwave). Keep essential transitions (color changes, appears/dismisses).
+
+---
+
+## End of AESTHETIC.md v2.0
+
+This document completely replaces the previous AESTHETIC.md. All visual specifications herein are authoritative. UI interaction patterns and component behavior are specified in UIUX.md.
