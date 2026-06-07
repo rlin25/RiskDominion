@@ -138,9 +138,9 @@ export function Territory({ state, isHighlighted, isOwned }: Props) {
       <div
         className="mt-1 px-2 py-0.5 rounded text-center leading-tight"
         style={{
-          fontFamily: "Cinzel, serif",
+          fontFamily: "Rajdhani, sans-serif",
           fontSize: "8.5px",
-          fontWeight: isOwned || dominant ? 600 : 400,
+          fontWeight: isOwned || dominant ? 600 : 500,
           color: isHighlighted ? "#d4a017" : dominant ? dominantColor : "#9a8870",
           letterSpacing: "0.03em",
           textShadow: dominant ? `0 0 8px ${dominantColor}44` : undefined,

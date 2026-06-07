@@ -115,10 +115,10 @@ export function ActionCard({ id, cardType, disabled }: Props) {
       >
         {/* Top corner marks */}
         <div className="flex w-full justify-between px-1.5 pt-1.5">
-          <span style={{ fontFamily: "Cinzel, serif", fontSize: 9, color: accent, opacity: 0.8 }}>
+          <span style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 500, fontSize: 9, color: accent, opacity: 0.8 }}>
             {sub[0]}
           </span>
-          <span style={{ fontFamily: "Cinzel, serif", fontSize: 9, color: accent, opacity: 0.8 }}>
+          <span style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 500, fontSize: 9, color: accent, opacity: 0.8 }}>
             ✦
           </span>
         </div>
@@ -138,7 +138,7 @@ export function ActionCard({ id, cardType, disabled }: Props) {
         >
           <span
             style={{
-              fontFamily: "Cinzel, serif",
+              fontFamily: "Rajdhani, sans-serif",
               fontSize: 8.5,
               fontWeight: 700,
               letterSpacing: "0.12em",

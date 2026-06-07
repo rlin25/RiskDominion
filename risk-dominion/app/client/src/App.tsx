@@ -4,7 +4,7 @@ import { useReducer } from "spacetimedb/react";
 import { reducers } from "./module_bindings";
 import { useSubscriptions } from "./hooks/useSubscriptions";
 import { buildTerritoryStates, getValidMilitaryTargets } from "./utils/territoryHelpers";
-import { PLAYER_COLORS, TOTAL_TERRITORIES, HUMAN_PLAYER_ID } from "./constants";
+import { PLAYER_COLORS, HUMAN_PLAYER_ID } from "./constants";
 import type { CardType } from "./types";
 import { Map } from "./components/Map";
 import { CardHand } from "./components/CardHand";
@@ -54,6 +54,7 @@ export default function App() {
   }
 
   const [highlighted, setHighlighted] = useState<Set<number>>(new Set());
+  const [attackMode, setAttackMode] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryHighlights, setQueryHighlights] = useState<number[]>([]);
   const [tickerHighlight, setTickerHighlight] = useState<number | null>(null);
@@ -155,16 +156,15 @@ export default function App() {
     const cardType = event.active.data.current?.cardType as CardType | undefined;
     if (!cardType) return;
     if (cardType === "military") {
+      setAttackMode(true);
       setHighlighted(new Set(getValidMilitaryTargets(military, PLAYER_ID)));
-    } else {
-      // Economic and Covert may target any territory.
-      setHighlighted(new Set(Array.from({ length: TOTAL_TERRITORIES }, (_, i) => i + 1)));
     }
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const cardType = event.active.data.current?.cardType as CardType | undefined;
     const territoryId = event.over?.id as number | undefined;
+    setAttackMode(false);
     setHighlighted(new Set());
     if (!cardType || territoryId === undefined) return;
 
@@ -182,7 +182,7 @@ export default function App() {
     return (
       <div className="map-bg flex h-full flex-col items-center justify-center gap-4">
         <span style={{ color: "#d4a017", fontSize: 32, animation: "glow-pulse 2s ease-in-out infinite" }}>⚔</span>
-        <span style={{ fontFamily: "Cinzel, serif", fontSize: 14, letterSpacing: "0.3em", color: "#9a8870" }}>
+        <span style={{ fontFamily: "Orbitron, sans-serif", fontSize: 14, letterSpacing: "0.3em", color: "#9a8870" }}>
           ESTABLISHING COMMAND LINK…
         </span>
       </div>
@@ -218,7 +218,7 @@ export default function App() {
 
   return (
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="relative flex h-full flex-col">
+      <div className="relative flex h-full flex-col" data-attack-mode={attackMode}>
         <QueryBar
           onResult={(r) => setQueryResult(r)}
           onHighlight={(ids) => setQueryHighlights(ids)}
@@ -226,12 +226,12 @@ export default function App() {
 
         <div
           className="flex items-center justify-between px-4 py-2"
-          style={{ borderBottom: "1px solid #3d3525", background: "linear-gradient(90deg, #13110d, #1a1610, #13110d)" }}
+          style={{ borderBottom: "1px solid #3d3525", background: "linear-gradient(90deg, #1a1610, #241f16, #1a1610)" }}
         >
           <div className="flex items-center gap-2">
             <span style={{ color: "#d4a017", fontSize: 14 }}>⚔</span>
             <span
-              style={{ fontFamily: "Cinzel, serif", fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", color: "#d4a017" }}
+              style={{ fontFamily: "Rajdhani, sans-serif", fontSize: 18, fontWeight: 700, letterSpacing: "0.12em", color: "#d4a017" }}
             >
               RISK: DOMINION
             </span>
@@ -257,6 +257,9 @@ export default function App() {
 
         <div className="flex flex-1 overflow-hidden">
           {intelOpen && <IntelPanel onHighlight={(ids) => setQueryHighlights(ids)} />}
+          {mode !== "replay" && (
+            <EventTicker events={eventFeed} onEventClick={handleEventClick} />
+          )}
           <Map territories={territories} highlighted={mapHighlights} currentPlayerId={PLAYER_ID} />
           <ChatPanel
             messages={chatLog}
@@ -279,7 +282,7 @@ export default function App() {
 
         {mode === "player" && <CardHand actionPoints={actionPoints} gameEnded={gameEnded} />}
 
-        {mode === "replay" ? (
+        {mode === "replay" && (
           <ReplayControls
             events={eventFeed}
             startedAt={startedAt}
@@ -290,11 +293,6 @@ export default function App() {
             onPlayPause={() => setIsPlaying((p) => !p)}
             speed={playbackSpeed}
             onSpeedChange={setPlaybackSpeed}
-          />
-        ) : (
-          <EventTicker
-            events={eventFeed}
-            onEventClick={handleEventClick}
           />
         )}
 
