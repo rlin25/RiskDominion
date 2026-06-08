@@ -1,70 +1,105 @@
-import { EVENT_TYPE_COLORS, EVENT_FEED_MAX_DISPLAY } from "../constants";
+import { useEffect, useRef, useState } from "react";
+import { EVENT_TYPE_COLORS } from "../constants";
 import type { EventFeedRow } from "../types";
 
-const EVENT_ICONS: Record<string, string> = {
-  military: "⚔",
-  economic: "◈",
-  cultural: "✦",
-  covert:   "◉",
-  victory:  "★",
-  system:   "▸",
-};
-
 interface Props {
-  events: readonly EventFeedRow[];
-  onEventClick: (territoryId: number) => void;
+  events: EventFeedRow[];
+  showRecentToken: number;
 }
 
-export function EventTicker({ events, onEventClick }: Props) {
-  const recent = [...events]
-    .sort((a, b) => Number(a.eventAt) - Number(b.eventAt))
-    .slice(-EVENT_FEED_MAX_DISPLAY);
+interface Card {
+  key: string;
+  text: string;
+  eventType: string;
+}
+
+const MAX_VISIBLE = 3;
+const DISMISS_MS = 4000;
+
+// Transient event notifications (top-center). New events appear as stacked
+// cards that auto-dismiss after 4s. Incrementing showRecentToken re-shows the
+// last up-to-3 events.
+export function EventNotifications({ events, showRecentToken }: Props) {
+  const [cards, setCards] = useState<Card[]>([]);
+  const lastSeenId = useRef<bigint | null>(null);
+  const lastToken = useRef(showRecentToken);
+  const seq = useRef(0);
+  const timers = useRef<number[]>([]);
+
+  const pushCards = (rows: EventFeedRow[]) => {
+    if (rows.length === 0) return;
+    const newCards: Card[] = rows.map((e) => {
+      seq.current += 1;
+      const key = `n-${seq.current}`;
+      const id = window.setTimeout(() => {
+        setCards((prev) => prev.filter((c) => c.key !== key));
+      }, DISMISS_MS);
+      timers.current.push(id);
+      return { key, text: e.eventText, eventType: e.eventType };
+    });
+    setCards((prev) => [...prev, ...newCards].slice(-MAX_VISIBLE));
+  };
+
+  // Detect new events by tracking the max id seen so far.
+  useEffect(() => {
+    if (events.length === 0) return;
+    const sorted = [...events].sort((a, b) => Number(a.id) - Number(b.id));
+    const maxId = sorted[sorted.length - 1].id;
+
+    if (lastSeenId.current === null) {
+      // First load: don't flood with the backlog; just record where we are.
+      lastSeenId.current = maxId;
+      return;
+    }
+
+    const fresh = sorted.filter((e) => e.id > (lastSeenId.current as bigint));
+    if (fresh.length > 0) {
+      lastSeenId.current = maxId;
+      pushCards(fresh.slice(-MAX_VISIBLE));
+    }
+  }, [events]);
+
+  // Re-show the most recent events when the token changes.
+  useEffect(() => {
+    if (showRecentToken === lastToken.current) return;
+    lastToken.current = showRecentToken;
+    const sorted = [...events].sort((a, b) => Number(a.id) - Number(b.id));
+    pushCards(sorted.slice(-MAX_VISIBLE));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRecentToken]);
+
+  // Cleanup all pending timers on unmount.
+  useEffect(() => {
+    return () => {
+      timers.current.forEach((t) => window.clearTimeout(t));
+    };
+  }, []);
+
+  if (cards.length === 0) return null;
 
   return (
     <div
-      className="flex flex-col flex-shrink-0"
-      style={{ width: 200, borderRight: "1px solid #3d3525", background: "rgba(13,10,6,0.7)", overflow: "hidden" }}
+      className="fixed left-1/2 z-50 flex -translate-x-1/2 flex-col gap-2"
+      style={{ top: 60 }}
     >
-      {/* Header */}
-      <div
-        className="flex-shrink-0 px-3 py-2"
-        style={{ borderBottom: "1px solid #3d3525" }}
-      >
-        <span style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 600, fontSize: 10, letterSpacing: "0.22em", color: "#d4a017", textTransform: "uppercase" as const }}>
-          ◉ DISPATCHES
-        </span>
-      </div>
-
-      {/* Events list */}
-      <div className="styled-scroll flex-1 overflow-y-auto py-1">
-        {recent.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <span style={{ fontFamily: "Rajdhani, sans-serif", fontWeight: 500, fontSize: 9, color: "#4a4030", letterSpacing: "0.2em" }}>
-              AWAITING DISPATCHES
-            </span>
-          </div>
-        ) : (
-          recent.map((e, i) => {
-            const icon = EVENT_ICONS[e.eventType] ?? "▸";
-            const color = EVENT_TYPE_COLORS[e.eventType] ?? "#f0e6d0";
-            return (
-              <button
-                key={i}
-                onClick={() => e.territoryId != null && onEventClick(e.territoryId)}
-                className="flex w-full items-center gap-1.5 px-3 py-1 text-left opacity-80 hover:opacity-100 transition-opacity"
-              >
-                <span style={{ color, fontSize: 9, flexShrink: 0 }}>{icon}</span>
-                <span
-                  className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
-                  style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "#f0e6d0" }}
-                >
-                  {e.eventText}
-                </span>
-              </button>
-            );
-          })
-        )}
-      </div>
+      {cards.map((c) => (
+        <div
+          key={c.key}
+          className="animate-notify-in"
+          style={{
+            maxWidth: 300,
+            background: "rgba(30,33,32,0.85)",
+            borderLeft: `3px solid ${EVENT_TYPE_COLORS[c.eventType] ?? "#d4a843"}`,
+            borderRadius: 4,
+            padding: "6px 10px",
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 11,
+            color: "#c5c9c6",
+          }}
+        >
+          {c.text}
+        </div>
+      ))}
     </div>
   );
 }

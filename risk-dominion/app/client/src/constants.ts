@@ -1,7 +1,8 @@
-// Client-side constants. Mirrors the server module's gameplay constants.
+// Client-side constants. Mirrors the server module's gameplay constants and the
+// AESTHETIC.md v2.0 visual system.
 
 export const MAX_ACTION_POINTS = 10;
-export const ACTION_REGEN_SECONDS = 8;
+export const ACTION_REGEN_SECONDS = 1; // fast gameplay pace
 export const STARTING_ACTION_POINTS = 5;
 export const ECONOMIC_INVEST_AMOUNT = 5;
 export const WIN_UNIFIED_TERRITORIES = 5;
@@ -39,11 +40,12 @@ export const ADJACENCY: Record<number, number[]> = {
   12: [10, 11],
 };
 
+// AESTHETIC.md v2.0 player colors (muted, satellite-intelligence tones).
 export const PLAYER_COLORS: Record<number, string> = {
-  1: "#4488FF",
-  2: "#FF4444",
-  3: "#FFAA00",
-  4: "#AA44FF",
+  1: "#5b8cbe", // You (human)
+  2: "#c4554d", // Zhao
+  3: "#c4944d", // Consortium
+  4: "#8b6bae", // Prophet
 };
 
 export const TOTAL_PLAYERS = 4;
@@ -51,39 +53,83 @@ export const INTEL_THRESHOLD = 3;
 export const HUMAN_PLAYER_ID = 1;
 
 export const AI_PLAYERS: { id: number; name: string; color: string }[] = [
-  { id: 2, name: "Zhao", color: "#FF4444" },
-  { id: 3, name: "Consortium", color: "#FFAA00" },
-  { id: 4, name: "Prophet", color: "#AA44FF" },
+  { id: 2, name: "Zhao", color: PLAYER_COLORS[2] },
+  { id: 3, name: "Consortium", color: PLAYER_COLORS[3] },
+  { id: 4, name: "Prophet", color: PLAYER_COLORS[4] },
+];
+
+// Color legend (bottom-left of the map). AESTHETIC v2.0 §3.6.
+export const LEGEND: { id: number; name: string; color: string }[] = [
+  { id: 1, name: "You", color: PLAYER_COLORS[1] },
+  { id: 2, name: "Zhao", color: PLAYER_COLORS[2] },
+  { id: 3, name: "Consortium", color: PLAYER_COLORS[3] },
+  { id: 4, name: "Prophet", color: PLAYER_COLORS[4] },
 ];
 
 export const EVENT_FEED_MAX_DISPLAY = 50;
 export const MAX_CHAT_MESSAGE_LENGTH = 500;
 
-export const CANNED_QUERIES: { id: number; label: string }[] = [
-  { id: 0, label: "Weaknesses" },
-  { id: 1, label: "Contested" },
-  { id: 2, label: "Zhao's Targets" },
-  { id: 3, label: "Near Unification" },
-  { id: 4, label: "My Economy" },
-  { id: 5, label: "Thin Covert" },
-  { id: 6, label: "Consortium" },
-  { id: 7, label: "Culture Spread" },
-  { id: 8, label: "My Bonuses" },
-  { id: 9, label: "Winning" },
-];
+// Dimension accent colors for cards + tooltip dimension icons (AESTHETIC §4.1).
+// Cultural has no card; it spreads passively. Its accent is used only for the
+// hover-callout icon and event-notification stripe.
+export const DIMENSION_COLORS = {
+  military: "#c4554d",
+  economic: "#c4944d",
+  cultural: "#8b6bae",
+  covert: "#8b6bae",
+} as const;
 
+// Event-notification left-border colors (AESTHETIC §9, INTERFACE_CONTRACT §8.2).
 export const EVENT_TYPE_COLORS: Record<string, string> = {
-  military: "#FF6666",
-  economic: "#FFCC44",
-  cultural: "#44DDAA",
-  covert: "#AA44FF",
-  victory: "#FFD700",
-  system: "#8899AA",
+  military: "#c4554d",
+  economic: "#c4944d",
+  cultural: "#8b6bae",
+  covert: "#8b6bae",
+  victory: "#d4a843",
+  system: "#d4a843",
 };
 
-// Three continent groups for map layout (Americas, Europe-Africa, Asia-Oceania).
+// Three continent groups (used by the GeoJSON authoring + any grouping logic).
 export const CONTINENTS: { name: string; territories: number[] }[] = [
   { name: "Americas", territories: [1, 2, 3, 4] },
   { name: "Europe-Africa", territories: [5, 6, 7, 8] },
   { name: "Asia-Oceania", territories: [9, 10, 11, 12] },
+];
+
+// ---- COMMAND BAR ----
+// Dropdown sections (INTERFACE_CONTRACT §3.4 / AESTHETIC §5.3). The label text is
+// fed back through the same command parser as free typed input.
+export interface CommandOption {
+  label: string;
+}
+export interface CommandSection {
+  title: string;
+  options: CommandOption[];
+}
+
+export const COMMAND_SECTIONS: CommandSection[] = [
+  {
+    title: "INTEL",
+    options: [
+      { label: "Show me Zhao's plans" },
+      { label: "Show me Consortium's plans" },
+      { label: "Show me Prophet's plans" },
+    ],
+  },
+  {
+    title: "CHAT",
+    options: [
+      { label: "Chat with Zhao" },
+      { label: "Chat with Consortium" },
+      { label: "Chat with Prophet" },
+    ],
+  },
+  {
+    title: "EVENTS",
+    options: [{ label: "What's happening?" }],
+  },
+  {
+    title: "ADVICE",
+    options: [{ label: "How am I doing?" }, { label: "Where should I attack?" }],
+  },
 ];

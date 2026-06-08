@@ -15,7 +15,7 @@ use spacetimedb::{
 // ---- CONSTANTS ----
 
 const MAX_ACTION_POINTS: i32 = 10;
-const ACTION_REGEN_SECONDS: u64 = 8;
+const ACTION_REGEN_SECONDS: u64 = 1;
 const STARTING_ACTION_POINTS: i32 = 5;
 const ECONOMIC_INVEST_AMOUNT: i32 = 5;
 const WIN_UNIFIED_TERRITORIES: i32 = 5; // unify across all 4 dimensions (Slice 3+)
@@ -488,12 +488,69 @@ pub fn set_config(ctx: &ReducerContext, key: String, value: String) {
 // ---- REDUCERS: START GAME ----
 
 /// Seed the board. Idempotent: if a game already exists, returns immediately.
+/// Deterministic Fisher-Yates shuffle of the 12 territory ids, seeded from the
+/// game start time so each game distributes the four home countries differently.
+fn shuffled_territories(seed: u64) -> [i32; TOTAL_TERRITORIES as usize] {
+    let mut arr = [0i32; TOTAL_TERRITORIES as usize];
+    for i in 0..arr.len() {
+        arr[i] = (i + 1) as i32;
+    }
+    let mut s = seed ^ 0x9e3779b97f4a7c15;
+    for i in (1..arr.len()).rev() {
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let j = ((s >> 33) as usize) % (i + 1);
+        arr.swap(i, j);
+    }
+    arr
+}
+
 #[spacetimedb::reducer]
 pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
     if game_value(ctx, "status").is_some() {
         return Ok(());
     }
+    seed_game(ctx);
+    Ok(())
+}
 
+/// Wipe the current game and start a fresh, randomized one. Lets the player
+/// start over from the UI without a manual database reset.
+#[spacetimedb::reducer]
+pub fn reset_game(ctx: &ReducerContext) -> Result<(), String> {
+    clear_game_tables(ctx);
+    seed_game(ctx);
+    Ok(())
+}
+
+/// Delete every gameplay row so a fresh game can be seeded. Preserves
+/// `module_config` (the Anthropic API key). Scheduled timers are cleared here and
+/// re-armed by `seed_game`. Rows are collected before deletion to avoid mutating
+/// a table while iterating it.
+fn clear_game_tables(ctx: &ReducerContext) {
+    for r in ctx.db.military().iter().collect::<Vec<_>>() { ctx.db.military().territory_id().delete(r.territory_id); }
+    for r in ctx.db.economic().iter().collect::<Vec<_>>() { ctx.db.economic().territory_id().delete(r.territory_id); }
+    for r in ctx.db.covert().iter().collect::<Vec<_>>() { ctx.db.covert().territory_id().delete(r.territory_id); }
+    for r in ctx.db.cultural().iter().collect::<Vec<_>>() { ctx.db.cultural().territory_id().delete(r.territory_id); }
+    for r in ctx.db.players().iter().collect::<Vec<_>>() { ctx.db.players().player_id().delete(r.player_id); }
+    for r in ctx.db.game_state().iter().collect::<Vec<_>>() { ctx.db.game_state().key().delete(r.key); }
+    for r in ctx.db.event_feed().iter().collect::<Vec<_>>() { ctx.db.event_feed().id().delete(r.id); }
+    for r in ctx.db.strategist_log().iter().collect::<Vec<_>>() { ctx.db.strategist_log().id().delete(r.id); }
+    for r in ctx.db.chat_log().iter().collect::<Vec<_>>() { ctx.db.chat_log().id().delete(r.id); }
+    for r in ctx.db.chat_secret().iter().collect::<Vec<_>>() { ctx.db.chat_secret().chat_id().delete(r.chat_id); }
+    for r in ctx.db.ai_state().iter().collect::<Vec<_>>() { ctx.db.ai_state().ai_player_id().delete(r.ai_player_id); }
+    for r in ctx.db.ai_reasoning_log().iter().collect::<Vec<_>>() { ctx.db.ai_reasoning_log().id().delete(r.id); }
+    for r in ctx.db.ai_trust().iter().collect::<Vec<_>>() { ctx.db.ai_trust().id().delete(r.id); }
+    for r in ctx.db.regen_timer().iter().collect::<Vec<_>>() { ctx.db.regen_timer().scheduled_id().delete(r.scheduled_id); }
+    for r in ctx.db.cultural_timer().iter().collect::<Vec<_>>() { ctx.db.cultural_timer().scheduled_id().delete(r.scheduled_id); }
+    for r in ctx.db.ai_cycle_schedule().iter().collect::<Vec<_>>() { ctx.db.ai_cycle_schedule().scheduled_id().delete(r.scheduled_id); }
+    for r in ctx.db.strategist_schedule().iter().collect::<Vec<_>>() { ctx.db.strategist_schedule().scheduled_id().delete(r.scheduled_id); }
+}
+
+/// Seed a fresh game: players, randomized home territories (each player dominant
+/// in one random country, the rest neutral), AI cycles, timers, and trust.
+fn seed_game(ctx: &ReducerContext) {
     let ts = now_millis(ctx);
 
     // Players: 1 human + 3 AI.
@@ -518,27 +575,30 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
     set_game_value(ctx, "winner", "");
     set_game_value(ctx, "started_at", &ts.to_string());
 
-    // Territory seed: (id, mil_owner, mil_troops, eco_owner, eco_capital, cov_owner,
-    // cov_agents, cul_owner, cul_influence).
-    let seed: [(i32, i32, i32, i32, i32, i32, i32, i32, i32); 12] = [
-        (1, 1, 10, 1, 20, 1, 1, 1, 0),
-        (2, 1, 5, 3, 8, 0, 0, 1, 30),
-        (3, 1, 4, 1, 6, 0, 0, 4, 25),
-        (4, 2, 6, 1, 10, 0, 0, 1, 35),
-        (5, 3, 10, 3, 20, 3, 1, 3, 0),
-        (6, 3, 5, 3, 10, 0, 0, 4, 40),
-        (7, 3, 4, 3, 7, 0, 0, 4, 20),
-        (8, 2, 5, 3, 9, 0, 0, 4, 30),
-        (9, 4, 10, 4, 20, 4, 1, 4, 0),
-        (10, 2, 5, 4, 8, 0, 0, 2, 35),
-        (11, 2, 10, 2, 20, 2, 1, 2, 0),
-        (12, 4, 4, 4, 7, 0, 0, 2, 25),
-    ];
-    for (territory_id, mo, mt, eo, ec, co, ca, cul_o, cul_i) in seed {
-        ctx.db.military().insert(Military { territory_id, owner_id: mo, troop_count: mt });
-        ctx.db.economic().insert(Economic { territory_id, owner_id: eo, capital: ec });
-        ctx.db.covert().insert(Covert { territory_id, owner_id: co, agent_count: ca });
-        ctx.db.cultural().insert(Cultural { territory_id, owner_id: cul_o, influence_pct: cul_i });
+    // Territory seed: each player is dominant in ONE random distinct country
+    // (owning all four dimensions there), so every player always borders a
+    // territory they do not control and therefore always has an attack available.
+    // Remaining territories start neutral and lightly garrisoned so they can be
+    // contested from turn one. The shuffle is seeded from the start time so home
+    // countries are distributed differently each game.
+    let order = shuffled_territories(now_millis(ctx) as u64);
+    let mut home_of = [0i32; (TOTAL_TERRITORIES + 1) as usize]; // territory_id -> owner (0 = neutral)
+    for p in 0..TOTAL_PLAYERS as usize {
+        home_of[order[p] as usize] = (p + 1) as i32;
+    }
+    for territory_id in 1..=TOTAL_TERRITORIES {
+        let owner = home_of[territory_id as usize];
+        if owner != 0 {
+            ctx.db.military().insert(Military { territory_id, owner_id: owner, troop_count: 8 });
+            ctx.db.economic().insert(Economic { territory_id, owner_id: owner, capital: 15 });
+            ctx.db.covert().insert(Covert { territory_id, owner_id: owner, agent_count: 2 });
+            ctx.db.cultural().insert(Cultural { territory_id, owner_id: owner, influence_pct: 0 });
+        } else {
+            ctx.db.military().insert(Military { territory_id, owner_id: 0, troop_count: 3 });
+            ctx.db.economic().insert(Economic { territory_id, owner_id: 0, capital: 0 });
+            ctx.db.covert().insert(Covert { territory_id, owner_id: 0, agent_count: 0 });
+            ctx.db.cultural().insert(Cultural { territory_id, owner_id: 0, influence_pct: 0 });
+        }
     }
 
     // AI state + staggered reasoning cycles (one-shot Time rows; each cycle
@@ -610,7 +670,6 @@ pub fn start_game(ctx: &ReducerContext) -> Result<(), String> {
         None,
     );
     log::info!("Game started: {TOTAL_PLAYERS} players, {TOTAL_TERRITORIES} territories seeded.");
-    Ok(())
 }
 
 // ---- ACTION LOGIC (shared by reducers and the AI cycle) ----
@@ -1156,12 +1215,27 @@ fn dimension_owner_change(ctx: &ReducerContext, new_owner: i32, territory_id: i3
 
 #[spacetimedb::reducer]
 pub fn regenerate_action_points(ctx: &ReducerContext, _timer: RegenTimer) {
+    // Elapsed-time based: grant one point per ACTION_REGEN_SECONDS of real time
+    // since the last grant. This keeps the rate accurate even when the scheduler
+    // coalesces or delays timer fires (e.g. while an AI is mid-Claude-call), so
+    // action points track wall-clock 1/sec rather than 1 per fire.
     let ts = now_millis(ctx);
+    let interval_ms = (ACTION_REGEN_SECONDS as i64) * 1000;
     let players: Vec<Player> = ctx.db.players().iter().collect();
     for mut player in players {
-        if player.action_points < MAX_ACTION_POINTS {
-            player.action_points += 1;
-            player.last_regen_at = ts;
+        if player.action_points >= MAX_ACTION_POINTS {
+            // At cap: keep the clock current so a later spend refills from now.
+            if player.last_regen_at != ts {
+                player.last_regen_at = ts;
+                ctx.db.players().player_id().update(player);
+            }
+            continue;
+        }
+        let elapsed = (ts - player.last_regen_at).max(0);
+        let gain = (elapsed / interval_ms) as i32;
+        if gain >= 1 {
+            player.action_points = (player.action_points + gain).min(MAX_ACTION_POINTS);
+            player.last_regen_at += gain as i64 * interval_ms;
             ctx.db.players().player_id().update(player);
         }
     }
@@ -1959,6 +2033,98 @@ pub fn autocomplete_query(ctx: &mut ProcedureContext, partial: String) -> Autoco
         Ok(text) => AutocompleteResult { suggestions: parse_suggestions(&text) },
         Err(_) => AutocompleteResult { suggestions: Vec::new() },
     }
+}
+
+// ---- PROCEDURE: REAL-TIME CHAT REPLY ----
+
+/// Generate an immediate in-character chat reply from an AI to the human player.
+/// Called by the client right after the human sends a direct message. This is the
+/// real-time conversational channel and is independent of the AI reasoning cycle:
+/// the map shows what the AI is doing; chat shows who the AI is. The reply is
+/// capped at one short sentence (<= 100 chars). Follows the snapshot(tx1) ->
+/// HTTP -> insert(tx2) pattern; a tx is never held across the HTTP call.
+#[spacetimedb::procedure]
+pub fn chat_reply(ctx: &mut ProcedureContext, ai_player_id: i32) -> String {
+    if ai_player_id < 2 || ai_player_id > TOTAL_PLAYERS {
+        return String::new();
+    }
+
+    // tx1: snapshot the board, API config, and the recent human<->AI conversation.
+    let prep = ctx.with_tx(|tx| {
+        if game_value(tx, "status").as_deref() != Some("active") {
+            return None;
+        }
+        let key = config_value(tx, "anthropic_api_key")?;
+        let model =
+            config_value(tx, "anthropic_model").unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        let snapshot = build_board_snapshot(tx);
+
+        let mut convo: Vec<(i64, i32, String)> = tx
+            .db
+            .chat_log()
+            .iter()
+            .filter(|m| {
+                (m.sender_id == 1 && m.recipient_id == ai_player_id)
+                    || (m.sender_id == ai_player_id && m.recipient_id == 1)
+            })
+            .map(|m| (m.timestamp, m.sender_id, m.message_text.clone()))
+            .collect();
+        convo.sort_by_key(|(t, _, _)| *t);
+        let start = convo.len().saturating_sub(8);
+        let convo_text = convo[start..]
+            .iter()
+            .map(|(_, s, txt)| {
+                let who = if *s == 1 { "Player" } else { "You" };
+                format!("{who}: {txt}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if convo_text.is_empty() {
+            return None;
+        }
+        Some((key, model, snapshot, convo_text))
+    });
+
+    let (key, model, snapshot, convo_text) = match prep {
+        Some(v) => v,
+        None => return String::new(),
+    };
+
+    let (name, persona) = ai_persona(ai_player_id);
+    let system = format!(
+        "{persona}\n\nYou are {name}, speaking directly to the human player in a private chat in the game Risk: Dominion. Stay in character. Your chat is independent of your battlefield plans. Keep your response to one short sentence, no more than 100 characters. Be terse and punchy. Do not exceed this limit. Do not wrap your reply in quotation marks and do not prefix it with your name."
+    );
+    let user = format!(
+        "Current game state:\n{snapshot}\n\nRecent conversation:\n{convo_text}\n\nReply to the player's latest message as {name}, in one short sentence under 100 characters."
+    );
+
+    let reply = match anthropic_call(ctx, &key, &model, &system, &user, 80, 12) {
+        Ok(t) => t.trim().trim_matches('"').trim().to_string(),
+        Err(_) => return String::new(),
+    };
+    if reply.is_empty() {
+        return String::new();
+    }
+    // Defensive cap at 100 characters (char-safe, never splitting a UTF-8 boundary).
+    let reply: String = reply.chars().take(100).collect();
+
+    // tx2: persist the AI's reply so it streams back to the client via subscription.
+    ctx.with_tx(|tx| {
+        write_ai_chat(
+            tx,
+            ai_player_id,
+            AiChat {
+                message_text: reply.clone(),
+                recipient_id: 1,
+                is_deception: false,
+                claimed_fact: String::new(),
+                territory_id: 0,
+            },
+        );
+    });
+
+    reply
 }
 
 fn json_to_string(v: &serde_json::Value) -> String {

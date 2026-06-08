@@ -38,12 +38,14 @@ import DeployAgentReducer from "./deploy_agent_reducer";
 import DismissStrategistAlertReducer from "./dismiss_strategist_alert_reducer";
 import EconomicInvestReducer from "./economic_invest_reducer";
 import MilitaryAttackReducer from "./military_attack_reducer";
+import ResetGameReducer from "./reset_game_reducer";
 import SendChatMessageReducer from "./send_chat_message_reducer";
 import SetConfigReducer from "./set_config_reducer";
 import StartGameReducer from "./start_game_reducer";
 
 // Import all procedure arg schemas
 import * as AutocompleteQueryProcedure from "./autocomplete_query_procedure";
+import * as ChatReplyProcedure from "./chat_reply_procedure";
 import * as GetCannedQueryProcedure from "./get_canned_query_procedure";
 import * as GetIntelProcedure from "./get_intel_procedure";
 import * as QueryDatabaseProcedure from "./query_database_procedure";
@@ -210,6 +212,7 @@ const reducersSchema = __reducers(
   __reducerSchema("dismiss_strategist_alert", DismissStrategistAlertReducer),
   __reducerSchema("economic_invest", EconomicInvestReducer),
   __reducerSchema("military_attack", MilitaryAttackReducer),
+  __reducerSchema("reset_game", ResetGameReducer),
   __reducerSchema("send_chat_message", SendChatMessageReducer),
   __reducerSchema("set_config", SetConfigReducer),
   __reducerSchema("start_game", StartGameReducer),
@@ -218,6 +221,7 @@ const reducersSchema = __reducers(
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
 const proceduresSchema = __procedures(
   __procedureSchema("autocomplete_query", AutocompleteQueryProcedure.params, AutocompleteQueryProcedure.returnType),
+  __procedureSchema("chat_reply", ChatReplyProcedure.params, ChatReplyProcedure.returnType),
   __procedureSchema("get_canned_query", GetCannedQueryProcedure.params, GetCannedQueryProcedure.returnType),
   __procedureSchema("get_intel", GetIntelProcedure.params, GetIntelProcedure.returnType),
   __procedureSchema("query_database", QueryDatabaseProcedure.params, QueryDatabaseProcedure.returnType),
